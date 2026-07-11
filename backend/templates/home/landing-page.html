@@ -1,0 +1,209 @@
+{% extends "base/base.html" %} {% load static %}
+<!-- prettier-ignore -->
+{% block title %} ZentroApp {% endblock %} {% block content %} {% load humanize %}
+<!-- Navigation -->
+{% include "partials/landing-navbar.html" %}
+<!-- Hero Section -->
+<header class="landing-hero">
+  <div class="landing-container">
+    <h1>Transform Your Business with ZentroApp POS</h1>
+    <p>
+      Powerful inventory management and point-of-sale solution for seamless
+      business control, anywhere, anytime
+    </p>
+    <div class="landing-hero-buttons">
+      <a
+        href="#pricing"
+        class="landing-btn landing-btn-large cursor-pointer hover:bg-blue-500"
+        >Get Started</a
+      >
+      <a
+        href="#features"
+        class="landing-btn landing-btn-large landing-btn-outline cursor-pointer hover:bg-blue-500"
+        >Learn More</a
+      >
+    </div>
+  </div>
+</header>
+<!-- Features Section -->
+<section id="features" class="landing-features">
+  <div class="landing-container">
+    <h2>Key Features</h2>
+    <div class="landing-features-grid">
+      <div class="landing-feature-card">
+        <i class="fas fa-box-open"></i>
+        <h3>Smart Inventory Management</h3>
+        <p>
+          Real-time stock tracking, automated alerts, and efficient product
+          management all in one place
+        </p>
+      </div>
+      <div class="landing-feature-card">
+        <i class="fas fa-receipt"></i>
+        <h3>EFRIS Integration</h3>
+        <p>
+          Seamless integration with Uganda's Electronic Fiscal Receipting System
+        </p>
+      </div>
+      <div class="landing-feature-card">
+        <i class="fas fa-chart-line"></i>
+        <h3>Sales Analytics</h3>
+        <p>Detailed reports and insights to grow your business</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Pricing Section -->
+<section id="pricing" class="landing-pricing">
+  <h2 class="landing-pricing-title">Simple, Transparent Pricing</h2>
+  <p class="landing-pricing-subtitle" style="text-align: center; margin-bottom: 2rem; color: #6b7280; font-size: 1.125rem;">
+    14-day free trial • No upfront payment • Monthly from UGX 50,000
+  </p>
+
+  <div class="landing-pricing-grid">
+    {% for price_plan in pricing_info %}
+    <div class="landing-pricing-card">
+      <h3 class="landing-pricing-name">{{ price_plan.name }}</h3>
+      <div class="landing-pricing-amount">
+        UGX {{ price_plan.price|floatformat:0|intcomma }}
+      </div>
+      <div class="landing-pricing-period">/month</div>
+      <div class="landing-pricing-year">14-day free trial • No credit card required</div>
+      <ul class="landing-pricing-features">
+        {% for feature in price_plan.features %} {% if feature.included %}
+        <li>{{ feature.name }}</li>
+        {% endif %} {% endfor %}
+      </ul>
+      <a href="{% url 'home:onboarding' %}" class="landing-pricing-button"
+        >Get Started</a
+      >
+    </div>
+    {% endfor %}
+    <!-- Standard Plan Card -->
+    {% comment %}
+    <div class="landing-pricing-card">
+      <h3 class="landing-pricing-name">Standard Plan</h3>
+      <div class="landing-pricing-amount">UGX 30,000</div>
+      <div class="landing-pricing-period">/month</div>
+      <div class="landing-pricing-year">UGX 360,000/year</div>
+      <ul class="landing-pricing-features">
+        <li>Full Inventory Management</li>
+        <li>Unlimited Products</li>
+        <li>Basic Reports</li>
+        <li>Customer Management</li>
+      </ul>
+      <a href="#" class="landing-pricing-button">Get Started</a>
+    </div>
+    {% endcomment %}
+
+    <!-- Premium Plan Card -->
+    {% comment %}
+    <div class="landing-pricing-card popular">
+      <h3 class="landing-pricing-name">Premium Plan with EFRIS</h3>
+      <div class="landing-pricing-amount">UGX 50,000</div>
+      <div class="landing-pricing-period">/month</div>
+      <div class="landing-pricing-year">UGX 600,000/year</div>
+      <ul class="landing-pricing-features">
+        <li>Everything in Standard</li>
+        <li>EFRIS Integration</li>
+        <li>Advanced Analytics</li>
+        <li>Priority Support</li>
+      </ul>
+      <a href="#" class="landing-pricing-button">Get Started</a>
+    </div>
+    {% endcomment %}
+  </div>
+</section>
+<!-- Contact Section -->
+<section id="contact" class="landing-contact">
+  <div class="landing-contact-container">
+    <div class="landing-contact-header">
+      <h2>Get in Touch</h2>
+      <p class="landing-contact-subtitle">
+        Have questions? We'd love to hear from you. Send us a message and we'll
+        respond as soon as possible.
+      </p>
+    </div>
+
+    <div class="landing-contact-grid">
+      <div class="landing-contact-info">
+        <div class="landing-contact-info-item">
+          <h3>Email Us</h3>
+          <p>info@zentroapp.com</p>
+        </div>
+        <div class="landing-contact-info-item">
+          <h3>Call Us</h3>
+          <p>+256 750 440 865</p>
+        </div>
+        <div class="landing-contact-info-item">
+          <h3>Visit Us</h3>
+          <p>Ntinda, Kampala, Uganda</p>
+        </div>
+      </div>
+
+      <div class="landing-contact-form">
+        <form>
+          <div class="landing-form-group">
+            <label>Name</label>
+            <input type="text" required />
+          </div>
+          <div class="landing-form-group">
+            <label>Email</label>
+            <input type="email" required />
+          </div>
+          <div class="landing-form-group">
+            <label>Message</label>
+            <textarea rows="4" required></textarea>
+          </div>
+          <button type="submit" class="landing-btn landing-btn-primary">
+            Send Message
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- Footer -->
+<footer class="landing-footer">
+  <div class="landing-container">
+    <div class="landing-footer-grid">
+      <div class="landing-footer-col">
+        <img
+          src="{% static 'images/logo/logo.png' %}"
+          alt="Zentro Logo"
+          style="width: 180px; height: auto"
+        />
+        <p>Modern POS solution for your business</p>
+      </div>
+      <div class="landing-footer-col">
+        <h4>Quick Links</h4>
+        <ul>
+          <li><a href="#features">Features</a></li>
+          <li><a href="#pricing">Pricing</a></li>
+          <li><a href="#contact">Contact</a></li>
+        </ul>
+      </div>
+      <div class="landing-footer-col">
+        <h4>Contact</h4>
+        <ul>
+          <li>Email: info@zentroapp.com</li>
+          <li>Phone: +256 750 440 865</li>
+          <li>Kampala, Uganda</li>
+        </ul>
+      </div>
+      <div class="landing-footer-col">
+        <h4>Follow Us</h4>
+        <div class="landing-social-links">
+          <a href="#"><i class="fab fa-facebook"></i></a>
+          <a href="#"><i class="fab fa-twitter"></i></a>
+          <a href="#"><i class="fab fa-linkedin"></i></a>
+        </div>
+      </div>
+    </div>
+    <div class="landing-footer-bottom">
+      <p>&copy; 2024 ZentroApp. All rights reserved.</p>
+    </div>
+  </div>
+</footer>
+{% endblock %}

@@ -1,0 +1,771 @@
+{% extends "admin/base_site.html" %} {% load i18n static humanize %} {% block extrastyle %} {{ block.super }}
+<style>
+  .reversal-preview-container {
+    max-width: 1200px;
+    margin: 20px auto;
+    padding: 20px;
+  }
+
+  .preview-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 30px;
+    border-radius: 10px 10px 0 0;
+    margin-bottom: 0;
+  }
+
+  .preview-header h1 {
+    margin: 0 0 10px 0;
+    font-size: 28px;
+    font-weight: 600;
+  }
+
+  .preview-header p {
+    margin: 5px 0;
+    opacity: 0.9;
+    font-size: 16px;
+  }
+
+  .preview-content {
+    background: white;
+    color: #212529;
+    color-scheme: light;
+    border: 1px solid #e0e0e0;
+    border-top: none;
+    border-radius: 0 0 10px 10px;
+    padding: 30px;
+  }
+
+  .info-card {
+    background: #f8f9fa;
+    border-left: 4px solid #667eea;
+    padding: 20px;
+    margin-bottom: 25px;
+    border-radius: 5px;
+  }
+
+  .info-card h2 {
+    margin: 0 0 15px 0;
+    font-size: 20px;
+    color: #333;
+    font-weight: 600;
+  }
+
+  .info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 15px;
+  }
+
+  .info-item {
+    padding: 10px 0;
+  }
+
+  .info-label {
+    font-weight: 600;
+    color: #666;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 5px;
+  }
+
+  .info-value {
+    font-size: 16px;
+    color: #333;
+    font-weight: 500;
+  }
+
+  .steps-list {
+    list-style: none;
+    padding: 0;
+    margin: 20px 0;
+  }
+
+  .steps-list li {
+    padding: 12px 15px;
+    margin-bottom: 10px;
+    background: #e8f5e9;
+    border-left: 4px solid #4caf50;
+    border-radius: 4px;
+    font-size: 15px;
+  }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin: 25px 0;
+  }
+
+  .stat-card {
+    background: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+
+  .stat-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  .stat-number {
+    font-size: 36px;
+    font-weight: bold;
+    color: #667eea;
+    margin-bottom: 8px;
+  }
+
+  .stat-label {
+    font-size: 14px;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .entries-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    background: white;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .entries-table thead {
+    background: #667eea;
+    color: white;
+  }
+
+  .entries-table th {
+    padding: 15px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .entries-table td {
+    padding: 15px;
+    border-bottom: 1px solid #f0f0f0;
+  }
+
+  .entries-table tbody tr:hover {
+    background: #f8f9fa;
+  }
+
+  .entries-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  .amount-positive {
+    color: #4caf50;
+    font-weight: 600;
+  }
+
+  .amount-negative {
+    color: #f44336;
+    font-weight: 600;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .badge-increase {
+    background: #e8f5e9;
+    color: #2e7d32;
+  }
+
+  .badge-decrease {
+    background: #ffebee;
+    color: #c62828;
+  }
+
+  .warning-box {
+    background: #fff3cd;
+    border: 2px solid #ffc107;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 25px 0;
+  }
+
+  .warning-box h3 {
+    color: #856404;
+    margin: 0 0 15px 0;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .warning-box ul {
+    margin: 10px 0 10px 20px;
+    color: #856404;
+  }
+
+  .warning-box li {
+    margin: 8px 0;
+  }
+
+  .warning-box strong {
+    color: #000;
+  }
+
+  .action-buttons {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    margin-top: 30px;
+    padding-top: 30px;
+    border-top: 2px solid #e0e0e0;
+    background-color: #f8f9fa;
+  }
+
+  .btn {
+    padding: 12px 30px;
+    border: none;
+    border-radius: 6px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.3s;
+  }
+
+  .btn-secondary {
+    background: #6c757d;
+    color: white !important;
+  }
+
+  .btn-secondary:hover {
+    background: #5a6268;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  }
+
+  .btn-danger {
+    background: #dc3545;
+    color: white;
+  }
+
+  .btn-danger:hover {
+    background: #c82333;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(220, 53, 69, 0.4);
+  }
+
+  .section-title {
+    font-size: 22px;
+    font-weight: 600;
+    color: #333;
+    margin: 30px 0 20px 0;
+    padding-bottom: 10px;
+    border-bottom: 3px solid #667eea;
+  }
+</style>
+{% endblock %} {% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+  &rsaquo;
+  <a href="{% url 'admin:sales_postedsalesinvoice_changelist' %}"
+    >{% trans 'Posted Sales Invoices' %}</a
+  >
+  &rsaquo; {% trans 'Preview Reversal' %}
+</div>
+{% endblock %} {% block content %}
+<div class="reversal-preview-container">
+  <div class="preview-header">
+    <h1>🔍 Reversal Preview</h1>
+    <p><strong>Invoice:</strong> {{ invoice.no }}</p>
+    <p><strong>Customer:</strong> {{ invoice.customer.name }}</p>
+    <p>
+      <strong>Document Date:</strong> {{ invoice.document_date|date:"Y-m-d" }}
+    </p>
+  </div>
+
+  <div class="preview-content">
+    <!-- Original Invoice Information -->
+    <div class="info-card">
+      <h2>📄 Original Invoice Details</h2>
+      <div class="info-grid">
+        <div class="info-item">
+          <div class="info-label">Invoice Number</div>
+          <div class="info-value">{{ invoice.no }}</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Customer</div>
+          <div class="info-value">{{ invoice.customer.name }}</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Posting Date</div>
+          <div class="info-value">{{ invoice.posting_date|date:"Y-m-d" }}</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Status</div>
+          <div class="info-value">{{ invoice.status }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Reversal Process Steps -->
+    <div class="info-card">
+      <h2>⚙️ Reversal Process Steps</h2>
+      <ul class="steps-list">
+        {% for step in preview_data.steps %}
+        <li>{{ step }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <!-- Statistics -->
+    <h2 class="section-title">📊 Entries to be Created</h2>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-number">{{ preview_data.gl_entries_count }}</div>
+        <div class="stat-label">GL Entries</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">{{ preview_data.customer_entries_count }}</div>
+        <div class="stat-label">Customer Entries</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">{{ preview_data.item_entries_count }}</div>
+        <div class="stat-label">Item Entries</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">{{ preview_data.value_entries_count }}</div>
+        <div class="stat-label">Value Entries</div>
+      </div>
+      {% if preview_data.bank_entries_count %}
+      <div class="stat-card">
+        <div class="stat-number">{{ preview_data.bank_entries_count }}</div>
+        <div class="stat-label">Bank Entries</div>
+      </div>
+      {% endif %}
+      {% if preview_data.vat_entries_count %}
+      <div class="stat-card">
+        <div class="stat-number">{{ preview_data.vat_entries_count }}</div>
+        <div class="stat-label">VAT Entries</div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- GL Entries Preview -->
+    {% if preview_data.entries.gl_entries %}
+    <h2 class="section-title">
+      💰 GL Entries (Opposite Signs - Includes Invoice & Payment)
+    </h2>
+    <table class="entries-table">
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>GL Account</th>
+          <th>Description</th>
+          <th>Original Amount</th>
+          <th>Reversal Amount</th>
+          <th>Effect</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in preview_data.entries.gl_entries %}
+        <tr>
+          <td>
+            {% if entry.original_document_type == "Invoice" %}
+            <span class="badge badge-increase">📄 Invoice</span>
+            {% elif entry.original_document_type == "Payment" %}
+            <span class="badge badge-decrease">💰 Payment</span>
+            {% else %}
+            <span class="badge"
+              >{{ entry.original_document_type|default:"N/A" }}</span
+            >
+            {% endif %}
+          </td>
+          <td>
+            <strong>{{ entry.gl_account.no }}</strong><br /><small
+              >{{ entry.gl_account.name }}</small
+            >
+          </td>
+          <td>{{ entry.description }}</td>
+          <td
+            class="{% if entry.original_amount < 0 %}amount-negative{% else %}amount-positive{% endif %}"
+          >
+            {{ entry.original_amount|floatformat:0|default:"N/A" }}
+          </td>
+          <td
+            class="{% if entry.amount < 0 %}amount-negative{% else %}amount-positive{% endif %}"
+          >
+            <strong>{{ entry.amount|floatformat:0 }}</strong>
+          </td>
+          <td>
+            {% if entry.amount > 0 %}
+            <span class="badge badge-increase">↑ Increase</span>
+            {% else %}
+            <span class="badge badge-decrease">↓ Decrease</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    <!-- Customer Ledger Entries Preview -->
+    {% if preview_data.entries.customer_entries %}
+    <h2 class="section-title">👤 Customer Ledger Entries (Opposite Signs)</h2>
+    <table class="entries-table">
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Customer</th>
+          <th>Description</th>
+          <th>Original Amount</th>
+          <th>Reversal Amount</th>
+          <th>Reversal Sales</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in preview_data.entries.customer_entries %}
+        <tr>
+          <td>
+            {% if entry.original_document_type == "Invoice" %}
+            <span class="badge badge-increase">📄 Invoice</span>
+            {% elif entry.original_document_type == "Payment" %}
+            <span class="badge badge-decrease">💰 Payment</span>
+            {% else %}
+            <span class="badge"
+              >{{ entry.original_document_type|default:"N/A" }}</span
+            >
+            {% endif %}
+          </td>
+          <td>
+            <strong>{{ entry.customer.name }}</strong><br />
+            <small>{{ entry.customer.no }}</small>
+          </td>
+          <td>{{ entry.description }}</td>
+          <td
+            class="{% if entry.amount_before_reversal < 0 %}amount-negative{% else %}amount-positive{% endif %}"
+          >
+            {{ entry.amount_before_reversal|floatformat:0|default:"N/A" }}
+          </td>
+          <td
+            class="{% if entry.amount < 0 %}amount-negative{% else %}amount-positive{% endif %}"
+          >
+            <strong>{{ entry.amount|floatformat:0 }}</strong>
+          </td>
+          <td
+            class="{% if entry.sales < 0 %}amount-negative{% else %}amount-positive{% endif %}"
+          >
+            {{ entry.sales|floatformat:0|default:"0" }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    <!-- Item Ledger Entries Preview -->
+    {% if preview_data.entries.item_entries %}
+    <h2 class="section-title">
+      📦 Item Ledger Entries (Inventory Restoration)
+    </h2>
+    <table class="entries-table">
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th>Location</th>
+          <th>Original Type</th>
+          <th>Reversal Type</th>
+          <th>Original Qty</th>
+          <th>Reversal Qty</th>
+          <th>Unit of Measure</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in preview_data.entries.item_entries %}
+        <tr>
+          <td>
+            <strong>{{ entry.item.item_name }}</strong><br />
+            <small>{{ entry.item.no }}</small>
+          </td>
+          <td>{{ entry.location.code }}</td>
+          <td>
+            <span class="badge badge-decrease"
+              >{{ entry.original_entry_type|default:"Sale" }}</span
+            >
+          </td>
+          <td>
+            <span class="badge badge-increase">{{ entry.entry_type }}</span>
+          </td>
+          <td class="amount-negative">
+            -{{ entry.quantity_before_reversal|floatformat:2 }}
+          </td>
+          <td class="amount-positive">
+            <strong>+{{ entry.quantity|floatformat:2|cut:"-" }}</strong>
+          </td>
+          <td>{{ entry.unit_of_measure_code }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    <!-- Value Entries Preview -->
+    {% if preview_data.entries.value_entries %}
+    <h2 class="section-title">💵 Value Entries (Cost Reversal)</h2>
+    <table class="entries-table">
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th>Entry Type</th>
+          <th>Original Cost</th>
+          <th>Reversal Cost</th>
+          <th>Original Qty</th>
+          <th>Reversal Qty</th>
+          <th>Cost Per Unit</th>
+          <th>Original Sales</th>
+          <th>Reversal Sales</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in preview_data.entries.value_entries %}
+        <tr>
+          <td>
+            <strong>{{ entry.item.item_name }}</strong><br />
+            <small>{{ entry.item.no }}</small>
+          </td>
+          <td>
+            <span class="badge"
+              >{{ entry.original_entry_type|default:"Sale" }}</span
+            >
+          </td>
+          <td class="amount-positive">
+            {{ entry.cost_amount_before_reversal|floatformat:0 }}
+          </td>
+          <td
+            class="{% if entry.cost_amount < 0 %}amount-negative{% else %}amount-positive{% endif %}"
+          >
+            <strong>{{ entry.cost_amount|floatformat:0 }}</strong>
+          </td>
+          <td class="amount-negative">
+            {{ entry.item_ledger_qty_before_reversal|floatformat:2 }}
+          </td>
+          <td
+            class="{% if entry.item_ledger_entry_quantity < 0 %}amount-negative{% else %}amount-positive{% endif %}"
+          >
+            <strong
+              >{{ entry.item_ledger_entry_quantity|floatformat:2 }}</strong
+            >
+          </td>
+          <td>{{ entry.cost_per_unit|floatformat:0 }}</td>
+          <td class="amount-positive">
+            {{ entry.sales_amount_before_reversal|floatformat:0|default:"0" }}
+          </td>
+          <td
+            class="{% if entry.sales_amount < 0 %}amount-negative{% else %}amount-positive{% endif %}"
+          >
+            <strong>{{ entry.sales_amount|floatformat:0|default:"0" }}</strong>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    <!-- VAT Entries Preview (Subledger Reversal) -->
+    {% if preview_data.entries.reversal_vat_entries %}
+    <h2 class="section-title">📋 VAT Entries (Opposite Signs)</h2>
+    <table class="entries-table">
+      <thead>
+        <tr>
+          <th>Posting Date</th>
+          <th>Document Type</th>
+          <th>Document No.</th>
+          <th>Type</th>
+          <th>VAT Bus. Posting Group</th>
+          <th>VAT Prod. Posting Group</th>
+          <th>Base</th>
+          <th>Amount</th>
+          <th>VAT %</th>
+          <th>VAT Account</th>
+          <th>Transaction No.</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in preview_data.entries.reversal_vat_entries %}
+        <tr>
+          <td>{{ entry.posting_date|date:"Y-m-d" }}</td>
+          <td>{{ entry.document_type|default:"-" }}</td>
+          <td>{{ entry.document_no }}</td>
+          <td>{{ entry.type|default:"Sale" }}</td>
+          <td>{% if entry.vat_business_posting_group %}{{ entry.vat_business_posting_group.code }}{% else %}-{% endif %}</td>
+          <td>{% if entry.vat_product_posting_group %}{{ entry.vat_product_posting_group.code }}{% else %}-{% endif %}</td>
+          <td style="text-align: right"
+              class="{% if entry.base > 0 %}amount-positive{% else %}amount-negative{% endif %}">
+            {{ entry.base|floatformat:2|intcomma }}
+          </td>
+          <td style="text-align: right"
+              class="{% if entry.amount > 0 %}amount-positive{% else %}amount-negative{% endif %}">
+            {{ entry.amount|floatformat:2|intcomma }}
+          </td>
+          <td style="text-align: right">{{ entry.vat_percent|floatformat:2|intcomma }}</td>
+          <td>{% if entry.vat_account %}{{ entry.vat_account.no }} - {{ entry.vat_account.name }}{% else %}-{% endif %}</td>
+          <td>{{ entry.transaction_no|default:"-" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    <!-- Bank Ledger Entries Preview -->
+    {% if preview_data.entries.bank_entries %}
+    <h2 class="section-title">🏦 Bank Ledger Entries (Opposite Signs)</h2>
+    <table class="entries-table">
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Bank Account</th>
+          <th>Description</th>
+          <th>Original Amount</th>
+          <th>Reversal Amount</th>
+          <th>Effect</th>
+          <th>Posting Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in preview_data.entries.bank_entries %}
+        <tr>
+          <td>
+            {% if entry.original_document_type == "Payment" %}
+            <span class="badge badge-decrease">💰 Payment</span>
+            {% else %}
+            <span class="badge">{{ entry.original_document_type|default:"N/A" }}</span>
+            {% endif %}
+          </td>
+          <td>
+            <strong>{{ entry.bank_account_no.no }}</strong><br /><small
+              >{{ entry.bank_account_no.name|default:entry.bank_account_no.no }}</small
+            >
+          </td>
+          <td>{{ entry.description }}</td>
+          <td class="amount-positive">
+            {{ entry.original_amount|floatformat:0|intcomma }}
+          </td>
+          <td
+            class="{% if entry.amount < 0 %}amount-negative{% else %}amount-positive{% endif %}"
+          >
+            <strong>{{ entry.amount|floatformat:0|intcomma }}</strong>
+          </td>
+          <td>
+            {% if entry.amount < 0 %}
+            <span class="badge badge-decrease">↓ Decrease</span>
+            {% else %}
+            <span class="badge badge-increase">↑ Increase</span>
+            {% endif %}
+          </td>
+          <td>{{ entry.posting_date|date:"Y-m-d" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    <!-- Inventory Restoration Preview -->
+    {% if preview_data.entries.inventory_restoration_preview %}
+    <h2 class="section-title">📦 Inventory Restoration</h2>
+    <table class="entries-table">
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th>Location</th>
+          <th>Current Quantity</th>
+          <th>Quantity to Restore</th>
+          <th>After Restoration</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in preview_data.entries.inventory_restoration_preview %}
+        <tr>
+          <td>
+            <strong>{{ item.item.item_name }}</strong><br /><small
+              >{{ item.item.no }}</small
+            >
+          </td>
+          <td>{{ item.location.code }}</td>
+          <td>{{ item.current_quantity|floatformat:2 }}</td>
+          <td class="amount-positive">
+            +{{ item.quantity_to_restore|floatformat:2 }}
+          </td>
+          <td><strong>{{ item.after_restoration|floatformat:2 }}</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    <!-- Warning Box -->
+    <div class="warning-box">
+      <h3>⚠️ Important Information</h3>
+      <p>
+        <strong
+          >This preview shows what will happen when you reverse this
+          invoice:</strong
+        >
+      </p>
+      <ul>
+        <li>
+          A credit memo will be created with number:
+          <strong>CM-{{ invoice.no }}</strong>
+        </li>
+        <li>All GL accounts will be updated with opposite amounts</li>
+        <li>Customer balance will be adjusted (reduced)</li>
+        <li>VAT entries subledger will be reversed with opposite signs</li>
+        <li>Inventory quantities will be restored</li>
+        <li>Original invoice will be marked as <strong>REVERSED</strong></li>
+      </ul>
+      <p style="margin-top: 15px">
+        <strong>⚠️ This action cannot be undone!</strong>
+      </p>
+    </div>
+
+    <!-- Action Buttons -->
+    <form
+      method="post"
+      action="{% url 'admin:sales_postedsalesinvoice_changelist' %}"
+    >
+      {% csrf_token %}
+      <input type="hidden" name="action" value="reverse_invoice" />
+      <input type="hidden" name="_selected_action" value="{{ invoice.pk }}" />
+
+      <div class="action-buttons">
+        <a
+          href="{% url 'admin:sales_postedsalesinvoice_changelist' %}"
+          class="btn btn-secondary"
+        >
+          ← Cancel & Go Back
+        </a>
+        <button
+          type="submit"
+          class="btn btn-danger"
+          onclick="return confirm('Are you sure you want to reverse this invoice? This action cannot be undone!');"
+        >
+          ❌ Confirm Reversal
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

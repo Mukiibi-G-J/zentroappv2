@@ -1,0 +1,25 @@
+{# Readable light surface: admin / browser dark styles often paint tbody dark without lightening text. #}
+<style>
+  .preview-posting-surface {
+    color-scheme: light;
+    color: #212529;
+    background-color: #fff;
+  }
+  /* Body cells: explicit light bg beats admin dark-theme table rules and forced-colors quirks */
+  .preview-posting-surface tbody td,
+  .preview-posting-surface tbody th {
+    background-color: #fff !important;
+    color: #212529 !important;
+  }
+  .preview-posting-surface tbody tr:hover td,
+  .preview-posting-surface tbody tr:hover th {
+    background-color: #f1f3f5 !important;
+    color: #212529 !important;
+  }
+  .preview-posting-surface a:not(.button):not(.deletelink) {
+    color: #0d6efd;
+  }
+  .preview-posting-surface a:not(.button):not(.deletelink):visited {
+    color: #6f42c1;
+  }
+</style>

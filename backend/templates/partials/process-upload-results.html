@@ -1,0 +1,128 @@
+<div class="upload-modal-container" id="uploadModalResults">
+  <div class="upload-modal-content">
+    <!-- Card Header with Close Button -->
+    <span
+      class="upload-modal-close"
+      id="uploadModalResultsClose"
+      data-modal-close
+    >
+      <svg
+        stroke="currentColor"
+        fill="currentColor"
+        stroke-width="0"
+        viewBox="0 0 20 20"
+        aria-hidden="true"
+        height="1em"
+        width="1em"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          fill-rule="evenodd"
+          d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+          clip-rule="evenodd"
+        ></path>
+      </svg>
+    </span>
+
+
+
+    <h5 class="upload-modal-title">File Processing</h5>
+
+    <div class="upload-modal-body">
+      <div
+        id="processingState"
+        data-process-id="{{ process_id }}"
+        class="flex flex-col items-center"
+      >
+        <!-- Processing Icon -->
+        <div class="mb-6">
+          <span
+            class="avatar avatar-circle avatar-lg bg-primary-100 text-primary-600 dark:bg-primary-500/20 dark:text-primary-100"
+          >
+            <span class="avatar-icon avatar-icon-lg">
+              <svg
+                class="animate-spin h-6 w-6"
+                stroke="currentColor"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+            </span>
+          </span>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="w-full bg-gray-100 rounded-full h-2 mb-4">
+          <div
+            id="progressBar"
+            class="bg-primary-600 h-2 rounded-full transition-all duration-500"
+            style="width: 0%"
+          ></div>
+        </div>
+
+        <!-- Status Message -->
+        <p id="statusMessage" class="upload-modal-text">Starting process...</p>
+      </div>
+
+      <!-- Result State (Initially Hidden) -->
+      <div id="resultState" class="hidden text-center">
+        <div class="flex flex-col items-center">
+          {% if success %}
+          <span
+            class="avatar avatar-circle avatar-md bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-100"
+          >
+            <span class="avatar-icon avatar-icon-md">
+              <svg
+                stroke="currentColor"
+                fill="none"
+                stroke-width="0"
+                viewBox="0 0 24 24"
+                height="1em"
+                width="1em"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                ></path>
+              </svg>
+            </span>
+          </span>
+          {% else %}
+          <span
+            class="avatar avatar-circle avatar-md bg-red-100 text-red-600 dark:bg-red-500/20 dark:text-red-100"
+          >
+            <span class="avatar-icon avatar-icon-md">
+              <svg stroke="currentColor" fill="none" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"
+                ></path>
+              </svg>
+            </span>
+          </span>
+          {% endif %}
+          <h6 class="upload-modal-text mt-4">{{ message }}</h6>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="upload-modal-backdrop" data-modal-close></div>
+</div>

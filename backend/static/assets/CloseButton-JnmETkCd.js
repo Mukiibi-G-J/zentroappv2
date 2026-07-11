@@ -1,0 +1,1 @@
+import{r as c,d as u,j as s}from"./index-DfF6hWFi.js";import{al as m}from"./proxy-BrsscgGI.js";const b=c.forwardRef((t,o)=>{const{absolute:e,className:a,defaultStyle:l,...n}=t,r=u("close-btn",l&&"close-btn-default",e&&"absolute z-10",a);return s.jsx("span",{className:r,role:"button",...n,ref:o,children:s.jsx(m,{})})});b.displayName="CloseButton";export{b as C};

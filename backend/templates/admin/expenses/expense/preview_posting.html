@@ -1,0 +1,183 @@
+{% extends "admin/base_site.html" %}
+{% load humanize %}
+
+{% block content %}
+{% include "admin/includes/preview_posting_surface.html" %}
+<div class="preview-posting-surface" style="max-width: 1200px; margin: 20px auto; padding: 20px; background: white; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);">
+    {% if messages %}
+    <ul class="messagelist">
+        {% for message in messages %}
+        <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    <h2>Expense Preview</h2>
+
+    <div class="expense-info">
+        <h3>Expense Information</h3>
+        <table style="width: 100%; margin-bottom: 20px;">
+            <tr>
+                <td><strong>Document No.:</strong></td>
+                <td>{{ expense.document_no }}</td>
+                <td><strong>Posting Date:</strong></td>
+                <td>{{ expense.posting_date|date:"Y-m-d" }}</td>
+            </tr>
+            <tr>
+                <td><strong>Description:</strong></td>
+                <td colspan="3">{{ expense.description }}</td>
+            </tr>
+            <tr>
+                <td><strong>Amount:</strong></td>
+                <td>UGX {{ expense.amount|floatformat:2|intcomma }}</td>
+                <td><strong>Expense Type:</strong></td>
+                <td>{{ expense.expense_type.name }}</td>
+            </tr>
+            <tr>
+                <td><strong>Payment Method:</strong></td>
+                <td colspan="3">{{ expense.payment_method.description }}</td>
+            </tr>
+        </table>
+    </div>
+
+    {% if preview_entries %}
+        <div class="related-entries">
+            <div class="entry-header">
+                <span>Journal Entries Preview</span>
+                <span>No. of Entries</span>
+            </div>
+            <div class="entry-row">
+                <span>G/L Entries</span>
+                <span>{{ preview_entries|length }}</span>
+            </div>
+        </div>
+
+        <div class="entry-details">
+            <h3>G/L Entries</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>G/L Account No.</th>
+                        <th>Account Name</th>
+                        <th>Description</th>
+                        <th>Type</th>
+                        <th>Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in preview_entries %}
+                    <tr>
+                        <td><strong>{{ entry.gl_account.no }}</strong></td>
+                        <td>{{ entry.gl_account.name }}</td>
+                        <td>{{ entry.description }}</td>
+                        <td>
+                            {% if entry.type == "debit" %}
+                                <span style="color: #d32f2f; font-weight: bold;">Debit</span>
+                            {% else %}
+                                <span style="color: #388e3c; font-weight: bold;">Credit</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: right">
+                            {% if entry.type == "debit" %}
+                                <span style="color: #d32f2f; font-weight: bold;">UGX {{ entry.amount|floatformat:2|intcomma }}</span>
+                            {% else %}
+                                <span style="color: #388e3c; font-weight: bold;">UGX {{ entry.amount|floatformat:2|intcomma }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div style="margin-top: 20px">
+            <form method="post" action="{% url 'admin:expenses_expense_changelist' %}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="post_expense">
+                <input type="hidden" name="_selected_action" value="{{ expense.id }}">
+                <input type="hidden" name="index" value="0">
+                <input type="submit" value="Post Expense" class="button" style="background-color: #28a745; color: white;">
+                <a href="{% url 'admin:expenses_expense_changelist' %}" class="button" style="margin-left: 10px;">Cancel</a>
+            </form>
+        </div>
+    {% else %}
+        <div class="warning">
+            <h3>Cannot Generate Preview</h3>
+            <p>Unable to generate preview. Please ensure that:</p>
+            <ul>
+                <li>G/L account is set for the expense type</li>
+                <li>Balancing account is set for the payment method</li>
+                <li>All required fields are filled</li>
+            </ul>
+        </div>
+        
+        <div style="margin-top: 20px">
+            <a href="{% url 'admin:expenses_expense_changelist' %}" class="button">Back to Expenses</a>
+        </div>
+    {% endif %}
+</div>
+
+<style>
+    .expense-info {
+        background-color: #f9f9f9;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+    }
+    .expense-info table {
+        border-collapse: collapse;
+    }
+    .expense-info td {
+        padding: 5px 10px;
+        border: none;
+    }
+    .related-entries {
+        border: 1px solid #ddd;
+        margin-bottom: 20px;
+    }
+    .entry-header {
+        display: flex;
+        justify-content: space-between;
+        padding: 10px;
+        background: #f5f5f5;
+        font-weight: bold;
+    }
+    .entry-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 10px;
+        border-top: 1px solid #ddd;
+    }
+    .entry-row:hover {
+        background: #f9f9f9;
+    }
+    .entry-details table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+    }
+    .entry-details th,
+    .entry-details td {
+        padding: 8px;
+        border: 1px solid #ddd;
+        text-align: left;
+    }
+    .entry-details th {
+        background: #f5f5f5;
+    }
+    .warning {
+        background-color: #fff3cd;
+        border: 1px solid #ffeaa7;
+        color: #856404;
+        padding: 15px;
+        border-radius: 4px;
+        margin: 20px 0;
+    }
+    .warning h3 {
+        margin-top: 0;
+    }
+    .warning ul {
+        margin-bottom: 0;
+    }
+</style>
+{% endblock %}

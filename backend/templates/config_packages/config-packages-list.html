@@ -1,0 +1,1826 @@
+{% extends "dashboard/dashboard-layout.html" %}
+<!-- prettier-ignore -->
+{% block title %}Configuration Packages{% endblock %}
+{% load static %} {% load i18n%}
+{% block page-content %}
+<div
+  class="page-container relative h-full flex flex-auto flex-col px-4 sm:px-6 md:px-8 py-4 sm:py-6"
+>
+  <div class="container-fluid">
+    <!-- Page header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h1 class="h4">{% trans "Configuration Packages" %}</h1>
+      <button
+        type="button"
+        class="btn btn-solid mt-2"
+        data-bs-toggle="modal"
+        data-bs-target="#addPackageModal"
+      >
+        <i class="fas fa-plus"></i> {% trans "New Package" %}
+      </button>
+    </div>
+
+    <!-- Add this right after the body tag opens -->
+    <div id="notification-container" class="notification-container"></div>
+
+    <!-- Packages list table -->
+    <div class="card">
+      <div class="card-body">
+        <div class="overflow-x-auto">
+          <table class="table-default table-hover">
+            <thead>
+              <tr>
+                <th>{% trans "Code" %}</th>
+                <th>{% trans "Package Name" %}</th>
+                <th>{% trans "Status" %}</th>
+                <th>{% trans "Tables" %}</th>
+                <th>{% trans "Actions" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for package in packages %}
+              <tr data-package-code="{{ package.code }}">
+                <td>{{ package.code }}</td>
+                <td>{{ package.package_name }}</td>
+                <td>
+                  <span class="badge bg-{{ package.status|lower }}">
+                    {{ package.get_status_display }}
+                  </span>
+                </td>
+                <td>{{ package.configpackagetable_set.count }}</td>
+                <td>
+                  <div class="btn-group">
+                    <button
+                      class="btn btn-sm btn-outline-primary"
+                      onclick="editPackage('{{ package.code }}')"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                        aria-hidden="true"
+                        class="w-6 h-6"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"
+                        ></path>
+                      </svg>
+                    </button>
+                    <button
+                      class="btn btn-sm btn-outline-danger"
+                      onclick="deletePackage('{{ package.code }}')"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                        aria-hidden="true"
+                        class="w-6 h-6"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
+                        ></path>
+                      </svg>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="5" class="text-center">
+                  {% trans "No configuration packages found" %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Package Modal -->
+  <div class="modal fade" id="addPackageModal" tabindex="-1" aria-hidden="true">
+    <div
+      class="modal-dialog dialog"
+      style="max-width: 1000px; max-height: 1000px; overflow-y: auto"
+    >
+      <div class="dialog-content">
+        <!-- Status indicator -->
+        <div
+          id="saveStatus"
+          class="absolute top-0 left-0 right-0 p-2 text-center hidden"
+        >
+          <span class="text-success">
+            <i class="fas fa-check-circle mr-1"></i> {% trans "Changes saved" %}
+          </span>
+        </div>
+
+        <span
+          class="close-btn absolute z-10 ltr:right-6 rtl:left-6"
+          role="button"
+          data-bs-dismiss="modal"
+        >
+          <svg
+            stroke="currentColor"
+            fill="currentColor"
+            stroke-width="0"
+            viewBox="0 0 20 20"
+            aria-hidden="true"
+            height="1em"
+            width="1em"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+              clip-rule="evenodd"
+            ></path>
+          </svg>
+        </span>
+        <div class="modal-body p-6" style="max-height: 80vh; overflow-y: auto">
+          <h5 class="mb-4">{% trans "New Configuration Package" %}</h5>
+          <form id="packageForm" class="form-container">
+            {% csrf_token %}
+            <!-- Header Section -->
+            <div class="mb-6">
+              <h6 class="mb-4">{% trans "Package Details" %}</h6>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label for="code" class="form-label"
+                    >{% trans "Code" %}*</label
+                  >
+                  <input
+                    type="text"
+                    class="input"
+                    id="code"
+                    name="code"
+                    required
+                  />
+                </div>
+                <div>
+                  <label for="package_name" class="form-label"
+                    >{% trans "Package Name" %}*</label
+                  >
+                  <input
+                    type="text"
+                    class="input"
+                    id="package_name"
+                    name="package_name"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- Lines Section -->
+            <div class="mb-6">
+              <div class="flex justify-between items-center mb-4">
+                <div class="flex items-center space-x-4">
+                  <h6 class="mb-0">{% trans "Package Tables" %}</h6>
+                  <div class="d-flex gap-2">
+                    <button
+                      class="btn btn-sm btn-primary"
+                      id="exportBtn"
+                      disabled
+                      onclick="exportSelectedTables()"
+                    >
+                      <!-- prettier-ignore -->
+                      <i class="fas fa-file-export mr-1"></i> {% trans "Export" %}
+                    </button>
+                    <button
+                      class="btn btn-sm btn-outline-success"
+                      id="importBtn"
+                      disabled
+                      onclick="showCustomModal()"
+                    >
+                      <!-- prettier-ignore -->
+                     <i class="fas fa-file-import mr-1"></i> {% trans "Import" %}
+                    </button>
+                  </div>
+                  <span class="text-sm text-gray-500" id="modalSelectionInfo">
+                    {% trans "Select tables to export" %}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline"
+                  onclick="addTableRow()"
+                >
+                  <i class="fas fa-plus"></i> {% trans "Add Table" %}
+                </button>
+              </div>
+              <div class="border rounded-lg bg-white">
+                <div
+                  class="overflow-x-auto"
+                  style="min-height: 400px; max-height: 600px"
+                >
+                  <table class="table-default" id="tablesTable">
+                    <thead>
+                      <tr class="bg-gray-50">
+                        <th class="w-[40px] px-4 py-3">
+                          <input
+                            type="checkbox"
+                            class="table-checkbox-all form-checkbox"
+                            onchange="handleSelectAllChange(this)"
+                          />
+                        </th>
+                        <th class="px-4 py-3 w-[35%]">
+                          {% trans "Table ID" %}
+                        </th>
+                        <th class="px-4 py-3 w-[45%]">
+                          {% trans "Table Name" %}
+                        </th>
+                        <th class="px-4 py-3 w-[10%] text-center">
+                          {% trans "Action" %}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody id="tableLines">
+                      <!-- Table lines will be added here dynamically -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="text-right mt-6">
+              <button
+                type="button"
+                class="btn btn-plain ltr:mr-2 rtl:ml-2"
+                data-bs-dismiss="modal"
+              >
+                {% trans "Close" %}
+              </button>
+              <button type="submit" class="btn btn-solid">
+                {% trans "Save Package" %}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom File Import Modal -->
+  <div id="fileImportModal" class="custom-modal">
+    <div class="custom-modal-content">
+      <div class="custom-modal-header">
+        <h6>{% trans "Import File" %}</h6>
+        <span class="custom-close" onclick="closeCustomModal()">&times;</span>
+      </div>
+      <div class="custom-modal-body">
+        <input
+          type="file"
+          class="custom-input"
+          id="importFile"
+          accept=".xlsx,.xls"
+        />
+        <div class="custom-modal-footer">
+          <button class="custom-btn-cancel" onclick="closeCustomModal()">
+            Cancel
+          </button>
+          <button class="custom-btn-import" onclick="validateAndImport()">
+            Import
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add this right after your modal -->
+  <div id="alertContainer" class="alert-container"></div>
+
+  <!-- Import Status Modal -->
+  <div id="importStatusModal" class="custom-modal">
+    <div class="custom-modal-content">
+      <div class="custom-modal-header">
+        <h6>{% trans "Import Progress" %}</h6>
+        <span class="custom-close" onclick="closeStatusModal()">&times;</span>
+      </div>
+      <div class="custom-modal-body">
+        <!-- Progress bar -->
+        <div class="progress-container">
+          <div class="progress-bar-custom">
+            <div id="customProgressBar" class="progress-fill"></div>
+          </div>
+          <div id="progressPercentage" class="progress-text">0%</div>
+        </div>
+
+        <!-- Status message -->
+        <div id="customStatusText" class="status-message">
+          {% trans "Starting import..." %}
+        </div>
+
+        <!-- Details section -->
+        <div id="customDetailsText" class="details-section"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Update the table row template -->
+<script>
+  // Declare variables and functions in global scope
+  let saveTimeout;
+  let currentPackageCode = null;
+
+  function showSaveStatus(message, isError = false) {
+    const statusDiv = document.getElementById("saveStatus");
+    statusDiv.innerHTML = `
+      <span class="text-${isError ? "danger" : "success"}">
+        <i class="fas fa-${
+          isError ? "exclamation-circle" : "check-circle"
+        } mr-1"></i> ${message}
+      </span>
+    `;
+    statusDiv.classList.remove("hidden");
+    setTimeout(() => {
+      statusDiv.classList.add("hidden");
+    }, 3000);
+  }
+
+  async function autoSaveHeader() {
+    console.log("autoSaveHeader");
+    clearTimeout(saveTimeout);
+
+    saveTimeout = setTimeout(async () => {
+      const code = document.getElementById("code").value;
+      const packageName = document.getElementById("package_name").value;
+
+      if (!code || !packageName) return;
+
+      try {
+        const response = await fetch("/config-packages/save-header/", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]")
+              .value,
+          },
+          body: JSON.stringify({
+            code: code,
+            package_name: packageName,
+            current_code: currentPackageCode,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          currentPackageCode = data.code;
+          showSaveStatus('{% trans "Changes saved" %}');
+        } else {
+          const error = await response.json();
+          showSaveStatus(
+            error.message || '{% trans "Error saving changes" %}',
+            true
+          );
+        }
+      } catch (error) {
+        showSaveStatus('{% trans "Error saving changes" %}', true);
+      }
+    }, 500);
+  }
+
+  async function loadTableOptions(input, searchTerm = "") {
+    try {
+      const response = await fetch(
+        `/config-packages/get-tables/?search=${searchTerm}`
+      );
+      const data = await response.json();
+
+      // Create and show the dropdown
+      let dropdown = input.nextElementSibling;
+      if (!dropdown || !dropdown.classList.contains("table-dropdown")) {
+        dropdown = document.createElement("div");
+        dropdown.className = "table-dropdown";
+        input.parentNode.appendChild(dropdown);
+      }
+
+      // Clear existing options
+      dropdown.innerHTML = "";
+
+      // Add new options
+      data.results.forEach((table) => {
+        const option = document.createElement("div");
+        option.className = "table-option";
+        if (input.dataset.id === table.id) {
+          option.classList.add("selected");
+        }
+        option.innerHTML = `
+          <div class="table-option-title">${table.text}</div>
+          <div class="table-option-app">${table.app}</div>
+        `;
+        option.addEventListener("click", () => {
+          input.value = table.text;
+          input.dataset.id = table.id;
+          input.dataset.name = table.name;
+          dropdown.style.display = "none";
+          autoSaveTable(input);
+        });
+        dropdown.appendChild(option);
+      });
+
+      dropdown.style.display = data.results.length ? "block" : "none";
+    } catch (error) {
+      console.error("Error loading tables:", error);
+    }
+  }
+
+  function addTableRow() {
+    if (!currentPackageCode) {
+      showSaveStatus(
+        '{% trans "Please fill in package details first" %}',
+        true
+      );
+      return;
+    }
+
+    const tbody = document.getElementById("tableLines");
+    const rowCount = tbody.children.length;
+
+    const newRow = document.createElement("tr");
+    newRow.innerHTML = `
+      <td class="text-center">
+        <input 
+          type="checkbox" 
+          class="table-checkbox" 
+          onchange="handleTableCheckboxChange(this)"
+        >
+      </td>
+      <td>
+        <div class="select-container">
+          <input 
+            type="text" 
+            class="input table-search" 
+            name="tables[${rowCount}][table_id]" 
+            placeholder="{% trans 'Search tables...' %}"
+            required
+          >
+        </div>
+      </td>
+      <td>
+        <input 
+          type="text" 
+          class="input" 
+          name="tables[${rowCount}][table_name]" 
+          required
+          readonly
+        >
+      </td>
+      <td class="text-center">
+        <button type="button" class="btn btn-sm btn-danger">
+          <i class="fas fa-trash"></i>
+        </button>
+      </td>
+    `;
+
+    tbody.appendChild(newRow);
+
+    // Add event listeners
+    const searchInput = newRow.querySelector(".table-search");
+    searchInput.addEventListener(
+      "input",
+      debounce(function (e) {
+        loadTableOptions(searchInput, e.target.value);
+      }, 300)
+    );
+
+    searchInput.addEventListener("click", function () {
+      loadTableOptions(this, this.value);
+    });
+
+    const deleteButton = newRow.querySelector("button");
+    deleteButton.addEventListener("click", () => {
+      removeTableRow(deleteButton);
+      updateExportButton(); // Update export button after row removal
+    });
+  }
+
+  // Debounce function to limit API calls
+  function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  }
+
+  async function autoSaveTable(input) {
+    const row = input.closest("tr");
+    const tableId = input.dataset.id;
+    const tableName = input.dataset.name;
+
+    if (!tableId || !tableName) return;
+
+    try {
+      const response = await fetch("/config-packages/save-table/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]")
+            .value,
+        },
+        body: JSON.stringify({
+          package_code: currentPackageCode,
+          table_id: tableId,
+          table_name: tableName,
+        }),
+      });
+
+      if (response.ok) {
+        // Update the table name field
+        row.querySelector('input[name*="table_name"]').value = tableName;
+        showSaveStatus('{% trans "Table saved" %}');
+      } else {
+        const error = await response.json();
+        showSaveStatus(
+          error.message || '{% trans "Error saving table" %}',
+          true
+        );
+      }
+    } catch (error) {
+      showSaveStatus('{% trans "Error saving table" %}', true);
+    }
+  }
+
+  function removeTableRow(button) {
+    const row = button.closest("tr");
+    row.remove();
+    updateExportButton();
+  }
+
+  async function loadPackageDetails(code) {
+    try {
+      const response = await fetch(`/config-packages/${code}/details/`);
+      const data = await response.json();
+
+      // Check if required elements exist
+      const codeInput = document.getElementById("code");
+      const packageNameInput = document.getElementById("package_name");
+      const tbody = document.getElementById("tableLines");
+      const modalElement = document.getElementById("addPackageModal");
+
+      if (!codeInput || !packageNameInput || !tbody || !modalElement) {
+        throw new Error(
+          "Required DOM elements not found. Check element IDs: 'code', 'package_name', 'tableLines', 'addPackageModal'"
+        );
+      }
+
+      // Set the form values
+      codeInput.value = data.code;
+      packageNameInput.value = data.package_name;
+      currentPackageCode = data.code;
+
+      // Clear existing table rows
+      tbody.innerHTML = "";
+
+      // Add existing tables
+      data.tables.forEach((table) => {
+        const newRow = document.createElement("tr");
+        newRow.innerHTML = `
+          <td>
+            <input 
+              type="checkbox" 
+              class="table-checkbox" 
+              onchange="handleTableCheckboxChange(this)"
+            >
+          </td>
+          <td>
+            <div class="select-container">
+              <input 
+                type="text" 
+                class="input table-search" 
+                name="tables[${tbody.children.length}][table_id]" 
+                value="${table.text}"
+                placeholder="{% trans 'Search tables...' %}"
+                required
+                data-id="${table.id}"
+                data-name="${table.name}"
+              >
+            </div>
+          </td>
+          <td>
+            <input 
+              type="text" 
+              class="input" 
+              name="tables[${tbody.children.length}][table_name]" 
+              value="${table.name}"
+              required
+              readonly
+            >
+          </td>
+          <td class="text-center">
+            <button type="button" class="btn btn-sm btn-danger">
+              <i class="fas fa-trash"></i>
+            </button>
+          </td>
+        `;
+
+        tbody.appendChild(newRow);
+
+        // Add event listeners
+        const searchInput = newRow.querySelector(".table-search");
+        if (searchInput) {
+          searchInput.addEventListener(
+            "input",
+            debounce(function (e) {
+              loadTableOptions(searchInput, e.target.value);
+            }, 300)
+          );
+
+          searchInput.addEventListener("click", function () {
+            loadTableOptions(this, this.value);
+          });
+        }
+
+        const deleteButton = newRow.querySelector("button");
+        if (deleteButton) {
+          deleteButton.addEventListener("click", () =>
+            removeTableRow(deleteButton)
+          );
+        }
+      });
+
+      // Show the modal
+      const modal = new bootstrap.Modal(modalElement);
+      if (modal) {
+        modal.show();
+      } else {
+        console.error("Modal element not found");
+      }
+    } catch (error) {
+      console.error("Error loading package details:", error);
+      console.error("Detailed error:", error.message);
+      // Show error notification to the user
+      showNotification?.(
+        "error",
+        `Failed to load package details: ${error.message}`
+      );
+    }
+  }
+
+  // Update the window.editPackage function
+  window.editPackage = function (code) {
+    loadPackageDetails(code);
+  };
+
+  // Add modal close handler
+  document
+    .getElementById("addPackageModal")
+    .addEventListener("hidden.bs.modal", function () {
+      // Reset form
+      document.getElementById("packageForm").reset();
+      document.getElementById("tableLines").innerHTML = "";
+      currentPackageCode = null;
+
+      // Refresh the page
+      window.location.reload();
+    });
+
+  function deletePackage(code) {
+    if (
+      confirm('{% trans "Are you sure you want to delete this package?" %}')
+    ) {
+      // Implement delete functionality
+      fetch(`/config-packages/delete/${code}/`, {
+        method: "DELETE",
+        headers: {
+          "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]")
+            .value,
+        },
+      }).then((response) => {
+        if (response.ok) {
+          window.location.reload();
+        }
+      });
+    }
+  }
+
+  // Move these functions outside DOMContentLoaded and before any usage
+  function handleSelectAllChange(checkbox) {
+    const tableCheckboxes = document.querySelectorAll(".table-checkbox");
+    tableCheckboxes.forEach((cb) => (cb.checked = checkbox.checked));
+    updateExportButton();
+  }
+
+  function handleTableCheckboxChange(checkbox) {
+    updateExportButton();
+
+    // Update "select all" checkbox state
+    const allCheckbox = document.querySelector(".table-checkbox-all");
+    const tableCheckboxes = document.querySelectorAll(".table-checkbox");
+    const allChecked = Array.from(tableCheckboxes).every((cb) => cb.checked);
+    const someChecked = Array.from(tableCheckboxes).some((cb) => cb.checked);
+
+    allCheckbox.checked = allChecked;
+    allCheckbox.indeterminate = someChecked && !allChecked;
+  }
+
+  function updateExportButton() {
+    const exportBtn = document.getElementById("exportBtn");
+    const importBtn = document.getElementById("importBtn");
+    const selectionInfo = document.getElementById("modalSelectionInfo");
+    const selectedCount = document.querySelectorAll(
+      ".table-checkbox:checked"
+    ).length;
+
+    exportBtn.disabled = selectedCount === 0;
+    importBtn.disabled = selectedCount !== 1;
+    selectionInfo.textContent =
+      selectedCount > 0
+        ? `${selectedCount} {% trans "tables selected" %}`
+        : '{% trans "Select tables to export" %}';
+  }
+
+  // Make these functions globally available
+  window.handleSelectAllChange = handleSelectAllChange;
+  window.handleTableCheckboxChange = handleTableCheckboxChange;
+  window.updateExportButton = updateExportButton;
+
+  async function exportSelectedTables() {
+    const selectedCheckboxes = document.querySelectorAll(
+      ".table-checkbox:checked"
+    );
+
+    // Get the current package code from the code input in the form
+    const packageCode = document.querySelector("#code").value;
+    console.log("Current package code:", packageCode);
+
+    const tables = Array.from(selectedCheckboxes).map((checkbox) => {
+      const row = checkbox.closest("tr");
+      const searchInput = row.querySelector(".table-search");
+
+      return {
+        table_id: searchInput.dataset.id,
+        table_name: searchInput.dataset.name,
+        package_code: packageCode,
+      };
+    });
+
+    console.log("tables with package code:", tables);
+
+    try {
+      const response = await fetch("/config-packages/export-tables/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]")
+            .value,
+        },
+        body: JSON.stringify({ tables }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Export failed");
+      }
+
+      // Handle the Excel file download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "table_data_export.xlsx";
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (error) {
+      console.error("Export failed:", error);
+      showSaveStatus('{% trans "Export failed" %}', true);
+    }
+  }
+
+  // Make function globally available
+  window.exportSelectedTables = exportSelectedTables;
+
+  function showCustomModal() {
+    document.getElementById("fileImportModal").style.display = "block";
+    document.body.style.overflow = "hidden"; // Prevent background scrolling
+  }
+
+  function closeCustomModal() {
+    document.getElementById("fileImportModal").style.display = "none";
+    document.body.style.overflow = "auto"; // Restore scrolling
+  }
+
+  // Close modal when clicking outside
+  document
+    .getElementById("fileImportModal")
+    .addEventListener("click", function (e) {
+      if (e.target === this) {
+        closeCustomModal();
+      }
+    });
+
+  // Prevent modal close when clicking inside modal content
+  document
+    .querySelector(".custom-modal-content")
+    .addEventListener("click", function (e) {
+      e.stopPropagation();
+    });
+
+  function validateAndImport() {
+    const fileInput = document.getElementById("importFile");
+    const file = fileInput.files[0];
+
+    if (!file) {
+      showNotification("error", "Please select a file to import");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    // Send import request
+    fetch("/config-packages/validate-import/", {
+      method: "POST",
+      body: formData,
+      headers: {
+        "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]")
+          .value,
+      },
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.valid) {
+          closeCustomModal();
+          monitorImportProgress(data.task_id);
+        } else {
+          showNotification("error", data.error || "Import failed to start");
+        }
+      })
+      .catch((error) => {
+        console.error("Import error:", error);
+        showNotification("error", "Error starting import");
+      });
+  }
+
+  function monitorImportProgress(taskId) {
+    const statusModal = document.getElementById("importStatusModal");
+    const progressBar = document.getElementById("customProgressBar");
+    const progressText = document.getElementById("progressPercentage");
+    const statusText = document.getElementById("customStatusText");
+    const detailsText = document.getElementById("customDetailsText");
+
+    // Show the custom modal
+    statusModal.style.display = "block";
+
+    function updateProgress() {
+      fetch(`/check-import-status/${taskId}/`)
+        .then((response) => response.json())
+        .then((data) => {
+          // Handle different response structures
+          let meta = data;
+          if (data.meta) {
+            // For journal import
+            meta = {
+              ...data.meta,
+              journals_created: data.meta.journals_created || 0,
+              journals_updated: data.meta.journals_updated || 0,
+              status: data.meta.status || data.state,
+              message: data.meta.message || data.message,
+            };
+          }
+
+          const progress = meta.progress || 0;
+
+          // Update progress bar and percentage
+          progressBar.style.width = `${progress}%`;
+          progressText.textContent = `${progress}%`;
+
+          // Update status message with more detail
+          let statusMessage = meta.message || "Processing...";
+          if (meta.status === "completed" || meta.status === "SUCCESS") {
+            statusMessage = `Import completed successfully`;
+            statusText.className = "status-message text-success";
+          } else if (meta.status === "failed" || meta.status === "FAILURE") {
+            statusMessage = `Import failed: ${meta.error || "Unknown error"}`;
+            statusText.className = "status-message text-danger";
+          }
+
+          // Determine import type and show appropriate details
+          let detailsHTML = `
+            <div class="details-item">
+              <span class="details-label">Status:</span>
+              <span class="details-value">${meta.status || "pending"}</span>
+            </div>
+            <div class="details-item">
+              <span class="details-label">Progress:</span>
+              <span class="details-value">${meta.current || 0} / ${
+            meta.total || 0
+          } entries</span>
+            </div>`;
+
+          // Check if this is a journal import
+          if (
+            meta.journals_created !== undefined ||
+            meta.journals_updated !== undefined
+          ) {
+            detailsHTML += `
+              <div class="details-item">
+                <span class="details-label">Journals Created:</span>
+                <span class="details-value">${meta.journals_created || 0}</span>
+              </div>
+              <div class="details-item">
+                <span class="details-label">Journals Updated:</span>
+                <span class="details-value">${meta.journals_updated || 0}</span>
+              </div>`;
+            // Add success message with counts
+            if (meta.status === "completed" || meta.status === "SUCCESS") {
+              statusMessage = `Import completed successfully: ${meta.journals_created} journals created, ${meta.journals_updated} journals updated`;
+            }
+          }
+
+          // Similar update for item import...
+          if (
+            meta.items_created !== undefined ||
+            meta.items_updated !== undefined
+          ) {
+            detailsHTML += `
+              <div class="details-item">
+                <span class="details-label">Items Created:</span>
+                <span class="details-value">${meta.items_created || 0}</span>
+              </div>
+              <div class="details-item">
+                <span class="details-label">Items Updated:</span>
+                <span class="details-value">${meta.items_updated || 0}</span>
+              </div>
+              <div class="details-item">
+                <span class="details-label">Units Created:</span>
+                <span class="details-value">${meta.units_created || 0}</span>
+              </div>
+              <div class="details-item">
+                <span class="details-label">Categories Created:</span>
+                <span class="details-value">${
+                  meta.categories_created || 0
+                }</span>
+              </div>`;
+            // Add success message with counts
+            if (meta.status === "completed" || meta.status === "SUCCESS") {
+              statusMessage = `Import completed successfully: ${meta.items_created} items created, ${meta.items_updated} items updated`;
+            }
+          }
+
+          // Update status text after all modifications
+          statusText.textContent = statusMessage;
+
+          // Add error information if present
+          if (meta.error) {
+            detailsHTML += `
+              <div class="details-item text-danger">
+                <span class="details-label">Error:</span>
+                <span class="details-value">${meta.error}</span>
+              </div>`;
+          }
+
+          detailsText.innerHTML = detailsHTML;
+
+          // If the task is complete, stop polling
+          if (
+            ["completed", "failed", "SUCCESS", "FAILURE"].includes(meta.status)
+          ) {
+            clearInterval(pollInterval);
+          }
+        })
+        .catch((error) => {
+          console.error("Error checking import status:", error);
+          statusText.textContent = "Error checking import status";
+          statusText.className = "status-message text-danger";
+          clearInterval(pollInterval);
+        });
+    }
+
+    // Poll for updates every 1 second
+    const pollInterval = setInterval(updateProgress, 1000);
+    // Initial update
+    updateProgress();
+  }
+
+  function closeStatusModal() {
+    document.getElementById("importStatusModal").style.display = "none";
+    location.reload();
+  }
+
+  // Close modal when clicking outside
+  document
+    .getElementById("importStatusModal")
+    .addEventListener("click", function (e) {
+      if (e.target === this) {
+        closeStatusModal();
+      }
+    });
+
+  document.addEventListener("DOMContentLoaded", function () {
+    // Add event listeners for header inputs
+    const codeInput = document.getElementById("code");
+    const packageNameInput = document.getElementById("package_name");
+
+    codeInput.addEventListener("change", autoSaveHeader);
+    codeInput.addEventListener("blur", autoSaveHeader);
+    packageNameInput.addEventListener("change", autoSaveHeader);
+    packageNameInput.addEventListener("blur", autoSaveHeader);
+
+    // Define addTableRow with proper Select2 configuration
+    window.addTableRow = function () {
+      if (!currentPackageCode) {
+        showSaveStatus(
+          '{% trans "Please fill in package details first" %}',
+          true
+        );
+        return;
+      }
+
+      const tbody = document.getElementById("tableLines");
+      const rowCount = tbody.children.length;
+
+      const newRow = document.createElement("tr");
+      newRow.innerHTML = `
+      <td class="text-center">
+        <input 
+          type="checkbox" 
+          class="table-checkbox" 
+          onchange="handleTableCheckboxChange(this)"
+        >
+      </td>
+      <td>
+        <div class="select-container">
+          <input 
+            type="text" 
+            class="input table-search" 
+            name="tables[${rowCount}][table_id]" 
+            placeholder="{% trans 'Search tables...' %}"
+            required
+          >
+        </div>
+      </td>
+      <td>
+        <input 
+          type="text" 
+          class="input" 
+          name="tables[${rowCount}][table_name]" 
+          required
+          readonly
+        >
+      </td>
+      <td class="text-center">
+        <button type="button" class="btn btn-sm btn-danger">
+          <i class="fas fa-trash"></i>
+        </button>
+      </td>
+    `;
+
+      tbody.appendChild(newRow);
+
+      // Add event listeners
+      const searchInput = newRow.querySelector(".table-search");
+      searchInput.addEventListener(
+        "input",
+        debounce(function (e) {
+          loadTableOptions(searchInput, e.target.value);
+        }, 300)
+      );
+
+      searchInput.addEventListener("click", function () {
+        loadTableOptions(this, this.value);
+      });
+
+      const deleteButton = newRow.querySelector("button");
+      deleteButton.addEventListener("click", () => {
+        removeTableRow(deleteButton);
+        updateExportButton(); // Update export button after row removal
+      });
+    };
+
+    // Make removeTableRow available globally
+    window.removeTableRow = function (button) {
+      button.closest("tr").remove();
+    };
+
+    // Make other functions available globally
+    window.deletePackage = function (code) {
+      if (
+        confirm('{% trans "Are you sure you want to delete this package?" %}')
+      ) {
+        fetch(`/config-packages/delete/${code}/`, {
+          method: "DELETE",
+          headers: {
+            "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]")
+              .value,
+          },
+        }).then((response) => {
+          if (response.ok) {
+            window.location.reload();
+          }
+        });
+      }
+    };
+
+    // Initialize the form submission
+    document
+      .getElementById("packageForm")
+      .addEventListener("submit", function (e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+
+        fetch("/config-packages/create/", {
+          method: "POST",
+          body: formData,
+          headers: {
+            "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]")
+              .value,
+          },
+        }).then((response) => {
+          if (response.ok) {
+            // window.location.reload();
+          }
+        });
+      });
+
+    async function exportToExcel() {
+      const selectedCheckbox = document.querySelector(
+        ".package-checkbox:checked"
+      );
+      if (!selectedCheckbox) return;
+
+      try {
+        // Get the package code from the selected checkbox
+        const packageCode = selectedCheckbox.value;
+
+        // Prepare the payload with tables and package code
+        const payload = {
+          package_code: packageCode,
+          tables: [
+            {
+              table_id: "item",
+              table_name: "item",
+            },
+          ],
+        };
+
+        // Make the export request
+        const response = await fetch("/config-packages/export-tables/", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]")
+              .value,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const blob = await response.blob();
+
+        // Create download link
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `package-${selectedCheckbox.value}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        a.remove();
+      } catch (error) {
+        console.error("Export failed:", error);
+        showSaveStatus('{% trans "Export failed" %}', true);
+      }
+    }
+
+    async function importFromExcel(input) {
+      if (!input.files || !input.files[0]) return;
+
+      const formData = new FormData();
+      formData.append("file", input.files[0]);
+
+      try {
+        const response = await fetch("/config-packages/import/", {
+          method: "POST",
+          body: formData,
+          headers: {
+            "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]")
+              .value,
+          },
+        });
+
+        if (response.ok) {
+          showSaveStatus('{% trans "Import successful" %}');
+          //window.location.reload();
+        } else {
+          const error = await response.json();
+          showSaveStatus(error.message || '{% trans "Import failed" %}', true);
+        }
+      } catch (error) {
+        console.error("Import failed:", error);
+        showSaveStatus('{% trans "Import failed" %}', true);
+      }
+
+      // Reset file input
+      input.value = "";
+    }
+
+    async function importTablesFromExcel(input) {
+      if (!input.files || !input.files[0]) return;
+
+      const formData = new FormData();
+      formData.append("file", input.files[0]);
+
+      try {
+        const response = await fetch("/config-packages/import-tables/", {
+          method: "POST",
+          body: formData,
+          headers: {
+            "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]")
+              .value,
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          data.tables.forEach((table) => {
+            // Add new row for each imported table
+            addTableRow();
+            const lastRow = document.querySelector("#tableLines tr:last-child");
+            lastRow.querySelector(".table-search").value = table.text;
+            lastRow.querySelector(".table-search").dataset.id = table.id;
+            lastRow.querySelector('input[name*="table_name"]').value =
+              table.name;
+          });
+          showSaveStatus('{% trans "Import successful" %}');
+        } else {
+          const error = await response.json();
+          showSaveStatus(error.message || '{% trans "Import failed" %}', true);
+        }
+      } catch (error) {
+        console.error("Import failed:", error);
+        showSaveStatus('{% trans "Import failed" %}', true);
+      }
+
+      input.value = "";
+    }
+  });
+</script>
+
+<style>
+  .select-container {
+    position: relative;
+  }
+
+  .table-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 1000;
+    display: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  .table-option {
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #eee;
+  }
+
+  .table-option:last-child {
+    border-bottom: none;
+  }
+
+  .table-option:hover {
+    background-color: #f5f5f5;
+  }
+
+  .table-option-title {
+    font-weight: bold;
+    color: #333;
+  }
+
+  .table-option-app {
+    font-size: 0.8em;
+    color: #666;
+    margin-top: 2px;
+  }
+
+  .modal-dialog {
+    margin: 1.75rem auto;
+  }
+
+  @media (min-width: 768px) {
+    .modal-dialog {
+      margin: 2rem auto;
+    }
+  }
+
+  .dialog-content {
+    max-height: calc(100vh - 4rem);
+    overflow-y: auto;
+  }
+
+  .table-default {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .table-default thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    font-weight: 600;
+    color: #374151;
+    background-color: #f9fafb;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .table-default tbody td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #e5e7eb;
+    vertical-align: middle;
+  }
+
+  .table-default tbody tr:hover {
+    background-color: #f9fafb;
+  }
+
+  .overflow-x-auto {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    background: white;
+  }
+
+  .select-container {
+    position: relative;
+    width: 100%;
+  }
+
+  .table-search {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    background-color: #fff;
+  }
+
+  .table-search:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 1px #3b82f6;
+  }
+
+  .btn-group {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .table-dropdown {
+    margin-top: 2px;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  }
+
+  .space-x-4 > * + * {
+    margin-left: 1rem;
+  }
+
+  .space-x-2 > * + * {
+    margin-left: 0.5rem;
+  }
+
+  .package-checkbox {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+  }
+
+  .btn-outline-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .table-checkbox,
+  .table-checkbox-all {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    border-radius: 3px;
+    border: 1px solid #d1d5db;
+  }
+
+  .table-checkbox:checked,
+  .table-checkbox-all:checked {
+    background-color: #3b82f6;
+    border-color: #3b82f6;
+  }
+
+  .table-checkbox:indeterminate,
+  .table-checkbox-all:indeterminate {
+    background-color: #93c5fd;
+    border-color: #93c5fd;
+  }
+
+  .table-option.selected {
+    background-color: #e5e7eb;
+  }
+
+  .table-search {
+    cursor: pointer;
+  }
+
+  .table-search:focus {
+    cursor: text;
+  }
+
+  .table-default tbody td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #e5e7eb;
+    vertical-align: middle;
+  }
+
+  .table-default td:last-child {
+    text-align: center;
+  }
+
+  .input.table-search {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    background-color: #fff;
+    width: 100%;
+  }
+
+  /* Common styles for both modals */
+  #importModal .modal-dialog,
+  #fileImportModal .modal-dialog {
+    max-width: 400px;
+  }
+
+  #importModal .modal-content,
+  #fileImportModal .modal-content {
+    border-radius: 8px;
+  }
+
+  /* First modal styling */
+  #importModal .modal-content {
+    background-color: #fff;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  }
+
+  /* Second modal styling - with darker backdrop and more prominent */
+  .modal-backdrop.show:nth-child(2) {
+    z-index: 1055;
+    opacity: 0.7;
+    background-color: rgba(0, 0, 0, 0.6);
+  }
+
+  #fileImportModal {
+    z-index: 1060;
+  }
+
+  #fileImportModal .modal-content {
+    background-color: #fff;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+  }
+
+  /* Close button styling */
+  .close {
+    padding: 0;
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    line-height: 1;
+    opacity: 0.5;
+  }
+
+  .close:hover {
+    opacity: 1;
+  }
+
+  /* Alert styling */
+  .alert-info {
+    background-color: #f8f9fa;
+    border-color: #e9ecef;
+    color: #6c757d;
+  }
+
+  .custom-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    animation: fadeIn 0.2s ease-in-out;
+  }
+
+  .custom-modal-content {
+    position: relative;
+    background-color: #fff;
+    margin: 15% auto;
+    width: 400px;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    animation: slideIn 0.2s ease-in-out;
+  }
+
+  .custom-modal-header {
+    padding: 20px 20px 0 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .custom-modal-header h6 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 500;
+  }
+
+  .custom-close {
+    font-size: 24px;
+    color: #666;
+    cursor: pointer;
+    padding: 0;
+    background: none;
+    border: none;
+  }
+
+  .custom-close:hover {
+    color: #333;
+  }
+
+  .custom-modal-body {
+    padding: 20px;
+  }
+
+  .custom-input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-bottom: 20px;
+  }
+
+  .custom-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+  }
+
+  .custom-btn-cancel {
+    padding: 8px 16px;
+    background: none;
+    border: none;
+    color: #666;
+    cursor: pointer;
+  }
+
+  .custom-btn-cancel:hover {
+    color: #333;
+  }
+
+  .custom-btn-import {
+    padding: 8px 16px;
+    background-color: #007bff;
+    border: none;
+    border-radius: 4px;
+    color: white;
+    cursor: pointer;
+  }
+
+  .custom-btn-import:hover {
+    background-color: #0056b3;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideIn {
+    from {
+      transform: translateY(-20px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  .notification-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+  }
+
+  .alert {
+    display: flex;
+    padding: 15px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    animation: slideIn 0.3s ease-in-out;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  }
+
+  .alert-success {
+    background-color: #d4edda;
+    border-color: #c3e6cb;
+    color: #155724;
+  }
+
+  .alert-warning {
+    background-color: #fff3cd;
+    border-color: #ffeeba;
+    color: #856404;
+  }
+
+  .alert-error {
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+    color: #721c24;
+  }
+
+  .alert-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .alert-icon {
+    display: flex;
+    align-items: center;
+    margin-right: 8px;
+  }
+
+  .alert-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  /* Icon colors for different alert types */
+  .alert-success .alert-icon {
+    color: #0e9f6e;
+  }
+
+  .alert-error .alert-icon {
+    color: #e02424;
+  }
+
+  .alert-warning .alert-icon {
+    color: #c27803;
+  }
+
+  .alert-info .alert-icon {
+    color: #3f83f8;
+  }
+
+  /* Hide any existing icons that might be coming from the base template */
+  .alert-icon i {
+    display: none !important;
+  }
+
+  @keyframes slideIn {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes fadeOut {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  /* Add these styles to your existing CSS */
+  .progress-container {
+    margin: 20px 0;
+    position: relative;
+  }
+
+  .progress-bar-custom {
+    height: 20px;
+    background-color: #f0f0f0;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background-color: #007bff;
+    width: 0;
+    transition: width 0.3s ease;
+  }
+
+  .progress-text {
+    text-align: center;
+    margin-top: 5px;
+    font-size: 14px;
+    color: #666;
+  }
+
+  .status-message {
+    margin: 15px 0;
+    padding: 10px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    font-size: 14px;
+    color: #333;
+  }
+
+  .details-section {
+    margin-top: 15px;
+    padding: 15px;
+    background-color: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    font-size: 14px;
+  }
+
+  .details-item {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #eee;
+  }
+
+  .details-item:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+  }
+
+  .details-label {
+    color: #666;
+  }
+
+  .details-value {
+    font-weight: 500;
+    color: #333;
+  }
+
+  /* Add styles for success/error text */
+  .text-success {
+    color: #0e9f6e !important;
+  }
+
+  .text-danger {
+    color: #e02424 !important;
+  }
+
+  .status-message {
+    font-weight: 500;
+    padding: 10px;
+    border-radius: 4px;
+  }
+
+  .status-message.text-success {
+    background-color: #f3faf7;
+  }
+
+  .status-message.text-danger {
+    background-color: #fdf2f2;
+  }
+</style>
+{% endblock %} {% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    // Your existing JavaScript code here
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,235 @@
+{% extends "admin/base_site.html" %} {% load i18n admin_urls static admin_modify
+%} {% block extrahead %} {{ block.super }} {% load humanize %}
+<style type="text/css">
+  .entry-details {
+    margin: 20px 0;
+    padding: 20px;
+    background-color: #f9f9f9;
+    border-radius: 4px;
+  }
+  .entry-details h3 {
+    margin-top: 0;
+    color: #666;
+  }
+  .entry-details table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+  }
+  .entry-details th,
+  .entry-details td {
+    padding: 8px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+  }
+  .entry-details th {
+    background-color: #f5f5f5;
+  }
+  .preview-header {
+    margin-bottom: 20px;
+  }
+  .preview-steps {
+    margin: 20px 0;
+    padding: 10px;
+    background-color: #e9ecef;
+    border-radius: 4px;
+  }
+  .preview-steps ul {
+    margin: 0;
+    padding-left: 20px;
+  }
+  .summary-box {
+    background-color: #e3f2fd;
+    padding: 15px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+  .summary-box h4 {
+    margin-top: 0;
+    color: #1976d2;
+  }
+  .summary-list {
+    list-style: none;
+    padding: 0;
+    margin: 10px 0 0;
+  }
+  .summary-list li {
+    display: inline-block;
+    margin-right: 20px;
+    padding: 5px 10px;
+    background: #fff;
+    border-radius: 3px;
+    border: 1px solid #e0e0e0;
+  }
+  .summary-count {
+    font-weight: bold;
+    color: #1976d2;
+  }
+  .amount-positive {
+    color: #2e7d32;
+  }
+  .amount-negative {
+    color: #c62828;
+  }
+</style>
+{% endblock %} {% block content %}
+{% include "admin/includes/preview_posting_surface.html" %}
+<div id="content-main" class="preview-posting-surface">
+  <div class="summary-box">
+    <h4>Related Entries Summary</h4>
+    <ul class="summary-list">
+      <li>
+        G/L Entries:
+        <span class="summary-count"
+          >{{ preview_entries.entries.gl_entries|length }}</span
+        >
+      </li>
+      {% if preview_entries.entries.bank_account_entries %}
+      <li>
+        Bank Account Ledger Entries:
+        <span class="summary-count"
+          >{{ preview_entries.entries.bank_account_entries|length }}</span
+        >
+      </li>
+      {% endif %}
+    </ul>
+  </div>
+
+  <div class="preview-header">
+    <h1>Preview Posting - {{ preview_entries.repayment }}</h1>
+  </div>
+
+  <div class="preview-steps">
+    <h3>Posting Steps:</h3>
+    <ul>
+      {% for step in preview_entries.steps %}
+      <li>{{ step }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="entry-details">
+    <h3>Loan Repayment Details</h3>
+    <table>
+      <tr>
+        <th>Repayment No.</th>
+        <td>{{ repayment.repayment_no }}</td>
+        <th>Payment Date</th>
+        <td>{{ repayment.payment_date }}</td>
+      </tr>
+      <tr>
+        <th>Loan No.</th>
+        <td>{{ repayment.loan.loan_no }}</td>
+        <th>Lender Name</th>
+        <td>{{ repayment.loan.lender_name }}</td>
+      </tr>
+      <tr>
+        <th>Amount Paid</th>
+        <td>{{ repayment.amount_paid|floatformat:2|intcomma }}</td>
+        <th>Payment Method</th>
+        <td>{{ repayment.payment_method }}</td>
+      </tr>
+      <tr>
+        <th>Principal Amount</th>
+        <td>{{ repayment.principal_amount|floatformat:2|intcomma }}</td>
+        <th>Interest Amount</th>
+        <td>{{ repayment.interest_amount|floatformat:2|intcomma }}</td>
+      </tr>
+    </table>
+  </div>
+
+  {% if preview_entries.entries.gl_entries %}
+  <div id="gl-entries" class="entry-details">
+    <h3>General Ledger Entries</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>G/L Account</th>
+          <th>Posting Date</th>
+          <th>Document Type</th>
+          <th>Document No.</th>
+          <th>Description</th>
+          <th>Global Dimension 1</th>
+          <th>Amount</th>
+          <th>Transaction No.</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in preview_entries.entries.gl_entries %}
+        <tr>
+          <td>{{ entry.gl_account }}</td>
+          <td>{{ entry.posting_date }}</td>
+          <td>{{ entry.document_type }}</td>
+          <td>{{ entry.document_no }}</td>
+          <td>{{ entry.description }}</td>
+          <td>{% if entry.global_dimension_1 %}{{ entry.global_dimension_1.code }}{% else %}-{% endif %}</td>
+          <td
+            class="{% if entry.amount > 0 %}amount-positive{% else %}amount-negative{% endif %}"
+          >
+            {{ entry.amount|floatformat:2|intcomma }}
+          </td>
+          <td>{{ entry.transaction_no|default:"-" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %} {% if preview_entries.entries.bank_account_entries %}
+  <div id="bank-account-entries" class="entry-details">
+    <h3>Bank Account Ledger Entries</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Bank Account No.</th>
+          <th>Posting Date</th>
+          <th>Document Type</th>
+          <th>Document No.</th>
+          <th>Description</th>
+          <th>Amount</th>
+          <th>Bal. Account Type</th>
+          <th>Bal. Account No.</th>
+          <th>Global Dimension 1</th>
+          <th>Transaction No.</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in preview_entries.entries.bank_account_entries %}
+        <tr>
+          <td>
+            {% if entry.bank_account %}
+              {{ entry.bank_account.no }} - {{ entry.bank_account.name }}
+            {% else %}
+              {{ entry.bank_account|default:"-" }}
+            {% endif %}
+          </td>
+          <td>{{ entry.posting_date|date:"Y-m-d" }}</td>
+          <td>{{ entry.document_type|default:"-" }}</td>
+          <td>{{ entry.document_no }}</td>
+          <td>{{ entry.description|default:"-" }}</td>
+          <td
+            class="{% if entry.amount > 0 %}amount-positive{% else %}amount-negative{% endif %}"
+          >
+            {{ entry.amount|floatformat:2|intcomma }}
+          </td>
+          <td>{{ entry.bal_account_type|default:"-" }}</td>
+          <td>{{ entry.bal_account_no|default:"-" }}</td>
+          <td>{% if entry.global_dimension_1 %}{{ entry.global_dimension_1.code }}{% else %}-{% endif %}</td>
+          <td>{{ entry.transaction_no|default:"-" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <div class="submit-row">
+    <a
+      href="{% url 'admin:loans_loanrepayment_changelist' %}"
+      class="button"
+      >Back to Loan Repayments</a
+    >
+  </div>
+</div>
+{% endblock %}
+

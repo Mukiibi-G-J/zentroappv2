@@ -1,0 +1,30 @@
+{% extends "admin/change_list.html" %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    /* Force action button text to be visible */
+    #changelist-form .actions button,
+    #changelist-form .actions input[type="submit"],
+    .actions button,
+    .actions input[type="submit"] {
+        color: #fff !important;
+        background-color: #417690 !important;
+        font-weight: 500 !important;
+        opacity: 1 !important;
+        text-indent: 0 !important;
+        font-size: 13px !important;
+        padding: 10px 15px !important;
+    }
+    
+    #changelist-form .actions button:hover,
+    #changelist-form .actions input[type="submit"]:hover,
+    .actions button:hover,
+    .actions input[type="submit"]:hover {
+        background-color: #205067 !important;
+        color: #fff !important;
+    }
+</style>
+{% endblock %}
+
+

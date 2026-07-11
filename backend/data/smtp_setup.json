@@ -1,0 +1,17 @@
+[
+  {
+    "model": "setup.emailsetup",
+    "fields": {
+      "from_email": "kalideveloper865@gmail.com",
+      "subject": "Account Verification",
+      "message_template": "Please verify your account by clicking the link below:\n\n{verification_link}",
+      "email_host": "smtp.gmail.com",
+      "email_host_user": "kalideveloper865@gmail.com",
+      "email_host_password": "nuul vfjv ezkn emro",
+      "email_port": 587,
+      "email_use_tls": true,
+      "status": "active",
+      "email_category": "verification"
+    }
+  }
+]

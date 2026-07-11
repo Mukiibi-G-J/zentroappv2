@@ -1,0 +1,58 @@
+{% extends "dashboard/dashboard-layout.html" %}
+<!-- prettier-ignore -->
+{% block title %}Item Ledger Entries{% endblock %}
+{% load static %} {% load humanize %} 
+{% block page-content %}
+<!-- Content start -->
+<main class="h-full">
+  <div
+    class="page-container relative h-full flex flex-auto flex-col px-4 sm:px-6 md:px-8 py-4 sm:py-6"
+  >
+    <div class="container mx-auto">
+      <div class="card adaptable-card">
+        <div class="card-body">
+          <div class="lg:flex items-center justify-between mb-4">
+            <h3 class="mb-4 lg:mb-0">
+              Item Ledger Entries for {{ item.item_name }}
+            </h3>
+          </div>
+          <div class="overflow-x-auto">
+            <table
+              id="product-list-data-table"
+              class="table-default table-hover data-table"
+            >
+              <thead>
+                <tr>
+                  <th>Document No</th>
+                  <th>Name</th>
+                  <th>Entry Type</th>
+
+                  <th>Quantity</th>
+                  <th>Remaining Quantity</th>
+                  <th>Unit Cost</th>
+                  <th>Total Cost</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for journal in item_ledger_entries.all %}
+                <tr>
+                  <td>{{ journal.document_no }}</td>
+                  <td>{{ journal.item.item_name }}</td>
+                  <td>{{ journal.entry_type }}</td>
+                  <td>{{ journal.quantity }}</td>
+                  <td>{{ journal.remaining_quantity }}</td>
+                  <td>{{ journal.unit_cost |floatformat:0|intcomma }}</td>
+                  <td>{{ journal.total_cost |floatformat:0|intcomma }}</td>
+                  <td>{{ journal.date }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+{% endblock %}

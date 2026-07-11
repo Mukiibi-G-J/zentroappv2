@@ -1,0 +1,1 @@
+import{W as a}from"./index-DfF6hWFi.js";async function n(t){return a.fetchData({url:"/company/create-company-account/",method:"post",data:t})}async function e(t){return a.fetchData({url:`/company/task-status/${t}/`,method:"get"})}async function o(t){return a.fetchData({url:"/company/check-company-exists/",method:"post",data:{company_name:t}})}export{n as a,o as c,e as g};

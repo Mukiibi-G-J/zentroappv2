@@ -1,0 +1,176 @@
+{% extends "admin/base_site.html" %}
+{% load humanize %}
+
+{% block content %}
+{% include "admin/includes/preview_posting_surface.html" %}
+<div class="preview-posting-surface" style="max-width: 1200px; margin: 20px auto; padding: 20px; background: white; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);">
+    {% if messages %}
+    <ul class="messagelist">
+        {% for message in messages %}
+        <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    <h2>Working on it...</h2>
+
+    <div style="margin-top: 40px">
+        <div class="related-entries">
+            <div class="entry-header">
+                <span>Related Entries</span>
+                <span>No. of Entries</span>
+            </div>
+            <div class="entry-row">
+                <a href="#gl-entries">G/L Entry</a>
+                <span>{{ preview_data.gl_entries|length }}</span>
+            </div>
+            <div class="entry-row">
+                <a href="#item-entries">Item Ledger Entry</a>
+                <span>{{ preview_data.ledger_entries|length }}</span>
+            </div>
+            <div class="entry-row">
+                <a href="#value-entries">Value Entry</a>
+                <span>1</span>
+            </div>
+        </div>
+
+        <div id="gl-entries" class="entry-details">
+            <h3>G/L Entries</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Posting Date</th>
+                        <th>Document Type</th>
+                        <th>Document No.</th>
+                        <th>G/L Account No.</th>
+                        <th>Description</th>
+                        <th>Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in preview_data.gl_entries %}
+                    <tr>
+                        <td>{{ journal_entry.date|date:"Y-m-d" }}</td>
+                        <td>{{ journal_entry.entry_type }}</td>
+                        <td>{{ entry.document_no }}</td>
+                        <td>{{ entry.account }}</td>
+                        <td>{{ journal_entry.description }}</td>
+                        <td style="text-align: right">{{ entry.amount|floatformat:2|intcomma }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div id="item-entries" class="entry-details">
+            <h3>Item Ledger Entries</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Posting Date</th>
+                        <th>Entry Type</th>
+                        <th>Document No.</th>
+                        <th>Item No.</th>
+                        <th>Description</th>
+                        <th>Quantity</th>
+                        <th>Remaining Qty</th>
+                        <th>Unit Cost</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in preview_data.ledger_entries %}
+                    <tr>
+                        <td>{{ journal_entry.date|date:"Y-m-d" }}</td>
+                        <td>{{ entry.fields.entry_type }}</td>
+                        <td>{{ entry.fields.document_no }}</td>
+                        <td>{{ entry.fields.item }}</td>
+                        <td>{{ entry.fields.description }}</td>
+                        <td style="text-align: right">{{ entry.fields.quantity|floatformat:2|intcomma }}</td>
+                        <td style="text-align: right">{{ entry.fields.remaining_quantity|floatformat:2|intcomma }}</td>
+                        <td style="text-align: right">{{ journal_entry.unit_cost|floatformat:2|intcomma }}</td>
+                        <td style="text-align: right">{{ entry.fields.total|floatformat:2|intcomma }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div id="value-entries" class="entry-details">
+            <h3>Value Entries</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Posting Date</th>
+                        <th>Entry Type</th>
+                        <th>Document No.</th>
+                        <th>Item No.</th>
+                        <th>Cost Amount</th>
+                        <th>Item Ledger Qty</th>
+                        <th>Invoiced Qty</th>
+                        <th>Cost per Unit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>{{ journal_entry.date|date:"Y-m-d" }}</td>
+                        <td>{{ journal_entry.entry_type }}</td>
+                        <td>{{ journal_entry.document_no }}</td>
+                        <td>{{ journal_entry.item.item_name }}</td>
+                        <td style="text-align: right">{{ journal_entry.total|floatformat:2|intcomma }}</td>
+                        <td style="text-align: right">{{ journal_entry.quantity|floatformat:2|intcomma }}</td>
+                        <td style="text-align: right">{{ journal_entry.quantity|floatformat:2|intcomma }}</td>
+                        <td style="text-align: right">{{ journal_entry.unit_cost|floatformat:2|intcomma }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div style="margin-top: 20px">
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="postItemJournalReFactor">
+            <input type="submit" value="Proceed with Posting" class="button">
+            <a href="{% url 'admin:items_itemjournal_changelist' %}" class="button" style="margin-left: 10px;">Cancel</a>
+        </form>
+    </div>
+</div>
+
+<style>
+    .related-entries {
+        border: 1px solid #ddd;
+        margin-bottom: 20px;
+    }
+    .entry-header {
+        display: flex;
+        justify-content: space-between;
+        padding: 10px;
+        background: #f5f5f5;
+        font-weight: bold;
+    }
+    .entry-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 10px;
+        border-top: 1px solid #ddd;
+    }
+    .entry-row:hover {
+        background: #f9f9f9;
+    }
+    .entry-details table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+    }
+    .entry-details th,
+    .entry-details td {
+        padding: 8px;
+        border: 1px solid #ddd;
+        text-align: left;
+    }
+    .entry-details th {
+        background: #f5f5f5;
+    }
+</style>
+{% endblock %} 

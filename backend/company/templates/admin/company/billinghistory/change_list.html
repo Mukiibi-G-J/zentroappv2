@@ -1,0 +1,20 @@
+{% extends "admin/change_list.html" %}
+{% load i18n %}
+
+{% block object-tools-items %}
+{{ block.super }}
+{% if send_expiry_preview_url %}
+<li>
+    <a href="{{ send_expiry_preview_url }}" class="viewlink">
+        {% trans "Send expiry reminders" %}
+    </a>
+</li>
+{% endif %}
+{% if add_historical_momo_url %}
+<li>
+    <a href="{{ add_historical_momo_url }}" class="addlink">
+        {% trans "Record historical mobile money payment" %}
+    </a>
+</li>
+{% endif %}
+{% endblock %}

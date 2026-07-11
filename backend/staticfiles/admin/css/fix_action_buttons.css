@@ -1,0 +1,66 @@
+/* Fix Django admin action button text visibility */
+
+/* Ensure action select dropdown text is visible */
+.actions select,
+#changelist-form .actions select {
+    color: #333 !important;
+    background-color: #fff !important;
+}
+
+/* Ensure action button text is ALWAYS visible - most specific selectors */
+#changelist-form .actions button,
+#changelist-form .actions input[type="submit"],
+#changelist-form .actions input[type="button"],
+#changelist-form .actions .button,
+.actions button,
+.actions input[type="submit"],
+.actions input[type="button"],
+.actions .button,
+button[title="Run the selected action"],
+input[type="submit"][title="Run the selected action"],
+button[name="index"],
+input[type="submit"][name="index"] {
+    color: #fff !important;
+    background-color: #417690 !important;
+    font-weight: 500 !important;
+    opacity: 1 !important;
+    text-indent: 0 !important;
+    font-size: 13px !important;
+}
+
+/* Hover state */
+#changelist-form .actions button:hover,
+#changelist-form .actions input[type="submit"]:hover,
+#changelist-form .actions input[type="button"]:hover,
+#changelist-form .actions .button:hover,
+.actions button:hover,
+.actions input[type="submit"]:hover,
+.actions input[type="button"]:hover,
+.actions .button:hover {
+    background-color: #205067 !important;
+    color: #fff !important;
+}
+
+/* Focus state */
+#changelist-form .actions button:focus,
+#changelist-form .actions input[type="submit"]:focus,
+#changelist-form .actions input[type="button"]:focus,
+#changelist-form .actions .button:focus,
+.actions button:focus,
+.actions input[type="submit"]:focus,
+.actions input[type="button"]:focus,
+.actions .button:focus {
+    color: #fff !important;
+    background-color: #417690 !important;
+}
+
+/* Active state */
+#changelist-form .actions button:active,
+#changelist-form .actions input[type="submit"]:active,
+#changelist-form .actions input[type="button"]:active,
+.actions button:active,
+.actions input[type="submit"]:active,
+.actions input[type="button"]:active {
+    color: #fff !important;
+    background-color: #417690 !important;
+}

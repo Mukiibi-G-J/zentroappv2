@@ -1,0 +1,1 @@
+import{W as a}from"./index-DfF6hWFi.js";async function e(t){return a.fetchData({url:"/company/validate-company-name/",method:"post",data:{company_name:t}})}async function o(){return a.fetchData({url:"/home/on-boarding/",method:"get"})}export{o as g,e as v};

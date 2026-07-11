@@ -1,0 +1,124 @@
+{% extends "dashboard/dashboard-layout.html" %}
+<!-- prettier-ignore -->
+{% load static %} 
+{% load widget_tweaks %}
+{% block page-content %}
+<!-- Content start -->
+
+<main class="h-full">
+  <div
+    class="page-container relative h-full flex flex-auto flex-col px-4 sm:px-6 md:px-8 py-4 sm:py-6"
+  >
+    <!-- Page header -->
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="mb-4 text-lg font-medium">Chart of Accounts</h3>
+    </div>
+
+    <!-- Table -->
+    <div class="card adaptable-table">
+      <div class="card-body">
+        <table class="table-default table-hover table-compact">
+          <thead>
+            <tr>
+              <th class="sort-by">No.</th>
+              <th>Account Name</th>
+              <th>Type</th>
+              <th>Category</th>
+              <th>Income/Balance</th>
+              <th class="text-right">Balance</th>
+              <th class="text-center">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for account in accounts %}
+            <tr class="{% if account.blocked %}text-gray-500{% endif %}">
+              <td>{{ account.no }}</td>
+              <td>
+                <div style="padding-left: {{ account.indentation }}rem;">
+                  {{ account.name }}
+                </div>
+              </td>
+              <td>{{ account.accounttype|default:"-" }}</td>
+              <td>{{ account.accountcategory|default:"-" }}</td>
+              <td>{{ account.income_balance|default:"-" }}</td>
+              <td
+                class="text-right {% if account.balance < 0 %}text-red-500{% endif %}"
+              >
+                {{ account.balance|floatformat:2 }}
+              </td>
+              <td class="text-center">
+                {% if account.blocked %}
+                <span class="badge bg-red-500">Blocked</span>
+                {% else %}
+                <span class="badge bg-emerald-500">Active</span>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                <form
+                  method="POST"
+                  action="{% url 'financials:delete-chart-of-account' account.no %}"
+                  onsubmit="return confirm('Are you sure you want to delete {{ account.name }}?');"
+                >
+                  {% csrf_token %}
+                  <button
+                    type="submit"
+                    class="btn-delete text-red-600 hover:text-red-800"
+                  >
+                    Delete
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+
+<style>
+  .table-default {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .table-default th,
+  .table-default td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .table-default thead th {
+    background-color: #f9fafb;
+    font-weight: 500;
+    text-align: left;
+    color: #374151;
+  }
+
+  .table-compact td,
+  .table-compact th {
+    padding: 0.5rem 1rem;
+  }
+
+  .table-hover tbody tr:hover {
+    background-color: #f9fafb;
+  }
+
+  .badge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: white;
+  }
+
+  .sort-by {
+    cursor: pointer;
+  }
+
+  .sort-by:hover {
+    background-color: #f3f4f6;
+  }
+</style>
+{% endblock %}

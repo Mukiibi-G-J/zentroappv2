@@ -1,0 +1,396 @@
+{% extends "admin/base_site.html" %} {% load i18n admin_urls static admin_modify
+%} {% block extrahead %} {{ block.super }} {% load humanize %}
+<style type="text/css">
+  .entry-details {
+    margin: 20px 0;
+    padding: 20px;
+    background-color: #f9f9f9;
+    border-radius: 4px;
+  }
+  .entry-details h3 {
+    margin-top: 0;
+    color: #666;
+  }
+  .entry-details table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+  }
+  .entry-details th,
+  .entry-details td {
+    padding: 8px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+  }
+  .entry-details th {
+    background-color: #f5f5f5;
+  }
+  .preview-header {
+    margin-bottom: 20px;
+  }
+  .preview-steps {
+    margin: 20px 0;
+    padding: 10px;
+    background-color: #e9ecef;
+    border-radius: 4px;
+  }
+  .preview-steps ul {
+    margin: 0;
+    padding-left: 20px;
+  }
+  .summary-box {
+    background-color: #e3f2fd;
+    padding: 15px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+  .summary-box h4 {
+    margin-top: 0;
+    color: #1976d2;
+  }
+  .summary-list {
+    list-style: none;
+    padding: 0;
+    margin: 10px 0 0;
+  }
+  .summary-list li {
+    display: inline-block;
+    margin-right: 20px;
+    padding: 5px 10px;
+    background: #fff;
+    border-radius: 3px;
+    border: 1px solid #e0e0e0;
+  }
+  .summary-count {
+    font-weight: bold;
+    color: #1976d2;
+  }
+  .entry-type {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 0.9em;
+    font-weight: 500;
+  }
+  .entry-type-initial {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+  }
+  .entry-type-application {
+    background-color: #fff3e0;
+    color: #ef6c00;
+  }
+  .amount-positive {
+    color: #2e7d32;
+  }
+  .amount-negative {
+    color: #c62828;
+  }
+</style>
+{% endblock %} {% block content %}
+{% include "admin/includes/preview_posting_surface.html" %}
+<div id="content-main" class="preview-posting-surface">
+  <div class="summary-box">
+    <h4>Related Entries Summary</h4>
+    <ul class="summary-list">
+      <li>
+        G/L Entries:
+        <span class="summary-count"
+          >{{ preview_entries.entries.gl_entries|length }}</span
+        >
+      </li>
+      <li>
+        Vendor Ledger Entries:
+        <span class="summary-count"
+          >{{ preview_entries.entries.vendor_entries|length }}</span
+        >
+      </li>
+      <li>
+        Customer Ledger Entries:
+        <span class="summary-count"
+          >{{ preview_entries.entries.customer_entries|length }}</span
+        >
+      </li>
+      <li>
+        Detailed Vendor Ledger Entries:
+        <span class="summary-count"
+          >{{ preview_entries.entries.detailed_vendor_entries|length }}</span
+        >
+      </li>
+      {% if preview_entries.entries.bank_account_entries %}
+      <li>
+        Bank Account Ledger Entries:
+        <span class="summary-count"
+          >{{ preview_entries.entries.bank_account_entries|length }}</span
+        >
+      </li>
+      {% endif %}
+    </ul>
+  </div>
+
+  <div class="preview-header">
+    <h1>Preview Posting - {{ preview_entries.payment }}</h1>
+  </div>
+
+  <div class="preview-steps">
+    <h3>Posting Steps:</h3>
+    <ul>
+      {% for step in preview_entries.steps %}
+      <li>{{ step }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="entry-details">
+    <h3>Payment Details</h3>
+    <table>
+      <tr>
+        <th>Document No.</th>
+        <td>{{ payment.document_no }}</td>
+        <th>Payment Date</th>
+        <td>{{ payment.payment_date }}</td>
+      </tr>
+      <tr>
+        <th>Payment Method</th>
+        <td>{{ payment.payment_method }}</td>
+        <th>Amount</th>
+        <td>{{ payment.amount|floatformat:2|intcomma }}</td>
+      </tr>
+      <tr>
+        <th>Account Type</th>
+        <td>{{ payment.account_type }}</td>
+        <th>Description</th>
+        <td>{{ payment.description }}</td>
+      </tr>
+      {% if payment.external_document_no %}
+      <tr>
+        <th>External Document No.</th>
+        <td colspan="3">{{ payment.external_document_no }}</td>
+      </tr>
+      {% endif %}
+    </table>
+  </div>
+
+  {% if preview_entries.entries.gl_entries %}
+  <div id="gl-entries" class="entry-details">
+    <h3>General Ledger Entries</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>G/L Account</th>
+          <th>Posting Date</th>
+          <th>Document Type</th>
+          <th>Document No.</th>
+          <th>Description</th>
+          <th>Global Dimension 1</th>
+          <th>Amount</th>
+          <th>Transaction No.</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in preview_entries.entries.gl_entries %}
+        <tr>
+          <td>{{ entry.gl_account }}</td>
+          <td>{{ entry.posting_date }}</td>
+          <td>{{ entry.document_type }}</td>
+          <td>{{ entry.document_no }}</td>
+          <td>{{ entry.description }}</td>
+          <td>{{ entry.global_dimension_1|default:"-" }}</td>
+          <td
+            class="{% if entry.amount > 0 %}amount-positive{% else %}amount-negative{% endif %}"
+          >
+            {{ entry.amount|floatformat:2|intcomma }}
+          </td>
+          <td>{{ entry.transaction_no|default:"-" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %} {% if preview_entries.entries.vendor_entries %}
+  <div id="vendor-entries" class="entry-details">
+    <h3>Vendor Ledger Entries</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Vendor</th>
+          <th>Posting Date</th>
+          <th>Document Type</th>
+          <th>Document No.</th>
+          <th>External Doc. No.</th>
+          <th>Description</th>
+          <th>Original Amount</th>
+          <th>Amount</th>
+          <th>Remaining Amount</th>
+          <th>Global Dimension 1</th>
+          <th>Transaction No.</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in preview_entries.entries.vendor_entries %}
+        <tr>
+          <td>{{ entry.vendor }}</td>
+          <td>{{ entry.posting_date }}</td>
+          <td>{{ entry.document_type }}</td>
+          <td>{{ entry.document_no }}</td>
+          <td>{{ entry.external_document_no|default:"-" }}</td>
+          <td>{{ entry.description }}</td>
+          <td>{{ entry.original_amount|floatformat:2|intcomma }}</td>
+          <td
+            class="{% if entry.amount > 0 %}amount-positive{% else %}amount-negative{% endif %}"
+          >
+            {{ entry.amount|floatformat:2|intcomma }}
+          </td>
+          <td>{{ entry.remaining_amount|floatformat:2|intcomma }}</td>
+          <td>{{ entry.global_dimension_1|default:"-" }}</td>
+          <td>{{ entry.transaction_no|default:"-" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %} {% if preview_entries.entries.detailed_vendor_entries %}
+  <div id="detailed-vendor-entries" class="entry-details">
+    <h3>Detailed Vendor Ledger Entries</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Posting Date</th>
+          <th>Entry Type</th>
+          <th>Document Type</th>
+          <th>Document No.</th>
+          <th>Vendor No.</th>
+          <th>Amount</th>
+          <th>Debit Amount</th>
+          <th>Credit Amount</th>
+          <th>Initial Entry Due Date</th>
+          <th>Transaction No.</th>
+          <th>Initial Document Type</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in preview_entries.entries.detailed_vendor_entries %}
+        <tr>
+          <td>{{ entry.posting_date|date:"Y-m-d" }}</td>
+          <td>
+            <span
+              class="entry-type {% if entry.entry_type == 'Initial Entry' %}entry-type-initial{% else %}entry-type-application{% endif %}"
+            >
+              {{ entry.entry_type }}
+            </span>
+          </td>
+          <td>{{ entry.document_type }}</td>
+          <td>{{ entry.document_no }}</td>
+          <td>{{ entry.vendor }}</td>
+          <td
+            style="text-align: right"
+            class="{% if entry.amount > 0 %}amount-positive{% else %}amount-negative{% endif %}"
+          >
+            {{ entry.amount|floatformat:2|intcomma }}
+          </td>
+          <td style="text-align: right">
+            {{ entry.debit_amount|default:0|floatformat:2|intcomma }}
+          </td>
+          <td style="text-align: right">
+            {{ entry.credit_amount|default:0|floatformat:2|intcomma }}
+          </td>
+          <td>{{ entry.initial_entry_due_date|date:"Y-m-d"|default:"-" }}</td>
+          <td>{{ entry.transaction_no|default:"-" }}</td>
+          <td>{{ entry.initial_document_type|default:"-" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %} {% if preview_entries.entries.customer_entries %}
+  <div id="customer-entries" class="entry-details">
+    <h3>Customer Ledger Entries</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Customer</th>
+          <th>Posting Date</th>
+          <th>Document Type</th>
+          <th>Document No.</th>
+          <th>Description</th>
+          <th>Amount</th>
+          <th>Remaining Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in preview_entries.entries.customer_entries %}
+        <tr>
+          <td>{{ entry.customer }}</td>
+          <td>{{ entry.posting_date }}</td>
+          <td>{{ entry.document_type }}</td>
+          <td>{{ entry.document_no }}</td>
+          <td>{{ entry.description }}</td>
+          <td
+            class="{% if entry.amount > 0 %}amount-positive{% else %}amount-negative{% endif %}"
+          >
+            {{ entry.amount|floatformat:2|intcomma }}
+          </td>
+          <td>{{ entry.remaining_amount|floatformat:2|intcomma }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %} {% if preview_entries.entries.bank_account_entries %}
+  <div id="bank-account-entries" class="entry-details">
+    <h3>Bank Account Ledger Entries</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Bank Account No.</th>
+          <th>Posting Date</th>
+          <th>Document Type</th>
+          <th>Document No.</th>
+          <th>Description</th>
+          <th>Amount</th>
+          <th>Remaining Amount</th>
+          <th>Bal. Account Type</th>
+          <th>Bal. Account No.</th>
+          <th>Global Dimension 1</th>
+          <th>Transaction No.</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in preview_entries.entries.bank_account_entries %}
+        <tr>
+          <td>
+            {% if entry.bank_account %}
+              {{ entry.bank_account.no }} - {{ entry.bank_account.name }}
+            {% else %}
+              {{ entry.bank_account|default:"-" }}
+            {% endif %}
+          </td>
+          <td>{{ entry.posting_date|date:"Y-m-d" }}</td>
+          <td>{{ entry.document_type|default:"-" }}</td>
+          <td>{{ entry.document_no }}</td>
+          <td>{{ entry.description|default:"-" }}</td>
+          <td
+            class="{% if entry.amount > 0 %}amount-positive{% else %}amount-negative{% endif %}"
+          >
+            {{ entry.amount|floatformat:2|intcomma }}
+          </td>
+          <td>{{ entry.remaining_amount|default:entry.amount|floatformat:2|intcomma }}</td>
+          <td>{{ entry.bal_account_type|default:"-" }}</td>
+          <td>{{ entry.bal_account_no|default:"-" }}</td>
+          <td>{{ entry.global_dimension_1|default:"-" }}</td>
+          <td>{{ entry.transaction_no|default:"-" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <div class="submit-row">
+    <a href="{% url 'admin:financials_payment_changelist' %}" class="button"
+      >Back to Payments</a
+    >
+  </div>
+</div>
+{% endblock %}

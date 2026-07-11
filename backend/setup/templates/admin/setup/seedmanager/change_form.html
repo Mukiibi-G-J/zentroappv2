@@ -1,0 +1,92 @@
+{% extends "admin/change_form.html" %} {% block after_field_sets %} {{
+block.super }}
+
+<fieldset class="module aligned">
+  <h2>Run selected seed commands</h2>
+  <div class="description">
+    Select the seed/populate commands you want to run, then click
+    <strong>Run selected</strong>.
+  </div>
+
+  {% if seed_commands %}
+  <form method="post" action="run-selected/" style="margin-top: 12px">
+    {% csrf_token %}
+
+    <div style="margin-bottom: 10px">
+      <label style="display: inline-flex; align-items: center; gap: 8px">
+        <input type="checkbox" id="seed_select_all" />
+        Select all
+      </label>
+    </div>
+
+    <div
+      style="
+        max-height: 260px;
+        overflow-y: auto;
+        border: 1px solid #e5e5e5;
+        padding: 10px;
+      "
+    >
+      {% for cmd in seed_commands %}
+      <div
+        style="
+          display: flex;
+          gap: 10px;
+          align-items: flex-start;
+          padding: 6px 0;
+          border-bottom: 1px solid #f2f2f2;
+        "
+      >
+        <input
+          type="checkbox"
+          class="seed_command_checkbox"
+          name="seed_commands"
+          value="{{ cmd.command }}"
+          id="seed_{{ cmd.command }}"
+          style="margin-top: 3px"
+        />
+        <label for="seed_{{ cmd.command }}" style="cursor: pointer; flex: 1">
+          <code>{{ cmd.command }}</code>
+          <span style="opacity: 0.75">({{ cmd.app }})</span>
+          {% if cmd.description %}
+          <div style="margin-top: 2px; opacity: 0.85">
+            {{ cmd.description }}
+          </div>
+          {% endif %}
+        </label>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div style="margin-top: 12px">
+      <input type="submit" class="default" value="Run selected" />
+    </div>
+  </form>
+
+  <script>
+    (function () {
+      const selectAll = document.getElementById("seed_select_all");
+      const boxes = Array.from(
+        document.querySelectorAll(".seed_command_checkbox"),
+      );
+      if (!selectAll || boxes.length === 0) return;
+
+      selectAll.addEventListener("change", function () {
+        boxes.forEach((b) => (b.checked = selectAll.checked));
+      });
+
+      boxes.forEach((b) => {
+        b.addEventListener("change", function () {
+          const allChecked = boxes.every((x) => x.checked);
+          const anyChecked = boxes.some((x) => x.checked);
+          selectAll.indeterminate = anyChecked && !allChecked;
+          selectAll.checked = allChecked;
+        });
+      });
+    })();
+  </script>
+  {% else %}
+  <p>No seed commands discovered.</p>
+  {% endif %}
+</fieldset>
+{% endblock %}

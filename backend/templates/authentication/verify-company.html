@@ -1,0 +1,110 @@
+{% extends 'base/base.html' %} {% load widget_tweaks %} {% load static %}
+<!-- prettier-ignore -->
+{% block title %}Login{% endblock %} {% block content %}
+<!-- App Start-->
+<div id="root">
+  <!-- App Layout-->
+  <div class="app-layout-blank flex flex-auto flex-col h-[100vh]">
+    <main class="h-full">
+      <div class="page-container relative h-full flex flex-auto flex-col">
+        <div class="h-full">
+          <div
+            class="container mx-auto flex flex-col flex-auto items-center justify-center min-w-0 h-full"
+          >
+            <div
+              class="card min-w-[320px] md:min-w-[450px] card-shadow"
+              role="presentation"
+            >
+              <div class="card-body md:p-10">
+                <div class="text-center">
+                  <div class="logo">
+                    <img
+                      class="mx-auto"
+                      style="width: 80px; height:80px;"
+                      src="{% static 'images/logo/logo-light-streamline.png' %}"
+                      alt="Zentro Logo"
+                    />
+                  </div>
+                </div>
+                <div class="text-center">
+                  <div class="mb-4">
+                    <h3 class="mb-1">Welcome back!</h3>
+                    <p>Please enter your company name to continue!</p>
+                  </div>
+                  <div>
+                    <form action="#" method="POST" id="login-form">
+                      {% csrf_token %}
+                      <div class="form-container vertical">
+                        <div class="form-item vertical">
+                          <label class="form-label mb-2">Company Name</label>
+                          <div>
+                            <!--prettier-ignore-->
+                            {% render_field  form.company_name class="input" placeholder="Company Name" type="text" autocomplete="off" hx-post="/check-validity-of-company/" hx-target="#company-name-status"  hx-trigger="keyup changed delay:500ms" hx-swap="innerHTML" hx-ext="json-enc" %}
+
+                            <span
+                              id="company-name-status"
+                              style="
+                                display: block;
+                                margin-top: 0.5rem;
+                                font-size: 0.875rem;
+                                font-weight: 500;
+                                padding-left: 0.5rem;
+                                min-height: 1.25rem;
+                              "
+                            ></span>
+                          </div>
+                        </div>
+                        <button
+                          type="submit"
+                          id="submit-btn"
+                          class="btn btn-solid w-full"
+                          disabled
+                        >
+                          Continue
+                        </button>
+                        <div class="mt-4 text-center">
+                          <span>Don't have a company yet?</span>
+                          <a
+                            class="text-primary-600 hover:underline"
+                            href="{% url 'home:onboarding' %}"
+                            >Proceed to Company Onboarding</a
+                          >
+                        </div>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+{% endblock %} {% block scripts %}
+<script>
+  document.addEventListener("htmx:afterRequest", function (evt) {
+    if (evt.detail.target.id === "company-name-status") {
+      const response = JSON.parse(evt.detail.xhr.responseText);
+      const submitBtn = document.getElementById("submit-btn");
+
+      // Update the status message
+      evt.detail.target.innerHTML = response.html;
+
+      // Enable/disable submit button based on validation
+      submitBtn.disabled = !response.is_valid;
+
+      // Update button appearance with new class names
+      if (response.is_valid) {
+        submitBtn.classList.remove("zentro-submit-btn--disabled");
+        submitBtn.classList.add("zentro-submit-btn--active");
+      } else {
+        submitBtn.classList.remove("zentro-submit-btn--active");
+        submitBtn.classList.add("zentro-submit-btn--disabled");
+      }
+    }
+  });
+</script>
+{% endblock %}

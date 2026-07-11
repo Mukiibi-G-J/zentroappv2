@@ -1,0 +1,276 @@
+################################################################################
+# ZentroApp - Production Deployment Commands
+# User Management System + Purchase/Payment History
+################################################################################
+
+REPLACE <tenant_schema> with your actual tenant schema name (e.g., ekk, daurice, etc.)
+
+================================================================================
+OPTION 1: AUTOMATED DEPLOYMENT (RECOMMENDED)
+================================================================================
+
+# Linux/Mac
+chmod +x deploy_user_management.sh
+./deploy_user_management.sh <tenant_schema>
+
+# Windows
+.\deploy_user_management.ps1 -Schema <tenant_schema>
+
+================================================================================
+OPTION 2: MANUAL STEP-BY-STEP
+================================================================================
+
+# 1. Activate Virtual Environment
+# ---------------------------------
+# Linux/Mac:
+source env/bin/activate
+
+# Windows:
+.\env\Scripts\activate
+
+
+# 2. Run Database Migrations
+# ---------------------------------
+python manage.py migrate_schemas
+
+
+# 3. Populate Page Objects
+# ---------------------------------
+python manage.py tenant_command populate_page_objects --schema=<tenant_schema>
+
+# This creates:
+# - User Management (10801)
+# - User Group Management (10802)
+# - Permission Set Management (10803)
+# - User Roles Management (10804)
+# - Role Center Management (10805)
+# - Purchase History (10302)
+# - Payment History (10402)
+
+
+# 4. Setup Permission Sets
+# ---------------------------------
+python manage.py tenant_command setup_page_permissions --schema=<tenant_schema>
+
+# 4b. Dimension Backfill (Multi-Branch) - Run if using branch filtering
+# ---------------------------------
+python manage.py tenant_command backfill_entry_dimensions --schema=<tenant_schema> --first-branch
+
+# This creates/updates:
+# - USER_MGMT_FULL
+# - USER_MGMT_BASIC
+# - USER_MGMT_VIEW_ONLY
+# - PURCHASES_FULL (updated with Purchase History)
+# - PAYMENTS_FULL (updated with Payment History)
+
+
+# 5. Collect Static Files (Production Only)
+# ---------------------------------
+python manage.py collectstatic --noinput
+
+
+# 6. Check Admin Permissions (Optional)
+# ---------------------------------
+python manage.py tenant_command check_admin_permissions --schema=<tenant_schema>
+
+
+# 7. Restart Application
+# ---------------------------------
+# Systemd:
+sudo systemctl restart zentroapp
+
+# Docker:
+docker-compose restart
+
+# Gunicorn:
+pkill gunicorn && gunicorn config.wsgi:application
+
+
+================================================================================
+FRONTEND DEPLOYMENT
+================================================================================
+
+cd zentro-frontend
+
+# Install dependencies (if needed)
+npm install
+
+# Build for production
+npm run build
+
+# Deploy dist folder to your hosting
+
+
+================================================================================
+POST-DEPLOYMENT DJANGO ADMIN SETUP
+================================================================================
+
+1. Login to Django Admin:
+   http://your-domain/admin/
+
+2. Update Admin Role Center:
+   - Go to: Authentication → Role Centers
+   - Edit "Admin Center"
+   - Add "user_management" to modules array:
+     ["sales", "customers", "items", "purchases", "suppliers", "payments", 
+      "financials", "expenses", "user_management"]
+
+3. Assign Permission Sets to Admin Group:
+   - Go to: Authentication → User Groups
+   - Edit "Admin" group
+   - Add these permission sets:
+     * USER_MGMT_FULL
+     * PURCHASES_FULL (should already be there)
+     * PAYMENTS_FULL (should already be there)
+
+4. Verify Admin Group Default Role:
+   - Ensure Admin group has a Default Profile (Role)
+   - That role should link to Admin Center
+
+
+================================================================================
+MULTIPLE TENANTS DEPLOYMENT
+================================================================================
+
+# If you have multiple tenants, run for each:
+
+# Tenant 1
+python manage.py tenant_command populate_page_objects --schema=tenant1
+python manage.py tenant_command setup_page_permissions --schema=tenant1
+
+# Tenant 2
+python manage.py tenant_command populate_page_objects --schema=tenant2
+python manage.py tenant_command setup_page_permissions --schema=tenant2
+
+# Tenant 3
+python manage.py tenant_command populate_page_objects --schema=tenant3
+python manage.py tenant_command setup_page_permissions --schema=tenant3
+
+# And so on...
+
+
+================================================================================
+VERIFICATION COMMANDS
+================================================================================
+
+# Check admin permissions
+python manage.py tenant_command check_admin_permissions --schema=<tenant_schema>
+
+# Check database objects
+python manage.py shell --schema=<tenant_schema>
+>>> from base.models import Objects
+>>> Objects.objects.filter(object_id__gte=10801, object_id__lte=10805).count()
+>>> # Should return 5 (User Management pages)
+>>> Objects.objects.filter(object_id__in=[10302, 10402]).count()
+>>> # Should return 2 (Purchase/Payment History)
+>>> exit()
+
+# Check permission sets
+python manage.py shell --schema=<tenant_schema>
+>>> from permissions.models import PermissionSet
+>>> PermissionSet.objects.filter(code__startswith='USER_MGMT').count()
+>>> # Should return 3 (USER_MGMT_* sets)
+>>> exit()
+
+
+================================================================================
+IMPORTANT NOTES
+================================================================================
+
+⚠️  CRITICAL: All users must LOG OUT and LOG BACK IN after deployment
+   to receive updated JWT tokens with new page permissions!
+
+✅ What Gets Deployed:
+   - 7 new page objects
+   - 3 new permission sets
+   - 2 updated permission sets
+   - Complete User Management module
+   - Purchase/Payment History pages
+   - Auto-code generation for User Groups & Role Centers
+
+📝 Files Modified:
+   Backend:
+   - authentication/user_management_serializers.py
+   - authentication/user_management_views.py
+   - base/management/commands/populate_page_objects.py
+   - permissions/management/commands/setup_page_permissions.py
+   
+   Frontend:
+   - configs/navigation.config/apps.navigation.config.ts
+   - configs/routes.config/appsRoute.ts
+   - New components in views/user-management/
+
+🔗 New URLs:
+   - /app/user-management/users
+   - /app/user-management/user-groups
+   - /app/user-management/permission-sets
+   - /app/user-management/roles
+   - /app/user-management/role-centers
+   - /app/purchases/purchases-history
+   - /app/payments/payment-history
+
+
+================================================================================
+QUICK DEPLOYMENT EXAMPLES
+================================================================================
+
+# Example 1: Deploy to 'ekk' tenant
+./deploy_user_management.sh ekk
+
+# Example 2: Deploy to 'daurice' tenant
+.\deploy_user_management.ps1 -Schema daurice
+
+# Example 3: Deploy to 'company1' tenant
+python manage.py tenant_command populate_page_objects --schema=company1
+python manage.py tenant_command setup_page_permissions --schema=company1
+
+
+================================================================================
+ROLLBACK COMMANDS (if needed)
+================================================================================
+
+# Remove new page objects
+python manage.py shell --schema=<tenant_schema>
+>>> from base.models import Objects
+>>> Objects.objects.filter(object_id__in=[10302, 10402, 10801, 10802, 10803, 10804, 10805]).delete()
+>>> exit()
+
+# Remove new permission sets (optional)
+python manage.py shell --schema=<tenant_schema>
+>>> from permissions.models import PermissionSet
+>>> PermissionSet.objects.filter(code__startswith='USER_MGMT').delete()
+>>> exit()
+
+# Revert code
+git checkout <previous_commit>
+
+# Restart application
+
+
+================================================================================
+ZENTROAPP → V2 MIGRATION TODOS (POST-RESTORE)
+================================================================================
+
+All checklists and runbooks for moving production to V2:
+
+  zentroapp-to-v2-todos/README.md
+
+(Current: payment ledger applies_to_id cleanup — pending on production.)
+
+
+================================================================================
+FULL PRODUCTION RUNBOOK
+================================================================================
+
+For complete seeds and commands (dimension backfill, all seed commands, etc.):
+  See PRODUCTION_RUNBOOK.md
+
+================================================================================
+END OF COMMANDS
+================================================================================
+
+For detailed deployment guide, see: DEPLOYMENT_GUIDE_USER_MANAGEMENT.md
+
+
+
+

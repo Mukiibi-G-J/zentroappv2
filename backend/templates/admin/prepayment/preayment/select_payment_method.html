@@ -1,0 +1,61 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 20px auto; padding: 20px; background: white; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);">
+    <h2>{{ title }}</h2>
+
+    <div class="document-info" style="margin-bottom: 30px;">
+        <h3>Document Information</h3>
+        <table style="width: 100%; margin-bottom: 20px;">
+            <tr>
+                <td><strong>Document No.:</strong></td>
+                <td>{{ preayment.document_no }}</td>
+                <td><strong>Posting Date:</strong></td>
+                <td>{{ preayment.posting_date|date:"Y-m-d" }}</td>
+            </tr>
+            <tr>
+                <td><strong>Customer:</strong></td>
+                <td colspan="3">{{ preayment.customer.name }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <form method="post" action="{% url 'admin:prepayment_preayment_changelist' %}">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="{{ action }}" />
+        <input type="hidden" name="_selected_action" value="{{ preayment.id }}" />
+        
+        <div style="margin-bottom: 20px;">
+            <label for="payment_method_id" style="display: block; margin-bottom: 10px; font-weight: bold;">
+                Select Payment Method:
+            </label>
+            <p style="color: #666; font-size: 14px; margin-bottom: 15px;">
+                {% if action == "preview_final_invoice_posting" %}
+                    Please select a payment method for this final invoice. If "Not Paid Yet" is selected,
+                    no payment entries will be created and the invoice will remain open.
+                {% else %}
+                    Please select a payment method for posting this final invoice.
+                {% endif %}
+            </p>
+            <select name="payment_method_id" id="payment_method_id" required style="width: 100%; padding: 8px; font-size: 14px; border: 1px solid #ddd; border-radius: 4px;">
+                <option value="">-- Select Payment Method --</option>
+                {% for method in payment_methods %}
+                    <option value="{{ method.id }}" {% if preayment.customer.payment_method and preayment.customer.payment_method.id == method.id %}selected{% endif %}>
+                        {{ method.description|default:method.code }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
+            <button type="submit" style="background-color: #417690; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; margin-right: 10px;">
+                Continue
+            </button>
+            <a href="{% url 'admin:prepayment_preayment_changelist' %}" style="color: #417690; text-decoration: none; padding: 10px 20px; border: 1px solid #ddd; border-radius: 4px; display: inline-block; font-size: 14px;">
+                Cancel
+            </a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+

@@ -1,0 +1,27 @@
+flowplan -> covers ( also assign food per sit) so you case 1,2,3,4,5 seta when you click on takes you to the menu
+
+you can have mulpitle menu so you can a menu  etc
+
+swipe to repeat an item
+hide fired items
+swipe to delete
+
+checks
+straight fire
+starters 
+main 
+desserts
+
+Create menus
+1) menus is create also a menu has alocations
+2)adding items to menu, item add will appear on pos hom screen
+
+Display groups 
+should able give the display groups corols
+also support nexted groups
+
+edit layout function to edit layout of the by drafing and dropping  
+
+modifers are added to menu items you apply modifier to an item some modifiers can be added one or simulatinous 
+
+variants,

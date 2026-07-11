@@ -1,0 +1,201 @@
+Core Data Models
+1. Resource Model (Service Providers)
+python
+# models.py
+class Resource(models.Model):
+    RESOURCE_TYPES = (
+        ('person', 'Person'),
+        ('equipment', 'Equipment'),
+        ('space', 'Space'),
+    )
+    
+    code = models.CharField(max_length=20, unique=True)  # STY-JANE-01
+    name = models.CharField(max_length=100)  # Jane Doe - Master Stylist
+    resource_type = models.CharField(max_length=10, choices=RESOURCE_TYPES)
+    base_unit = models.CharField(max_length=10, default='HOUR')  # HOUR, MINUTE
+    cost_rate = models.DecimalField(max_digits=10, decimal_places=2)  # $25.00/hr
+    charge_rate = models.DecimalField(max_digits=10, decimal_places=2)  # $80.00/hr
+    is_active = models.BooleanField(default=True)
+    
+    def __str__(self):
+        return f"{self.code} - {self.name}"
+2. Service Item Model (Your Menu of Services)
+python
+class ServiceItem(models.Model):
+    SERVICE_CATEGORIES = (
+        ('salon', 'Salon Service'),
+        ('restaurant', 'Restaurant Service'),
+        ('spa', 'Spa Service'),
+    )
+    
+    sku = models.CharField(max_length=20, unique=True)  # SVC-MCUT, MENU-STEAK
+    name = models.CharField(max_length=100)  # Men's Precision Cut
+    description = models.TextField(blank=True)
+    category = models.CharField(max_length=20, choices=SERVICE_CATEGORIES)
+    base_price = models.DecimalField(max_digits=10, decimal_places=2)  # $60.00
+    duration_minutes = models.IntegerField()  # 45 minutes
+    is_active = models.BooleanField(default=True)
+    uses_production_bom = models.BooleanField(default=False)
+    
+    def __str__(self):
+        return f"{self.sku} - {self.name}"
+3. Production BOM Model (Service Recipes)
+python
+class ProductionBOM(models.Model):
+    bom_code = models.CharField(max_length=20, unique=True)  # BOM-MENS-CUT
+    name = models.CharField(max_length=100)  # Recipe for Men's Cut
+    service_item = models.OneToOneField(
+        ServiceItem, 
+        on_delete=models.CASCADE,
+        related_name='production_bom'
+    )
+    is_active = models.BooleanField(default=True)
+    
+    def __str__(self):
+        return f"{self.bom_code} - {self.name}"
+4. BOM Line Items (Components of Service)
+python
+class BOMLine(models.Model):
+    LINE_TYPES = (
+        ('resource', 'Resource'),
+        ('inventory', 'Inventory'),
+        ('material', 'Material'),
+    )
+    
+    bom = models.ForeignKey(ProductionBOM, on_delete=models.CASCADE, related_name='lines')
+    line_type = models.CharField(max_length=10, choices=LINE_TYPES)
+    
+    # Resource link (if line_type == 'resource')
+    resource = models.ForeignKey(Resource, on_delete=models.CASCADE, null=True, blank=True)
+    resource_quantity = models.DecimalField(max_digits=8, decimal_places=3, default=0)  # 0.75 hours
+    
+    # Inventory link (if line_type == 'inventory')
+    inventory_item = models.ForeignKey('your_app.InventoryItem', on_delete=models.CASCADE, null=True, blank=True)
+    inventory_quantity = models.DecimalField(max_digits=8, decimal_places=3, default=0)  # 1.0 units
+    
+    unit_cost = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    
+    def save(self, *args, **kwargs):
+        # Auto-calculate unit cost based on type
+        if self.line_type == 'resource' and self.resource:
+            self.unit_cost = self.resource.cost_rate
+        elif self.line_type == 'inventory' and self.inventory_item:
+            self.unit_cost = self.inventory_item.unit_cost
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return f"{self.bom.bom_code} - {self.line_type}"
+Admin Configuration
+1. Resource Admin
+python
+# admin.py
+@admin.register(Resource)
+class ResourceAdmin(admin.ModelAdmin):
+    list_display = ['code', 'name', 'resource_type', 'cost_rate', 'charge_rate', 'is_active']
+    list_filter = ['resource_type', 'is_active']
+    search_fields = ['code', 'name']
+    list_editable = ['is_active']
+2. Inline for BOM Lines
+python
+class BOMLineInline(admin.TabularInline):
+    model = BOMLine
+    extra = 1
+    fields = ['line_type', 'resource', 'resource_quantity', 'inventory_item', 'inventory_quantity']
+    
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "inventory_item":
+            kwargs["queryset"] = InventoryItem.objects.filter(is_active=True)
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+3. Production BOM Admin
+python
+@admin.register(ProductionBOM)
+class ProductionBOMAdmin(admin.ModelAdmin):
+    list_display = ['bom_code', 'name', 'service_item', 'is_active']
+    list_filter = ['is_active']
+    search_fields = ['bom_code', 'name', 'service_item__name']
+    inlines = [BOMLineInline]
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('service_item')
+4. Service Item Admin
+python
+@admin.register(ServiceItem)
+class ServiceItemAdmin(admin.ModelAdmin):
+    list_display = ['sku', 'name', 'category', 'base_price', 'duration_minutes', 'has_bom', 'is_active']
+    list_filter = ['category', 'is_active']
+    search_fields = ['sku', 'name']
+    list_editable = ['base_price', 'is_active']
+    
+    def has_bom(self, obj):
+        return hasattr(obj, 'production_bom')
+    has_bom.boolean = True
+Key Business Logic Methods
+1. Calculate Service Cost
+python
+# models.py - in ProductionBOM class
+def calculate_total_cost(self):
+    total_cost = 0
+    for line in self.lines.all():
+        if line.line_type == 'resource':
+            total_cost += line.resource_quantity * line.resource.cost_rate
+        elif line.line_type == 'inventory':
+            total_cost += line.inventory_quantity * line.inventory_item.unit_cost
+    return total_cost
+
+def calculate_profit_margin(self):
+    service_price = self.service_item.base_price
+    total_cost = self.calculate_total_cost()
+    if service_price > 0:
+        return ((service_price - total_cost) / service_price) * 100
+    return 0
+2. Update Inventory on Service Sale
+python
+# In your POS sale processing logic
+def process_service_sale(service_item, quantity=1):
+    """
+    Called when a service is sold to update inventory and track resource usage
+    """
+    if not service_item.uses_production_bom:
+        return
+    
+    bom = service_item.production_bom
+    for line in bom.lines.all():
+        if line.line_type == 'inventory' and line.inventory_item:
+            # Deduct inventory used in the service
+            line.inventory_item.quantity_on_hand -= (line.inventory_quantity * quantity)
+            line.inventory_item.save()
+        
+        # You could also track resource utilization here
+        if line.line_type == 'resource':
+            log_resource_usage(line.resource, line.resource_quantity * quantity)
+Integration with Existing POS
+Extend Your SaleLine Model
+python
+class SaleLine(models.Model):
+    LINE_TYPES = (
+        ('product', 'Product'),
+        ('service', 'Service'),
+    )
+    
+    sale = models.ForeignKey('Sale', on_delete=models.CASCADE, related_name='lines')
+    line_type = models.CharField(max_length=10, choices=LINE_TYPES)
+    
+    # For product sales
+    product = models.ForeignKey('InventoryItem', on_delete=models.PROTECT, null=True, blank=True)
+    
+    # For service sales  
+    service = models.ForeignKey(ServiceItem, on_delete=models.PROTECT, null=True, blank=True)
+    resource = models.ForeignKey(Resource, on_delete=models.PROTECT, null=True, blank=True)  # Which stylist/chef
+    
+    quantity = models.DecimalField(max_digits=8, decimal_places=2)
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    
+    @property
+    def total_price(self):
+        return self.quantity * self.unit_price
+    
+    def __str__(self):
+        if self.line_type == 'product':
+            return f"{self.product.name} x {self.quantity}"
+        else:
+            return f"{self.service.name} by {self.resource.name if self.resource else 'TBD'}"

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment reminder — Zentro</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8f8f8; border-radius: 5px;">
+        <tr>
+            <td style="padding: 20px;">
+                <h1 style="color: #4a4a4a; text-align: center; margin-bottom: 20px;">Payment reminder</h1>
+                <div style="background-color: #ffffff; border-radius: 5px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <p style="margin-bottom: 20px;">Dear {{ company_name }},</p>
+                    <p style="margin-bottom: 20px;">{{ body_lead }}</p>
+                    <p style="margin-bottom: 20px;">Your access is in a grace period. Please complete payment by <strong>{{ lock_date }}</strong> ({{ days_until_lock }} day{% if days_until_lock != 1 %}s{% endif %} remaining) to avoid interruption.</p>
+                    <p style="text-align: center; margin: 30px 0;">
+                        <a href="{{ payment_url }}" style="background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">Pay now</a>
+                    </p>
+                    <p style="margin-bottom: 20px;">If you have already paid, thank you — your account will update once payment is verified.</p>
+                    <p>Best regards,<br>The Zentro Team</p>
+                </div>
+                <p style="text-align: center; font-size: 12px; color: #888; margin-top: 20px;">&copy; Zentro. All rights reserved.</p>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

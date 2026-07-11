@@ -1,0 +1,687 @@
+{% extends "base/base.html" %} {% load static %} {% load widget_tweaks %}
+<!-- prettier-ignore -->
+{% block title %} ZentroApp {% endblock %} 
+{% block content %} 
+{% include "partials/landing-navbar.html" %}
+<!-- prettier ignore -->
+<div class="min-h-screen flex flex-col">
+  <div class="flex-1 flex items-center justify-center bg-gray-50">
+    <div class="w-full max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-4 sm:py-6">
+      <div class="flex justify-center">
+        <!-- Welcome page sections -->
+        <div id="welcome-page-0" class="welcome-page-section">
+          <div class="text-center">
+            <img
+              src="{% static 'images/others/welcome.png' %}"
+              alt="Welcome"
+              class="mx-auto mb-8"
+            />
+            <h3 class="mb-2">
+              Welcome to Zentro, your modern Point of Sale solution
+            </h3>
+            <p class="text-base">
+              Let's set up your Zentro POS. This will only take a minute.
+            </p>
+            <div class="mt-8 max-w-[350px] mx-auto">
+              <button class="btn btn-solid block w-full mb-2 next-button">
+                Get started
+              </button>
+              <a href="{% url 'home:landing-page' %}">
+                <button
+                  class="btn btn-plain block w-full back-button"
+                  type="button"
+                >
+                  <span class="flex items-center justify-center">
+                    <span class="text-lg">
+                      <svg
+                        stroke="currentColor"
+                        fill="currentColor"
+                        stroke-width="0"
+                        viewBox="0 0 20 20"
+                        aria-hidden="true"
+                        height="1em"
+                        width="1em"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path
+                          fill-rule="evenodd"
+                          d="M9.707 14.707a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 1.414L7.414 9H15a1 1 0 110 2H7.414l2.293 2.293a1 1 0 010 1.414z"
+                          clip-rule="evenodd"
+                        ></path>
+                      </svg>
+                    </span>
+                    <span class="ltr:ml-1 rtl:mr-1">Back</span>
+                  </span>
+                </button>
+              </a>
+            </div>
+          </div>
+        </div>
+        <div
+          id="welcome-page-1"
+          class="welcome-page-section text-center h-full flex flex-col items-center justify-center hidden"
+        >
+          <h3 class="mb-2">Tell us about your organization</h3>
+          <div class="mt-8 max-w-[600px] lg:min-w-[600px] mx-auto">
+            <form action="#">
+              {% csrf_token %}
+              <div class="form-container vertical">
+                <div class="form-item vertical">
+                  <label class="form-label mb-2"
+                    >Name of your Company/Organization name</label
+                  >
+                  <div>
+                    <input
+                      class="input"
+                      type="text"
+                      name="company_name"
+                      id="initial-company-name"
+                      autocomplete="off"
+                      placeholder="Company Name..."
+                      hx-post="{% url 'company:is-company-existing' %}"
+                      hx-target="#company-name-status"
+                      hx-trigger="keyup[target.value.length >= 3] changed delay:1000ms"
+                      hx-swap="innerHTML"
+                      hx-ext="json-enc"
+                      hx-indicator="#company-name-spinner"
+                      minlength="3"
+                    />
+                    <div id="company-name-spinner" class="htmx-indicator">
+                      <span class="text-primary-600 text-sm font-medium"
+                        >Please wait, validating...</span
+                      >
+                    </div>
+                    <span
+                      id="company-name-status"
+                      class="block mt-2 text-sm font-medium pl-2 min-h-[1.25rem]"
+                    ></span>
+                  </div>
+                </div>
+                <div class="form-item vertical">
+                  <label class="form-label mb-2"
+                    >Size of your organization</label
+                  >
+                  <!-- prettier-ignore -->
+                  {% render_field form.company_size class="input" name="organization-size" id="organization-size" disabled=True %}
+                </div>
+                <div class="form-item vertical">
+                  <label class="form-label"></label>
+                  <div>
+                    <button
+                      class="btn btn-solid block w-full mb-2 next-button"
+                      type="button"
+                      id="continue-btn"
+                      disabled
+                    >
+                      Continue
+                    </button>
+                    <button
+                      class="btn btn-plain block w-full back-button"
+                      type="button"
+                    >
+                      <span class="flex items-center justify-center">
+                        <span class="text-lg">
+                          <svg
+                            stroke="currentColor"
+                            fill="currentColor"
+                            stroke-width="0"
+                            viewBox="0 0 20 20"
+                            aria-hidden="true"
+                            height="1em"
+                            width="1em"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                              fill-rule="evenodd"
+                              d="M9.707 14.707a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 1.414L7.414 9H15a1 1 0 110 2H7.414l2.293 2.293a1 1 0 010 1.414z"
+                              clip-rule="evenodd"
+                            ></path>
+                          </svg>
+                        </span>
+                        <span class="ltr:ml-1 rtl:mr-1">Back</span>
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+        <div
+          id="welcome-page-2"
+          class="welcome-page-section text-center h-full flex flex-col items-center justify-center hidden"
+        >
+          <div class="text-center">
+            <h3 class="mb-2">What is your main objective with Zentro?</h3>
+            <div class="mt-8 max-w-[600px] lg:min-w-[600px] mx-auto">
+              <form action="#">
+                <div class="form-container vertical">
+                  <div class="form-item vertical">
+                    <label class="form-label"></label>
+                    <div>
+                      <div class="segment">
+                        <div class="w-full">
+                          <!-- prettier-ignore -->
+                          {% for objective in business_objectives %}
+                          <div
+                            class="next-button selection-option flex justify-between items-center border rounded-md border-gray-200 dark:border-gray-600 py-5 px-4 cursor-pointer select-none w-100 hover:ring-1 hover:ring-primary-600 hover:border-primary-600 mb-4 bg-white dark:bg-gray-800"
+                            data-objective="{{ objective.system_id }}"
+                            onclick="handleSelection(this, 'objective')"
+                          >
+                            <div class="flex items-center gap-3">
+                              <span class="text-2xl">
+                                <svg
+                                  stroke="currentColor"
+                                  fill="none"
+                                  stroke-width="2"
+                                  viewBox="0 0 24 24"
+                                  aria-hidden="true"
+                                  height="1em"
+                                  width="1em"
+                                >
+                                  <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="{{ objective.icon_path }}"
+                                  ></path>
+                                </svg>
+                              </span>
+
+                              <h6>{{ objective.description }}</h6>
+                            </div>
+                          </div>
+                          {% endfor %}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    class="btn btn-plain block w-full back-button"
+                    type="button"
+                  >
+                    <span class="flex items-center justify-center">
+                      <span class="text-lg">
+                        <svg
+                          stroke="currentColor"
+                          fill="currentColor"
+                          stroke-width="0"
+                          viewBox="0 0 20 20"
+                          aria-hidden="true"
+                          height="1em"
+                          width="1em"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            fill-rule="evenodd"
+                            d="M9.707 14.707a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 1.414L7.414 9H15a1 1 0 110 2H7.414l2.293 2.293a1 1 0 010 1.414z"
+                            clip-rule="evenodd"
+                          ></path>
+                        </svg>
+                      </span>
+                      <span class="ltr:ml-1 rtl:mr-1">Back</span>
+                    </span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+        <div
+          id="welcome-page-3"
+          class="welcome-page-section text-center h-full flex flex-col items-center justify-center hidden"
+        >
+          <div class="text-center">
+            <h3 class="mb-2">What Business Category are you in?</h3>
+            <div class="mt-8 max-w-[600px] lg:min-w-[600px] mx-auto">
+              <form action="classic-welcome.html#">
+                <div class="form-container vertical">
+                  <div class="form-item vertical">
+                    <label class="form-label"></label>
+                    <div>
+                      <div class="segment">
+                        <div class="grid grid-cols-2 gap-4 w-full">
+                          {% for category in business_categories %}
+                          <div
+                            class="next-button selection-option flex justify-between items-center border rounded-md border-gray-200 dark:border-gray-600 py-5 px-4 cursor-pointer select-none w-100 hover:ring-1 hover:ring-primary-600 hover:border-primary-600 bg-white dark:bg-gray-800"
+                            data-category="{{ category.system_id }}"
+                            onclick="handleSelection(this, 'category')"
+                          >
+                            <div class="flex items-center gap-3">
+                              <span class="text-2xl">
+                                <svg
+                                  stroke="currentColor"
+                                  fill="none"
+                                  stroke-width="2"
+                                  viewBox="0 0 24 24"
+                                  aria-hidden="true"
+                                  height="1em"
+                                  width="1em"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                >
+                                  <path
+                                    stroke-linecap="{{ category.icon_type }}"
+                                    stroke-linejoin="round"
+                                    d="{{ category.icon_path }}"
+                                  ></path>
+                                </svg>
+                              </span>
+                              <h6>{{ category.name }}</h6>
+                            </div>
+                          </div>
+                          {% endfor %}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    class="btn btn-plain block w-full back-button"
+                    type="button"
+                  >
+                    <span class="flex items-center justify-center">
+                      <span class="text-lg">
+                        <svg
+                          stroke="currentColor"
+                          fill="currentColor"
+                          stroke-width="0"
+                          viewBox="0 0 20 20"
+                          aria-hidden="true"
+                          height="1em"
+                          width="1em"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            fill-rule="evenodd"
+                            d="M9.707 14.707a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 1.414L7.414 9H15a1 1 0 110 2H7.414l2.293 2.293a1 1 0 010 1.414z"
+                            clip-rule="evenodd"
+                          ></path>
+                        </svg>
+                      </span>
+                      <span class="ltr:ml-1 rtl:mr-1">Back</span>
+                    </span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+        <div
+          id="welcome-page-4"
+          class="welcome-page-section h-full flex flex-col items-center justify-center hidden"
+        >
+          <div>
+            <h3 class="mb-2 text-center">
+              <span>🚀 Let's get you set up with</span>
+              <span class="text-indigo-600">Zentro</span>
+            </h3>
+            <div class="mt-8 max-w-[800px] lg:min-w-[800px]">
+              <div class="card mb-4 card-layout-frame" role="presentation">
+                <div class="card-body">
+                  <div class="md:flex items-center md:justify-between gap-4">
+                    <div class="flex items-center gap-4">
+                      <span
+                        class="font-semibold text-xl rounded-full border-2 min-w-[30px] h-[30px] flex items-center justify-center border-indigo-600 text-indigo-600"
+                        >1</span
+                      >
+                      <div>
+                        <h5>Complete your Company Information</h5>
+                        <p>Fill in your information to complete your account</p>
+                      </div>
+                    </div>
+                    <button
+                      id="fill-now-btn"
+                      class="btn btn-solid btn-sm mt-4 md:mt-0"
+                      data-bs-toggle="modal"
+                      data-bs-target="#company-information-modal"
+                    >
+                      Fill now
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="card mb-4 card-layout-frame" role="presentation">
+                <div class="card-body">
+                  <div class="md:flex items-center md:justify-between gap-4">
+                    <div class="flex items-center gap-4">
+                      <span id="success-icon" class="text-3xl text-gray-400">
+                        <svg
+                          stroke="currentColor"
+                          fill="none"
+                          stroke-width="2"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                          height="1em"
+                          width="1em"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                          ></path>
+                        </svg>
+                      </span>
+                      <div>
+                        <h5>Setup Completed Successfully</h5>
+                        <p>Proceed to login to your account</p>
+                      </div>
+                    </div>
+                    <a href="{% url 'authentication:login' %}">
+                      <button
+                        id="login-now-btn"
+                        class="btn btn-solid btn-sm mt-4 md:mt-0"
+                        disabled
+                      >
+                        Login Now
+                      </button>
+                    </a>
+                  </div>
+                </div>
+              </div>
+              <button
+                class="btn btn-plain block w-full back-button"
+                type="button"
+                id="latest-back-btn"
+              >
+                <span class="flex items-center justify-center">
+                  <span class="text-lg">
+                    <svg
+                      stroke="currentColor"
+                      fill="currentColor"
+                      stroke-width="0"
+                      viewBox="0 0 20 20"
+                      aria-hidden="true"
+                      height="1em"
+                      width="1em"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        fill-rule="evenodd"
+                        d="M9.707 14.707a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 1.414L7.414 9H15a1 1 0 110 2H7.414l2.293 2.293a1 1 0 010 1.414z"
+                        clip-rule="evenodd"
+                      ></path>
+                    </svg>
+                  </span>
+                  <span class="ltr:ml-1 rtl:mr-1">Back</span>
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- Add these hidden inputs after your forms -->
+<input type="hidden" id="selected-category" name="selected_category" value="" />
+<input
+  type="hidden"
+  id="selected-objective"
+  name="selected_objective"
+  value=""
+/>
+
+<!-- Modal -->
+<!-- Company Information Modal -->
+<div
+  id="company-information-modal"
+  class="modal fade"
+  tabindex="-1"
+  aria-hidden="true"
+>
+  <div
+    class="modal-dialog dialog mx-auto md:max-w-[700px]"
+    style="margin-top: 125px"
+  >
+    <form id="company-setup-form" method="POST">
+      {% csrf_token %}
+      <div class="dialog-content">
+        <!-- Close Button -->
+        <span
+          class="close-btn absolute top-4 right-4 z-10 cursor-pointer hover:text-gray-600"
+          role="button"
+          data-bs-dismiss="modal"
+        >
+          <svg
+            stroke="currentColor"
+            fill="currentColor"
+            stroke-width="0"
+            viewBox="0 0 20 20"
+            aria-hidden="true"
+            height="1em"
+            width="1em"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+              clip-rule="evenodd"
+            ></path>
+          </svg>
+        </span>
+
+        <!-- Modal Title -->
+        <h5 class="mb-4">Complete Company Information</h5>
+
+        <!-- Add progress bar here -->
+        <div id="setup-progress" class="mb-4 hidden">
+          <div class="progress line">
+            <div class="progress-wrapper">
+              <div class="progress-inner">
+                <div
+                  id="progress-bar"
+                  class="progress-bg h-1.5 bg-primary-600"
+                  style="width: 0%"
+                ></div>
+              </div>
+            </div>
+            <span id="progress-percentage" class="progress-info line">0%</span>
+          </div>
+          <p
+            id="setup-status"
+            class="text-sm text-gray-600 mt-2 text-center"
+          ></p>
+        </div>
+
+        <div class="form-container vertical">
+          <!-- Company Details Section -->
+          <div class="grid grid-cols-2 gap-4">
+            <div class="form-item vertical">
+              <label class="form-label mb-2">Company Name</label>
+              <div>
+                <!-- prettier-ignore -->
+                {% render_field company_form.name class="input" id="modal-company-name" readonly=True %}
+              </div>
+            </div>
+            <div class="form-item vertical">
+              <label class="form-label mb-2">Address</label>
+              <div>
+                <!-- prettier-ignore -->
+                {% render_field company_form.address class="input" id="modal-company-address" %}
+              </div>
+            </div>
+          </div>
+
+          <!-- Authentication Section -->
+          <div class="mt-6 mb-2">
+            <h6 class="text-sm font-semibold">Account Credentials</h6>
+            <hr class="my-2" />
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="form-item vertical">
+              <label class="form-label mb-2">Email</label>
+              <div>
+                <!-- prettier-ignore -->
+                {% render_field company_form.email class="input" id="modal-company-email" %}
+                <span
+                  id="email-error"
+                  class="text-red-500 text-sm mt-1 hidden"
+                ></span>
+              </div>
+            </div>
+            <div class="form-item vertical">
+              <label class="form-label mb-2">Contact Number</label>
+              <div>
+                <!-- prettier-ignore -->
+                {% render_field company_form.phone class="input" id="modal-company-phone" pattern="[0-9]{10,}" type="tel" maxlength="10" %}
+                <span
+                  id="phone-error"
+                  class="text-red-500 text-sm mt-1 hidden"
+                ></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4 mt-4">
+            <div class="form-item vertical">
+              <label class="form-label mb-2">Password</label>
+              <div>
+                <span class="input-wrapper">
+                  <input
+                    class="input"
+                    name="password"
+                    id="modal-company-password"
+                    placeholder="Enter password"
+                    type="password"
+                    required
+                  />
+                  <div class="input-suffix-end">
+                    <span class="password-toggle cursor-pointer text-xl">
+                      <svg
+                        class="show-password-icon"
+                        stroke="currentColor"
+                        fill="none"
+                        stroke-width="2"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                        height="1em"
+                        width="1em"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+                        ></path>
+                      </svg>
+
+                      <span class="hide-password-icon hidden">
+                        <svg
+                          stroke="currentColor"
+                          fill="none"
+                          stroke-width="2"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                          height="1em"
+                          width="1em"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                          ></path>
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                          ></path>
+                        </svg>
+                      </span>
+                    </span>
+                  </div>
+                </span>
+                <span
+                  id="password-error"
+                  class="text-red-500 text-sm mt-1 hidden"
+                ></span>
+              </div>
+            </div>
+            <div class="form-item vertical">
+              <label class="form-label mb-2">Confirm Password</label>
+              <div>
+                <span class="input-wrapper">
+                  <input
+                    class="input"
+                    name="confirm-password"
+                    id="modal-company-confirm-password"
+                    placeholder="Confirm password"
+                    type="password"
+                    required
+                  />
+                  <div class="input-suffix-end">
+                    <span
+                      class="confirm-password-toggle cursor-pointer text-xl"
+                    >
+                      <svg
+                        class="show-password-icon"
+                        stroke="currentColor"
+                        fill="none"
+                        stroke-width="2"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                        height="1em"
+                        width="1em"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+                        ></path>
+                      </svg>
+
+                      <span class="hide-password-icon hidden">
+                        <svg
+                          stroke="currentColor"
+                          fill="none"
+                          stroke-width="2"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                          height="1em"
+                          width="1em"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                          ></path>
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                          ></path>
+                        </svg>
+                      </span>
+                    </span>
+                  </div>
+                </span>
+                <span
+                  id="confirm-password-error"
+                  class="text-red-500 text-sm mt-1 hidden"
+                ></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Submit Button -->
+          <div class="mt-6">
+            <button
+              type="submit"
+              class="btn btn-solid w-full"
+              id="complete-setup-btn"
+              disabled
+            >
+              Complete Setup
+            </button>
+          </div>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %} {% block scripts %}
+<script src="{% static 'js/pages/welcome.js' %}"></script>
+<script src="{% static 'js/app/onboarding.js' %}"></script>
+{% endblock %}

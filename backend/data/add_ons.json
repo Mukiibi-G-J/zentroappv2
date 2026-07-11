@@ -1,0 +1,47 @@
+[
+  {
+    "model": "company.addon",
+    "pk": 1,
+    "fields": {
+      "code": "restaurant",
+      "name": "Restaurant Module",
+      "price": 25000,
+      "description": "Perfect for food & beverage businesses",
+      "is_per_unit": false,
+      "is_active": true,
+      "order": 1,
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "company.addon",
+    "pk": 2,
+    "fields": {
+      "code": "efris",
+      "name": "EFRIS Integration",
+      "price": 80000,
+      "description": "Seamless compliance with Uganda Revenue Authority. Included free in Pro plan.",
+      "is_per_unit": false,
+      "is_active": true,
+      "order": 2,
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "company.addon",
+    "pk": 3,
+    "fields": {
+      "code": "extra_users",
+      "name": "Extra Active Users",
+      "price": 10000,
+      "description": "Per additional user (one-time), for any plan",
+      "is_per_unit": true,
+      "is_active": true,
+      "order": 3,
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    }
+  }
+]

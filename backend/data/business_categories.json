@@ -1,0 +1,80 @@
+[
+  {
+    "model": "company.businesscategory",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z",
+      "system_id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "Others",
+      "icon_path": "M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z",
+      "icon_type": "outline",
+      "is_active": true
+    }
+  },
+  {
+    "model": "company.businesscategory",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z",
+      "system_id": "550e8400-e29b-41d4-a716-446655440001",
+      "name": "Production",
+      "icon_path": "M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12",
+      "icon_type": "outline",
+      "is_active": true
+    }
+  },
+  {
+    "model": "company.businesscategory",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z",
+      "system_id": "550e8400-e29b-41d4-a716-446655440002",
+      "name": "Service",
+      "icon_path": "M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z",
+      "icon_type": "outline",
+      "is_active": true
+    }
+  },
+  {
+    "model": "company.businesscategory",
+    "pk": 4,
+    "fields": {
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z",
+      "system_id": "550e8400-e29b-41d4-a716-446655440003",
+      "name": "Retail",
+      "icon_path": "M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z",
+      "icon_type": "outline",
+      "is_active": true
+    }
+  },
+  {
+    "model": "company.businesscategory",
+    "pk": 5,
+    "fields": {
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z",
+      "system_id": "550e8400-e29b-41d4-a716-446655440004",
+      "name": "Healthcare",
+      "icon_path": "M19 14l-7 7m0 0l-7-7m7 7V3",
+      "icon_type": "outline",
+      "is_active": true
+    }
+  },
+  {
+    "model": "company.businesscategory",
+    "pk": 6,
+    "fields": {
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z",
+      "system_id": "550e8400-e29b-41d4-a716-446655440005",
+      "name": "Manufacturing",
+      "icon_path": "M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z",
+      "icon_type": "outline",
+      "is_active": true
+    }
+  }
+]

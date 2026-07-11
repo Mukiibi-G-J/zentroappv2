@@ -1,0 +1,2688 @@
+import time
+import logging
+import os
+import json
+import re
+from urllib.parse import urlparse
+from datetime import datetime, timedelta
+
+from celery import shared_task, current_task
+from django.db import transaction, IntegrityError
+from django.db.models import Q
+from django_tenants.utils import schema_exists, schema_context
+from django.conf import settings
+from django_tenants.utils import get_tenant_model
+from django.db import connection
+from helpers.helpers import (
+    send_email,
+    send_plain_sms,
+    setup_default_no_series,
+)
+from helpers.send_email import send_transactional_email
+from django.template.loader import render_to_string
+from django.core.management import call_command
+from django_tenants.utils import tenant_context
+from celery.utils.log import get_task_logger
+from django.core.management.base import OutputWrapper
+from django.core.management.color import color_style
+from django.utils.html import strip_tags
+from io import StringIO
+from redis.exceptions import ConnectionError as RedisConnectionError
+from celery.exceptions import MaxRetriesExceededError
+from django.utils import timezone
+from company.enums import SubscriptionStatus
+from .models import (
+    Company,
+    Domain,
+    CompanyOnBoarding,
+    BusinessCategory,
+    BusinessObjective,
+    Subscription,
+    BillingHistory,
+    BillingExpiryReminder,
+    ensure_debug_admin_for_schema,
+)
+from company.enums import SubscriptionPlan
+from company.subscription_billing import (
+    parse_billing_period_from_metadata,
+    subscription_period_end_inclusive,
+)
+from company.tenant_import import run_tenant_data_import
+
+from authentication.models import CustomUser as User, Role
+from items.models import Location
+
+from purchases.models import PurchasePayable
+from sales.models import SalesReceivable
+from setup.models import NoSeriesLines, NoSeries
+from purchases.models import Vendor, VendorPostingGroup
+from sales.models import Customer, CustomerPostingGroup
+from financials.models import PaymentMethod, G_LAccount
+from postings.models import GeneralBusinessPostingGroup, GeneralPostingSetup
+from postings.models import InventoryPostingSetup
+from sales.enums import CustomerType
+
+logger = get_task_logger(__name__)
+DEBUG_ADMIN_USERNAME = getattr(settings, "DEBUG_ADMIN_USERNAME", "debug_admin")
+
+
+def generate_unique_username_for_tenant(full_name: str) -> str:
+    """Derive a unique username from full name (tenant User queryset)."""
+    raw = (full_name or "user").lower().strip()
+    base = re.sub(r"[^a-z0-9]+", "_", raw).strip("_")[:25]
+    if not base:
+        base = "user"
+    candidate = base
+    counter = 1
+    while User.objects.filter(username=candidate).exists():
+        suffix = f"_{counter}"
+        room = max(30 - len(suffix), 1)
+        candidate = f"{base[:room]}{suffix}"
+        counter += 1
+        if counter > 9999:
+            candidate = f"user_{counter}"
+            break
+    return candidate
+
+
+
+
+
+def create_default_roles(schema_name):
+    """Create default user roles for a new company"""
+    try:
+        with schema_context(schema_name):
+            default_roles = [
+                {
+                    "name": "Admin",
+                    "description": "Full system administrator with complete access to all features and settings",
+                    "permissions": ["all"],
+                    "is_active": True,
+                },
+                {
+                    "name": "Manager",
+                    "description": "Business manager with comprehensive access to reports, user management, and business settings",
+                    "permissions": [
+                        # Core System
+                        "view_dashboard",
+                        "view_profile",
+                        "edit_profile",
+                        # Sales
+                        "view_sales",
+                        "create_sales",
+                        "edit_sales",
+                        "view_sales_history",
+                        "create_sales_invoice",
+                        # Purchases
+                        "view_purchases",
+                        "create_purchases",
+                        "edit_purchases",
+                        "view_purchase_history",
+                        # Items
+                        "view_items",
+                        "create_items",
+                        "edit_items",
+                        "manage_item_categories",
+                        # Inventory
+                        "view_inventory",
+                        "adjust_inventory",
+                        "view_inventory_history",
+                        # Customers
+                        "view_customers",
+                        "create_customers",
+                        "edit_customers",
+                        # Vendors
+                        "view_vendors",
+                        "create_vendors",
+                        "edit_vendors",
+                        # Expenses
+                        "view_expenses",
+                        "create_expenses",
+                        "edit_expenses",
+                        "view_expense_history",
+                        # Payments
+                        "view_payments",
+                        "create_payments",
+                        "edit_payments",
+                        "view_payment_history",
+                        # Financials
+                        "view_financials",
+                        "create_financials",
+                        "edit_financials",
+                        "view_chart_of_accounts",
+                        "view_profit_loss",
+                        "view_balance_sheet",
+                        # Reports
+                        "view_reports",
+                        "export_reports",
+                        "create_custom_reports",
+                        # User Management
+                        "manage_users",
+                        "manage_roles",
+                        "view_user_activity",
+                        # Company Management
+                        "view_company",
+                        "edit_company",
+                        "manage_company_settings",
+                        # Configuration
+                        "view_settings",
+                        "edit_settings",
+                        # Subscription
+                        "view_subscription",
+                        "manage_subscription",
+                    ],
+                    "is_active": True,
+                },
+                {
+                    "name": "Sales",
+                    "description": "Sales staff with access to sales, customers, and basic reporting",
+                    "permissions": [
+                        # Core System
+                        "view_dashboard",
+                        "view_profile",
+                        "edit_profile",
+                        # Sales
+                        "view_sales",
+                        "create_sales",
+                        "edit_sales",
+                        "view_sales_history",
+                        "create_sales_invoice",
+                        # Customers
+                        "view_customers",
+                        "create_customers",
+                        "edit_customers",
+                        # Items
+                        "view_items",
+                        # Inventory
+                        "view_inventory",
+                        # Reports
+                        "view_reports",
+                        "export_reports",
+                    ],
+                    "is_active": True,
+                },
+                {
+                    "name": "Cashier",
+                    "description": "Cashier with access to sales transactions and basic customer management",
+                    "permissions": [
+                        # Core System
+                        "view_dashboard",
+                        "view_profile",
+                        "edit_profile",
+                        # Sales
+                        "view_sales",
+                        "create_sales",
+                        "view_sales_history",
+                        # Customers
+                        "view_customers",
+                        "create_customers",
+                        # Items
+                        "view_items",
+                        # Inventory
+                        "view_inventory",
+                        # Reports
+                        "view_reports",
+                    ],
+                    "is_active": True,
+                },
+                {
+                    "name": "Inventory",
+                    "description": "Inventory manager with access to stock management and purchasing",
+                    "permissions": [
+                        # Core System
+                        "view_dashboard",
+                        "view_profile",
+                        "edit_profile",
+                        # Items
+                        "view_items",
+                        "create_items",
+                        "edit_items",
+                        "manage_item_categories",
+                        "manage_item_units",
+                        # Inventory
+                        "view_inventory",
+                        "adjust_inventory",
+                        "view_inventory_history",
+                        "manage_inventory_tracking",
+                        # Purchases
+                        "view_purchases",
+                        "create_purchases",
+                        "edit_purchases",
+                        "view_purchase_history",
+                        # Vendors
+                        "view_vendors",
+                        "create_vendors",
+                        "edit_vendors",
+                        # Reports
+                        "view_reports",
+                        "export_reports",
+                    ],
+                    "is_active": True,
+                },
+                {
+                    "name": "Accountant",
+                    "description": "Accountant with access to financial records, reports, and accounting features",
+                    "permissions": [
+                        # Core System
+                        "view_dashboard",
+                        "view_profile",
+                        "edit_profile",
+                        # Financials
+                        "view_financials",
+                        "create_financials",
+                        "edit_financials",
+                        "view_chart_of_accounts",
+                        "manage_chart_of_accounts",
+                        "view_profit_loss",
+                        "view_balance_sheet",
+                        # Sales
+                        "view_sales",
+                        "view_sales_history",
+                        # Purchases
+                        "view_purchases",
+                        "view_purchase_history",
+                        # Items
+                        "view_items",
+                        # Inventory
+                        "view_inventory",
+                        "view_inventory_history",
+                        # Expenses
+                        "view_expenses",
+                        "create_expenses",
+                        "edit_expenses",
+                        "view_expense_history",
+                        # Payments
+                        "view_payments",
+                        "create_payments",
+                        "edit_payments",
+                        "view_payment_history",
+                        "manage_payment_methods",
+                        # Reports
+                        "view_reports",
+                        "export_reports",
+                        "create_custom_reports",
+                    ],
+                    "is_active": True,
+                },
+                {
+                    "name": "User",
+                    "description": "Basic user with limited access to view-only features",
+                    "permissions": [
+                        # Core System
+                        "view_dashboard",
+                        "view_profile",
+                        "edit_profile",
+                        # Sales
+                        "view_sales",
+                        # Customers
+                        "view_customers",
+                        # Items
+                        "view_items",
+                        # Inventory
+                        "view_inventory",
+                        # Reports
+                        "view_reports",
+                    ],
+                    "is_active": True,
+                },
+            ]
+
+            created_roles = []
+            for role_data in default_roles:
+                role, created = Role.objects.get_or_create(
+                    name=role_data["name"],
+                    defaults={
+                        "description": role_data["description"],
+                        "permissions": role_data["permissions"],
+                        "is_active": role_data["is_active"],
+                    },
+                )
+                if created:
+                    created_roles.append(role.name)
+                    logger.info(f"Created role: {role.name}")
+
+            logger.info(
+                f"Successfully created {len(created_roles)} roles: {', '.join(created_roles)}"
+            )
+            return created_roles
+
+    except Exception as e:
+        logger.error(f"Error creating default roles: {str(e)}")
+        raise e
+
+
+def update_task_progress(self, progress, message, status):
+    """Helper function to update task progress with proper error handling"""
+    try:
+        self.update_state(
+            state="PROGRESS",
+            meta={
+                "progress": progress,
+                "message": message,
+                "status": status,
+            },
+        )
+        # Remove the small delay for solo pool on Windows
+        # time.sleep(0.1)  # This can cause issues with solo pool
+    except Exception as e:
+        logger.warning(f"Failed to update task state: {e}")
+
+
+def _log_company_creation_phase(phase: str, t_start: float, last_mark: list) -> None:
+    """Structured timing for create_company_task (grep logs for company_creation_timing)."""
+    now = time.perf_counter()
+    logger.info(
+        "company_creation_timing phase=%s elapsed_total_s=%.3f phase_delta_s=%.3f",
+        phase,
+        now - t_start,
+        now - last_mark[0],
+    )
+    last_mark[0] = now
+
+
+@shared_task(bind=False, ignore_result=True)
+def send_company_creation_admin_sms_task(
+    company_name: str, full_name: str, phone: str
+) -> None:
+    notify_phone = "256750440865"
+    msg = (
+        f"ZentroApp: Company created. Company: {company_name}. "
+        f"Created by: {full_name}. Phone: {phone}."
+    )
+    try:
+        send_plain_sms(notify_phone, msg)
+        logger.info("Company-created SMS sent to %s for %s", notify_phone, company_name)
+    except Exception as sms_err:
+        logger.warning("Could not send company-created SMS: %s", sms_err, exc_info=True)
+
+
+@shared_task(bind=False, ignore_result=True)
+def send_company_creation_completion_email_task(
+    company_email: str, company_name: str, login_url: str
+) -> None:
+    if not (company_email or "").strip():
+        logger.warning("Company has no email; skipping completion email task")
+        return
+    try:
+        subject = f"Your {company_name} account is ready on Zentro"
+        html = render_to_string(
+            "emails/company_creation_completed.html",
+            {
+                "company_name": company_name,
+                "login_url": login_url,
+            },
+        )
+        plain = strip_tags(html)
+        sent = send_transactional_email(
+            company_email, subject, html, plain_message=plain
+        )
+        if sent:
+            logger.info(
+                "Company-creation completion email sent to %s",
+                company_email,
+            )
+        else:
+            logger.warning(
+                "Failed to send company-creation completion email to %s",
+                company_email,
+            )
+    except Exception as completion_email_error:
+        logger.warning(
+            "Could not send company-creation completion email: %s",
+            completion_email_error,
+            exc_info=True,
+        )
+
+
+@shared_task(bind=True, max_retries=3)
+def create_company_task(self, data):
+    """
+    Alternative approach: Use Celery's countdown for delays
+    Instead of time.sleep(), you can chain tasks with countdown:
+
+    # Example:
+    # create_company_task.apply_async(args=[data], countdown=2)
+    # This will delay the task execution by 2 seconds
+    """
+    try:
+        # Validate required fields
+        required_fields = [
+            "name",
+            "email",
+            "phone",
+            "address",
+            "country",
+            "full_name",
+            "password",
+            "organization_size",
+            "business_category",
+            "business_objective",
+        ]
+
+        for field in required_fields:
+            if field not in data or not data[field]:
+                raise ValueError(f"Missing required field: {field}")
+
+        t_start = time.perf_counter()
+        phase_mark = [t_start]
+        _log_company_creation_phase("validation_complete", t_start, phase_mark)
+
+        # Initial status
+        update_task_progress(self, 10, "Validating data...", "validating")
+
+        schema_name = data["name"].lower()
+        if not schema_name.replace("_", "").isalnum():
+            raise ValueError("Schema name must be alphanumeric")
+
+        domain_suffix = (
+            "localhost"
+            if settings.ENVIRONMENT == "development"
+            else "zentroapp-backend.com"
+        )
+        full_domain = f"{schema_name}.{domain_suffix}"
+
+        with schema_context("public"):
+            if Company.objects.filter(schema_name=schema_name).exists():
+                raise ValueError(
+                    f"A company with the name '{data['name']}' already exists."
+                )
+            if Domain.objects.filter(domain=full_domain).exists():
+                raise ValueError(f"The domain '{full_domain}' is already taken.")
+
+        update_task_progress(self, 20, "Creating company...", "creating_company")
+
+        onboarding_data = {
+            "organization_size": str(data["organization_size"]),
+            "business_category": str(data["business_category"]),
+            "business_objective": str(data["business_objective"]),
+        }
+
+        with schema_context("public"):
+            try:
+                company = Company.objects.create(
+                    name=data["name"],
+                    domain_url=full_domain,
+                    schema_name=schema_name,
+                    address=data["address"],
+                    phone=data["phone"],
+                    email=data["email"],
+                    city=data.get("city") or None,
+                    country=data["country"],
+                    onboarding_data=onboarding_data,  # Store as JSON
+                    enabled_modules=["pos"],  # POS is the base module and required
+                )
+                # django-tenants runs full tenant migrations on Company.save (auto_create_schema=True).
+                _log_company_creation_phase(
+                    "tenant_schema_and_migrations_done", t_start, phase_mark
+                )
+
+                update_task_progress(
+                    self, 40, "Setting up domain...", "setting_domain"
+                )
+
+                # Create domain
+                Domain.objects.create(
+                    domain=full_domain,
+                    tenant=company,
+                    is_primary=True,
+                )
+            except IntegrityError as exc:
+                logger.warning(
+                    "Duplicate company or domain during create (race or concurrent signup): %s",
+                    exc,
+                )
+                raise ValueError(
+                    f"A company with the name '{data['name']}' already exists "
+                    "or registration is already in progress. Please choose a different name."
+                ) from exc
+
+            _log_company_creation_phase(
+                "company_and_domain_created", t_start, phase_mark
+            )
+
+            update_task_progress(
+                self, 60, "Creating admin user...", "creating_user"
+            )
+
+            # Remove delay - handled on frontend
+            # time.sleep(2)
+
+            with schema_context(company.schema_name), transaction.atomic():
+                try:
+                    password = data.get("password") or ""
+                    if not password or not str(password).strip():
+                        raise ValueError("Password is required and cannot be blank")
+
+                    from dimension.setup import (
+                        DEFAULT_FIRST_BRANCH_CODE,
+                        DEFAULT_FIRST_BRANCH_DESCRIPTION,
+                        ensure_default_branch_dimension_and_gl_setup,
+                    )
+
+                    branch_setup = ensure_default_branch_dimension_and_gl_setup(
+                        default_branch_value_code=DEFAULT_FIRST_BRANCH_CODE,
+                        default_branch_value_description=DEFAULT_FIRST_BRANCH_DESCRIPTION,
+                    )
+
+                    admin_username = generate_unique_username_for_tenant(
+                        data["full_name"]
+                    )
+                    user = User.objects.create_superuser(
+                        email=data["email"],
+                        username=admin_username,
+                        full_name=data["full_name"],
+                        phone_number=data["phone"],
+                        password=password,
+                        is_verified=False,
+                    )
+
+                    # Location.code must match BRANCH DimensionValue.code.
+                    # Inventory journals resolve location from branch, not raw address text.
+                    branch_value = branch_setup["default_branch_value"]
+                    Location.objects.create(
+                        code=branch_value.code,
+                        description=branch_value.description,
+                        address=(data.get("address") or "").strip(),
+                        city=data.get("city") or "",
+                        phone=data["phone"],
+                        email=data["email"],
+                    )
+
+                    user.global_dimension_1 = branch_value
+                    user.save(update_fields=["global_dimension_1"])
+
+                    send_company_creation_admin_sms_task.delay(
+                        company_name=company.name,
+                        full_name=data["full_name"],
+                        phone=data["phone"],
+                    )
+
+                    _log_company_creation_phase(
+                        "after_admin_user_bootstrap", t_start, phase_mark
+                    )
+
+                    # Create default roles
+                    update_task_progress(
+                        self, 68, "Creating default roles...", "creating_roles"
+                    )
+
+                    try:
+                        created_roles = create_default_roles(company.schema_name)
+                        logger.info(
+                            f"Created roles for {company.name}: {', '.join(created_roles)}"
+                        )
+
+                        # Create default role centers
+                        update_task_progress(
+                            self,
+                            69,
+                            "Creating default role centers...",
+                            "creating_role_centers",
+                        )
+
+                        try:
+                            # Call setup_default_role_centers command
+                            output_buffer = StringIO()
+                            output_wrapper = OutputWrapper(output_buffer, ending="")
+
+                            call_command(
+                                "setup_default_role_centers",
+                                stdout=output_wrapper,
+                                stderr=output_wrapper,
+                                verbosity=0,
+                            )
+
+                            role_center_output = output_buffer.getvalue()
+                            output_buffer.close()
+                            logger.info(
+                                f"Created default role centers for {company.name}"
+                            )
+                        except Exception as rc_error:
+                            logger.error(
+                                f"Error creating role centers: {str(rc_error)}"
+                            )
+                            # Don't fail if role center creation fails
+
+                        # NEW: Create Page Objects for permission system
+                        update_task_progress(
+                            self,
+                            70,
+                            "Setting up page objects...",
+                            "creating_page_objects",
+                        )
+
+                        try:
+                            output_buffer = StringIO()
+                            output_wrapper = OutputWrapper(output_buffer, ending="")
+
+                            call_command(
+                                "populate_page_objects",
+                                stdout=output_wrapper,
+                                stderr=output_wrapper,
+                                verbosity=0,
+                            )
+
+                            output_buffer.close()
+                            logger.info(f"Created page objects for {company.name}")
+                        except Exception as po_error:
+                            logger.error(
+                                f"Error creating page objects: {str(po_error)}"
+                            )
+                            # Don't fail if page objects creation fails
+
+                        # NEW: Setup Permission Sets
+                        update_task_progress(
+                            self,
+                            71,
+                            "Setting up permission sets...",
+                            "creating_permission_sets",
+                        )
+
+                        try:
+                            output_buffer = StringIO()
+                            output_wrapper = OutputWrapper(output_buffer, ending="")
+
+                            call_command(
+                                "setup_page_permissions",
+                                stdout=output_wrapper,
+                                stderr=output_wrapper,
+                                verbosity=0,
+                            )
+
+                            output_buffer.close()
+                            logger.info(
+                                f"Created permission sets for {company.name}"
+                            )
+                        except Exception as ps_error:
+                            logger.error(
+                                f"Error creating permission sets: {str(ps_error)}"
+                            )
+                            # Don't fail if permission sets creation fails
+
+                        # Seed Mobile Money Account (G/L Account 2930)
+                        update_task_progress(
+                            self,
+                            71.75,
+                            "Seeding mobile money account...",
+                            "seeding_mobile_money_account",
+                        )
+                        try:
+                            call_command(
+                                "seed_mobile_money_account",
+                                schema=company.schema_name,
+                            )
+                            logger.info(
+                                f"Seeded mobile money account for {company.name}"
+                            )
+                        except Exception as mm_error:
+                            logger.error(
+                                f"Error seeding mobile money account: {str(mm_error)}"
+                            )
+
+                        # Seed Mobile Money Bank Accounts (MTN_MONEY and AIRTEL_MONEY)
+                        # Must run after seed_mobile_money_account as it depends on G/L Account 2930
+                        update_task_progress(
+                            self,
+                            71.77,
+                            "Seeding mobile money bank accounts...",
+                            "seeding_mobile_money_bank_accounts",
+                        )
+                        try:
+                            call_command("seed_mobile_money_bank_accounts")
+                            logger.info(
+                                f"Seeded mobile money bank accounts for {company.name}"
+                            )
+                        except Exception as mmba_error:
+                            logger.error(
+                                f"Error seeding mobile money bank accounts: {str(mmba_error)}"
+                            )
+
+                        # Setup Bank Account configuration
+                        update_task_progress(
+                            self,
+                            71.8,
+                            "Setting up bank account configuration...",
+                            "setting_up_bank_account",
+                        )
+                        try:
+                            call_command("setup_bank_account")
+                            logger.info(
+                                f"Set up bank account configuration for {company.name}"
+                            )
+                        except Exception as ba_error:
+                            logger.error(
+                                f"Error setting up bank account: {str(ba_error)}"
+                            )
+
+                        # Seed Prepayment Number Series
+                        update_task_progress(
+                            self,
+                            71.85,
+                            "Seeding prepayment number series...",
+                            "seeding_prepayment_no_series",
+                        )
+                        try:
+                            call_command("seed_prepayment_no_series")
+                            logger.info(
+                                f"Seeded prepayment number series for {company.name}"
+                            )
+                        except Exception as pns_error:
+                            logger.error(
+                                f"Error seeding prepayment number series: {str(pns_error)}"
+                            )
+
+                        # NEW: Create User Groups
+                        update_task_progress(
+                            self,
+                            72,
+                            "Creating user groups...",
+                            "creating_user_groups",
+                        )
+
+                        try:
+                            from authentication.models import UserGroup
+                            from permissions.models import PermissionSet
+
+                            # Get all roles
+                            admin_role = Role.objects.filter(name="Admin").first()
+                            manager_role = Role.objects.filter(
+                                name="Manager"
+                            ).first()
+                            sales_role = Role.objects.filter(name="Sales").first()
+                            cashier_role = Role.objects.filter(
+                                name="Cashier"
+                            ).first()
+                            inventory_role = Role.objects.filter(
+                                name="Inventory"
+                            ).first()
+                            accountant_role = Role.objects.filter(
+                                name="Accountant"
+                            ).first()
+                            user_role = Role.objects.filter(name="User").first()
+
+                            admin_group = None
+
+                            # Create Admin User Group
+                            if admin_role:
+                                admin_group, created = (
+                                    UserGroup.objects.get_or_create(
+                                        code="Admin",
+                                        defaults={
+                                            "name": "Admin",
+                                            "description": "Administrator user group with full access",
+                                            "default_profile": admin_role,
+                                            "is_active": True,
+                                        },
+                                    )
+                                )
+                                # Always ensure Admin group has every active permission set (covers new modules like Prepayments)
+                                all_permission_sets = PermissionSet.objects.filter(
+                                    is_active=True
+                                )
+                                admin_group.permission_sets.set(all_permission_sets)
+                                logger.info(
+                                    f"{'Created' if created else 'Updated'} Admin user group with {all_permission_sets.count()} permission sets"
+                                )
+
+                            # Create Manager User Group
+                            if manager_role:
+                                manager_group, created = (
+                                    UserGroup.objects.get_or_create(
+                                        code="Manager",
+                                        defaults={
+                                            "name": "Manager",
+                                            "description": "Manager user group with comprehensive access",
+                                            "default_profile": manager_role,
+                                            "is_active": True,
+                                        },
+                                    )
+                                )
+                                if created:
+                                    # Assign full access permission sets to Manager
+                                    manager_permissions = (
+                                        PermissionSet.objects.filter(
+                                            code__in=[
+                                                "SALES_FULL",
+                                                "CUSTOMER_FULL",
+                                                "ITEMS_FULL",
+                                                "PURCHASES_FULL",
+                                                "PAYMENTS_FULL",
+                                                "EXPENSES_FULL",
+                                                "FINANCIALS_FULL",
+                                            ]
+                                        )
+                                    )
+                                    manager_group.permission_sets.add(
+                                        *manager_permissions
+                                    )
+                                    logger.info(
+                                        f"Created Manager user group with {manager_permissions.count()} permission sets"
+                                    )
+
+                            # Create Sales User Group
+                            if sales_role:
+                                sales_group, created = (
+                                    UserGroup.objects.get_or_create(
+                                        code="Sales",
+                                        defaults={
+                                            "name": "Sales",
+                                            "description": "Sales user group with sales and customer access",
+                                            "default_profile": sales_role,
+                                            "is_active": True,
+                                        },
+                                    )
+                                )
+                                if created:
+                                    sales_permissions = (
+                                        PermissionSet.objects.filter(
+                                            code__in=[
+                                                "SALES_FULL",
+                                                "CUSTOMER_FULL",
+                                                "ITEMS_VIEW_ONLY",
+                                            ]
+                                        )
+                                    )
+                                    sales_group.permission_sets.add(
+                                        *sales_permissions
+                                    )
+                                    logger.info(f"Created Sales user group")
+
+                            # Create Cashier User Group
+                            if cashier_role:
+                                cashier_group, created = (
+                                    UserGroup.objects.get_or_create(
+                                        code="Cashier",
+                                        defaults={
+                                            "name": "Cashier",
+                                            "description": "Cashier user group with POS access",
+                                            "default_profile": cashier_role,
+                                            "is_active": True,
+                                        },
+                                    )
+                                )
+                                if created:
+                                    cashier_permissions = (
+                                        PermissionSet.objects.filter(
+                                            code__in=[
+                                                "SALES_CASHIER",
+                                                "CUSTOMER_BASIC",
+                                                "ITEMS_VIEW_ONLY",
+                                            ]
+                                        )
+                                    )
+                                    cashier_group.permission_sets.add(
+                                        *cashier_permissions
+                                    )
+                                    logger.info(f"Created Cashier user group")
+
+                            # Create Inventory User Group
+                            if inventory_role:
+                                inventory_group, created = (
+                                    UserGroup.objects.get_or_create(
+                                        code="Inventory",
+                                        defaults={
+                                            "name": "Inventory",
+                                            "description": "Inventory user group with stock management access",
+                                            "default_profile": inventory_role,
+                                            "is_active": True,
+                                        },
+                                    )
+                                )
+                                if created:
+                                    inventory_permissions = (
+                                        PermissionSet.objects.filter(
+                                            code__in=[
+                                                "ITEMS_FULL",
+                                                "PURCHASES_FULL",
+                                            ]
+                                        )
+                                    )
+                                    inventory_group.permission_sets.add(
+                                        *inventory_permissions
+                                    )
+                                    logger.info(f"Created Inventory user group")
+
+                            # Create Accountant User Group
+                            if accountant_role:
+                                accountant_group, created = (
+                                    UserGroup.objects.get_or_create(
+                                        code="Accountant",
+                                        defaults={
+                                            "name": "Accountant",
+                                            "description": "Accountant user group with financial access",
+                                            "default_profile": accountant_role,
+                                            "is_active": True,
+                                        },
+                                    )
+                                )
+                                if created:
+                                    accountant_permissions = (
+                                        PermissionSet.objects.filter(
+                                            code__in=[
+                                                "FINANCIALS_FULL",
+                                                "PAYMENTS_FULL",
+                                                "EXPENSES_FULL",
+                                                "SALES_VIEW_ONLY",
+                                                "PURCHASES_VIEW_ONLY",
+                                            ]
+                                        )
+                                    )
+                                    accountant_group.permission_sets.add(
+                                        *accountant_permissions
+                                    )
+                                    logger.info(f"Created Accountant user group")
+
+                            # Create User User Group (basic access)
+                            if user_role:
+                                user_group, created = (
+                                    UserGroup.objects.get_or_create(
+                                        code="User",
+                                        defaults={
+                                            "name": "User",
+                                            "description": "Basic user group with view-only access",
+                                            "default_profile": user_role,
+                                            "is_active": True,
+                                        },
+                                    )
+                                )
+                                if created:
+                                    user_permissions = PermissionSet.objects.filter(
+                                        code__in=[
+                                            "SALES_VIEW_ONLY",
+                                            "CUSTOMER_VIEW_ONLY",
+                                            "ITEMS_VIEW_ONLY",
+                                            "FINANCIALS_VIEW_ONLY",
+                                        ]
+                                    )
+                                    user_group.permission_sets.add(
+                                        *user_permissions
+                                    )
+                                    logger.info(f"Created User user group")
+
+                            # Assign the initial admin user to Admin group
+                            if admin_role and user:
+                                user.user_groups.add(admin_group)
+                                logger.info(
+                                    f"Assigned admin user to Admin user group"
+                                )
+
+                            # Debug admin: same logic as Company.save on_commit (idempotent)
+                            try:
+                                ensure_debug_admin_for_schema(company.schema_name)
+                                logger.info(
+                                    "Ensured debug admin user for schema %s",
+                                    company.schema_name,
+                                )
+                            except Exception as debug_user_error:
+                                logger.error(
+                                    "Error ensuring debug admin user: %s",
+                                    debug_user_error,
+                                    exc_info=True,
+                                )
+
+                        except Exception as ug_error:
+                            logger.error(
+                                f"Error creating user groups: {str(ug_error)}"
+                            )
+                            # Don't fail if user groups creation fails
+                    except Exception as role_error:
+                        logger.error(f"Error creating roles: {str(role_error)}")
+                        # Don't fail the entire process if role creation fails
+                        # Just log the error and continue
+
+                    _log_company_creation_phase(
+                        "after_roles_permissions_user_groups",
+                        t_start,
+                        phase_mark,
+                    )
+
+                    # Start data import process (often smaller than migrations; profile logs show truth).
+                    update_task_progress(
+                        self, 73, "Starting data import...", "importing_data"
+                    )
+
+                    # Remove delay - handled on frontend
+                    # time.sleep(1)
+
+                    try:
+                        file_path = os.path.join(
+                            settings.BASE_DIR,
+                            "tenant_semuna_export_20250227_062346.json",
+                        )
+
+                        update_task_progress(
+                            self, 75, "Reading import file...", "importing_data"
+                        )
+
+                        try:
+                            with open(
+                                file_path, "r", encoding="utf-8"
+                            ) as json_file:
+                                import_data = json.load(json_file)
+
+                            update_task_progress(
+                                self,
+                                80,
+                                "Importing initial data...",
+                                "importing_data",
+                            )
+
+                            _log_company_creation_phase(
+                                "before_tenant_json_import", t_start, phase_mark
+                            )
+                            output_buffer = StringIO()
+                            output_wrapper = OutputWrapper(output_buffer, ending="")
+                            style = color_style()
+                            run_tenant_data_import(
+                                company.schema_name,
+                                import_data,
+                                output_wrapper,
+                                output_wrapper,
+                                style,
+                            )
+                            command_output = output_buffer.getvalue()
+                            output_buffer.close()
+
+                            call_command("seed_prepayment_accounts")
+
+                            # Expense categories/types need G/L accounts from tenant JSON import.
+                            update_task_progress(
+                                self,
+                                83,
+                                "Seeding expense categories...",
+                                "seeding_expense_categories",
+                            )
+                            try:
+                                call_command(
+                                    "seed_expense_categories",
+                                    tenant=company.schema_name,
+                                )
+                                logger.info(
+                                    f"Seeded expense categories for {company.name}"
+                                )
+                            except Exception as ec_error:
+                                logger.error(
+                                    f"Error seeding expense categories: {str(ec_error)}"
+                                )
+
+                            update_task_progress(
+                                self,
+                                84,
+                                "Seeding expense types...",
+                                "seeding_expense_types",
+                            )
+                            try:
+                                call_command(
+                                    "seed_expense_types",
+                                    tenant=company.schema_name,
+                                )
+                                logger.info(
+                                    f"Seeded expense types for {company.name}"
+                                )
+                            except Exception as et_error:
+                                logger.error(
+                                    f"Error seeding expense types: {str(et_error)}"
+                                )
+
+                            update_task_progress(
+                                self,
+                                85,
+                                "Updating inventory setup...",
+                                "importing_data",
+                            )
+
+                            # Sales posting needs (location, inventory_posting_group) rows, not only NULL-location defaults.
+                            try:
+                                from postings.setup import (
+                                    ensure_inventory_posting_setups_for_location,
+                                )
+
+                                location = Location.objects.filter(
+                                    code=branch_value.code
+                                ).first()
+                                if not location:
+                                    logger.warning(
+                                        "No Location for branch %s; skipping inventory posting setup sync",
+                                        branch_value.code,
+                                    )
+                                else:
+                                    created_setups = (
+                                        ensure_inventory_posting_setups_for_location(
+                                            location
+                                        )
+                                    )
+                                    if created_setups:
+                                        logger.info(
+                                            "Created %s InventoryPostingSetup(s) for location %s",
+                                            created_setups,
+                                            location.code,
+                                        )
+                                    elif not InventoryPostingSetup.objects.filter(
+                                        location=location
+                                    ).exists():
+                                        logger.warning(
+                                            "No InventoryPostingSetup templates (location=NULL) to copy for %s",
+                                            location.code,
+                                        )
+                            except Exception as location_error:
+                                logger.error(
+                                    "Error syncing InventoryPostingSetup for branch location: %s",
+                                    location_error,
+                                )
+                                # Don't fail the entire process if location update fails
+
+                            update_task_progress(
+                                self,
+                                87,
+                                "Configuring subscription...",
+                                "importing_data",
+                            )
+
+                            # Create subscription
+                            subscription_data = data.get("subscription", {})
+                            print("subscription_data", subscription_data)
+                            update_subscription = Subscription.objects.get(
+                                company=company
+                            )
+                            if update_subscription.plan != subscription_data.get(
+                                "plan"
+                            ):
+                                if (
+                                    SubscriptionPlan.MULTI_BRANCH.value
+                                    in subscription_data.get("plan")
+                                ):
+                                    update_subscription.plan = (
+                                        SubscriptionPlan.MULTI_BRANCH.value
+                                    )
+                                    update_subscription.is_trial = True
+                                    update_subscription.status = (
+                                        SubscriptionStatus.PENDING.value
+                                    )
+                                    print("one", update_subscription.plan)
+                                elif (
+                                    SubscriptionPlan.PREMIUM.value
+                                    in subscription_data.get("plan")
+                                ):
+                                    update_subscription.plan = (
+                                        SubscriptionPlan.PREMIUM.value
+                                    )
+                                    update_subscription.is_trial = False
+                                    update_subscription.status = (
+                                        SubscriptionStatus.PENDING.value
+                                    )
+                                    print("three", update_subscription.plan)
+                                update_subscription.save()
+
+                            # Check if there were any error messages in the output
+                            if (
+                                "Error" in command_output
+                                or "error" in command_output
+                            ):
+                                raise Exception(
+                                    f"Import errors occurred: {command_output}"
+                                )
+
+                            logger.info(f"Import command output: {command_output}")
+
+                            _log_company_creation_phase(
+                                "after_tenant_json_import", t_start, phase_mark
+                            )
+
+                        except json.JSONDecodeError as je:
+                            raise Exception(f"Invalid JSON file: {str(je)}")
+                        except Exception as e:
+                            logger.error(f"Import command error: {str(e)}")
+                            raise Exception(f"Import failed: {str(e)}")
+
+                        update_task_progress(
+                            self,
+                            90,
+                            "Setting up number series...",
+                            "setting_up_series",
+                        )
+
+                        # Remove delay - handled on frontend
+                        # time.sleep(2)
+
+                        # Setup number series
+                        series_result = setup_default_no_series()
+                        logger.info(f"Number series setup result: {series_result}")
+
+                        update_task_progress(
+                            self,
+                            92,
+                            "Creating default records...",
+                            "setting_up_series",
+                        )
+
+                        print("NoSeries", NoSeries.objects.all())
+                        vendor_no_series = NoSeries.objects.get(code="VENDOR")
+                        print("vendor_no_series", vendor_no_series)
+
+                        PurchasePayable.objects.create(
+                            vendor_no=NoSeriesLines.objects.get(
+                                no_series=NoSeries.objects.get(code="VENDOR"),
+                            ),
+                            invoice_no=NoSeriesLines.objects.get(
+                                no_series=NoSeries.objects.get(code="INV"),
+                            ),
+                            posted_invoice_no=NoSeriesLines.objects.get(
+                                no_series=NoSeries.objects.get(code="POSTINV"),
+                            ),
+                            credit_memo_no=NoSeriesLines.objects.get(
+                                no_series=NoSeries.objects.get(code="PURCR"),
+                            ),
+                            posted_credit_memo_no=NoSeriesLines.objects.get(
+                                no_series=NoSeries.objects.get(code="POSTPURCR"),
+                            ),
+                        )
+
+                        SalesReceivable.objects.create(
+                            customer_no=NoSeriesLines.objects.get(
+                                no_series=NoSeries.objects.get(code="CUSTOMER"),
+                            ),
+                            sales_no=NoSeriesLines.objects.get(
+                                no_series=NoSeries.objects.get(code="SALES"),
+                            ),
+                            invoice_no=NoSeriesLines.objects.get(
+                                no_series=NoSeries.objects.get(code="SALESINV"),
+                            ),
+                            posted_invoice_no=NoSeriesLines.objects.get(
+                                no_series=NoSeries.objects.get(code="PSIN"),
+                            ),
+                            credit_memo_no=NoSeriesLines.objects.get(
+                                no_series=NoSeries.objects.get(code="CM"),
+                            ),
+                            posted_credit_memo_no=NoSeriesLines.objects.get(
+                                no_series=NoSeries.objects.get(code="POSTCM"),
+                            ),
+                            posted_prepayment_invoice_no=NoSeriesLines.objects.get(
+                                no_series=NoSeries.objects.get(code="POSTPREPINV"),
+                            ),
+                            posted_prepayment_credit_memo_no=NoSeriesLines.objects.get(
+                                no_series=NoSeries.objects.get(code="POSTPREPCM"),
+                            ),
+                            sales_order_no=NoSeriesLines.objects.get(
+                                no_series=NoSeries.objects.get(code="SO"),
+                            ),
+                            sales_price_list_no=NoSeriesLines.objects.get(
+                                no_series=NoSeries.objects.get(code="SPL"),
+                            ),
+                        )
+
+                        try:
+                            call_command("seed_credit_memo_numbers", verbosity=0)
+                        except Exception as cm_error:
+                            logger.warning(
+                                "seed_credit_memo_numbers after SalesReceivable create: %s",
+                                cm_error,
+                            )
+
+                        update_task_progress(
+                            self,
+                            94,
+                            "Creating default vendors and customers...",
+                            "setting_up_series",
+                        )
+
+                        Vendor.objects.create(
+                            name="General",
+                            address=data["address"],
+                            address_2=data["address"],
+                            city=data["city"],
+                            payment_method=PaymentMethod.objects.get(code="CASH"),
+                            vendor_posting_group=VendorPostingGroup.objects.get(
+                                code="DOMESTIC"
+                            ),
+                            business_posting_group=GeneralBusinessPostingGroup.objects.get(
+                                code="DOMESTIC"
+                            ),
+                        )
+                        Customer.objects.create(
+                            name="General",
+                            address=data["address"],
+                            address_2=data["address"],
+                            city=data["city"],
+                            payment_method=PaymentMethod.objects.get(code="CASH"),
+                            general_business_posting_group=GeneralBusinessPostingGroup.objects.get(
+                                code="DOMESTIC"
+                            ),
+                            customer_posting_group=CustomerPostingGroup.objects.get(
+                                code="DOMESTIC"
+                            ),
+                            customer_type=CustomerType.General.name,
+                        )
+
+                        from dimension.setup import (
+                            DEFAULT_FIRST_BRANCH_CODE,
+                            DEFAULT_FIRST_BRANCH_DESCRIPTION,
+                            ensure_default_branch_dimension_and_gl_setup,
+                        )
+
+                        # Reconcile dimensions after import/seeds (no extra BRANCH row if one exists)
+                        ensure_default_branch_dimension_and_gl_setup(
+                            default_branch_value_code=DEFAULT_FIRST_BRANCH_CODE,
+                            default_branch_value_description=DEFAULT_FIRST_BRANCH_DESCRIPTION,
+                        )
+
+                        _log_company_creation_phase(
+                            "after_number_series_and_defaults",
+                            t_start,
+                            phase_mark,
+                        )
+
+                        # Template clone may run ensure_debug_admin before Admin group exists;
+                        # re-run after full bootstrap (idempotent).
+                        try:
+                            ensure_debug_admin_for_schema(company.schema_name)
+                        except Exception as _dbg_e:
+                            logger.warning(
+                                "ensure_debug_admin (post-bootstrap): %s",
+                                _dbg_e,
+                                exc_info=True,
+                            )
+
+                        login_url_ready = _build_company_login_url(company)
+                        send_company_creation_completion_email_task.delay(
+                            company_email=company.email or "",
+                            company_name=company.name,
+                            login_url=login_url_ready,
+                        )
+
+                        update_task_progress(
+                            self, 96, "Finalizing setup...", "finalizing"
+                        )
+
+                    except Exception as import_error:
+                        logger.error(
+                            f"Error during data import: {str(import_error)}"
+                        )
+                        raise import_error
+
+                except Exception as user_error:
+                    logger.error(f"Error creating user: {str(user_error)}")
+                    raise ValueError(
+                        f"Failed to create admin user: {str(user_error)}"
+                    )
+
+            _log_company_creation_phase("completed", t_start, phase_mark)
+
+            return {
+                "state": "SUCCESS",
+                "progress": 100,
+                "message": "Company setup completed successfully!",
+                "status": "completed",
+                "company_name": data["name"],
+                "import_details": (
+                    command_output if "command_output" in locals() else None
+                ),
+                "roles_created": (
+                    created_roles if "created_roles" in locals() else []
+                ),
+                "subscription": {
+                    "plan": update_subscription.plan,
+                    "status": update_subscription.status,
+                    "is_trial": update_subscription.is_trial,
+                    "trial_end_date": (
+                        update_subscription.trial_period_end_date.isoformat()
+                        if update_subscription.trial_period_end_date
+                        else None
+                    ),
+                },
+            }
+
+    except ValueError as ve:
+        logger.error(f"Validation error: {str(ve)}")
+        self.update_state(
+            state="FAILURE",
+            meta={
+                "progress": 0,
+                "message": str(ve),
+                "status": "failed",
+                "error_type": "validation_error",
+            },
+        )
+        raise
+    except Exception as e:
+        logger.error(f"Error in company creation process: {str(e)}")
+        self.update_state(
+            state="FAILURE",
+            meta={
+                "progress": 0,
+                "message": str(e),
+                "status": "failed",
+                "error_type": "task_execution_failed",
+            },
+        )
+        # Tenant onboarding after schema creation runs in nested transaction.atomic(...)
+        raise
+
+
+# @shared_task(name="send_newsletter_task")
+# def send_newsletter_task(email):
+#     try:
+#         send_email("mukiibijoseph19@gmail.com")
+#     except Exception as e:
+#         raise e
+
+
+@shared_task
+def send_newsletter_task(
+    email=None,
+):  # Make email parameter optional with default value
+    try:
+        # If no email is provided, use default
+        target_email = email or "mukiibijoseph19@gmail.com"
+        send_email(target_email)
+        return {
+            "status": "success",
+            "message": f"Verification email sent to {target_email}",
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@shared_task
+def send_installment_reminders():
+    """
+    Send reminder emails for upcoming installment due dates.
+    Run this daily via Celery Beat.
+    """
+    from .models import ZentroStarterOrder, ZentroStarterInstallmentReminder
+    from django.utils import timezone
+    from datetime import timedelta, datetime
+
+    logger = get_task_logger(__name__)
+    payment_url = getattr(
+        settings, "INSTALLMENT_PAYMENT_URL", "https://zentroapp.app/subscription"
+    )
+
+    try:
+        # Find orders with installment plans that have upcoming due dates
+        now = timezone.now()
+        three_days_from_now = now + timedelta(days=3)
+        one_day_from_now = now + timedelta(days=1)
+
+        with schema_context("public"):
+            # Get orders with installment schedules
+            orders = (
+                ZentroStarterOrder.objects.filter(
+                    payment_plan="installments",
+                    status__in=["paid", "active"],
+                )
+                .exclude(installment_schedule={})
+                .select_related("company")
+            )
+            reminders_sent = 0
+
+            for order in orders:
+                try:
+                    schedule = order.installment_schedule.get("installments", [])
+                    if not schedule:
+                        continue
+
+                    # Check each installment
+                    for installment in schedule:
+                        if installment.get("status") != "pending":
+                            continue
+
+                        due_date_str = installment.get("due_date")
+                        if not due_date_str:
+                            continue
+
+                        # Parse due date
+                        try:
+                            due_date = datetime.strptime(
+                                due_date_str, "%Y-%m-%d"
+                            ).date()
+                        except (ValueError, TypeError):
+                            continue
+
+                        due_datetime = timezone.make_aware(
+                            datetime.combine(due_date, datetime.min.time())
+                        )
+
+                        # Check if reminder should be sent (3 days before or 1 day before)
+                        should_remind_3days = (
+                            due_datetime <= three_days_from_now
+                            and due_datetime > one_day_from_now
+                        )
+                        should_remind_1day = (
+                            due_datetime <= one_day_from_now and due_datetime > now
+                        )
+
+                        if should_remind_3days or should_remind_1day:
+                            # Check if reminder already sent
+                            reminder_type = (
+                                "payment_due" if should_remind_3days else "overdue"
+                            )
+
+                            existing_reminder = (
+                                ZentroStarterInstallmentReminder.objects.filter(
+                                    order=order,
+                                    reminder_type=reminder_type,
+                                    scheduled_date__date=due_date,
+                                ).exists()
+                            )
+
+                            if not existing_reminder:
+                                # Create reminder record
+                                reminder = ZentroStarterInstallmentReminder.objects.create(
+                                    order=order,
+                                    reminder_type=reminder_type,
+                                    scheduled_date=due_datetime,
+                                    notes=f"Installment amount: {installment.get('amount', 0):,.2f} UGX",
+                                )
+
+                                # Send email
+                                if order.company.email:
+                                    amount_str = f"{installment.get('amount', 0):,.2f}"
+                                    days_until_due = (due_date - now.date()).days
+                                    html = render_to_string(
+                                        "emails/installment_reminder.html",
+                                        {
+                                            "company_name": order.company.name,
+                                            "due_date": due_date_str,
+                                            "amount": amount_str,
+                                            "days_until_due": days_until_due,
+                                            "payment_url": payment_url,
+                                        },
+                                    )
+                                    subject = (
+                                        f"Payment due in {days_until_due} day(s) - {amount_str} UGX"
+                                        if days_until_due != 1
+                                        else f"Payment due tomorrow - {amount_str} UGX"
+                                    )
+                                    if send_transactional_email(
+                                        order.company.email, subject, html
+                                    ):
+                                        reminder.email_sent = True
+                                        reminder.sent_at = timezone.now()
+                                        reminder.save(
+                                            update_fields=["email_sent", "sent_at"]
+                                        )
+                                        reminders_sent += 1
+                                else:
+                                    logger.warning(
+                                        f"Company {order.company.name} has no email - skipping installment reminder"
+                                    )
+
+                except Exception as e:
+                    logger.error(f"Error processing order {order.id}: {e}")
+                    continue
+
+        logger.info(f"Sent {reminders_sent} installment reminders")
+        return {"status": "success", "reminders_sent": reminders_sent}
+
+    except Exception as e:
+        logger.error(f"Error in send_installment_reminders: {e}")
+        raise
+
+
+@shared_task
+def send_trial_end_reminders():
+    """
+    Send reminder emails for free trials ending in 3 days or 1 day.
+    Covers both Subscription (legacy 14-day trial) and ZentroStarterOrder (starter pack free period).
+    Run this daily via Celery Beat (e.g. 9:00 AM).
+    """
+    from .models import (
+        ZentroStarterOrder,
+        TrialEndReminder,
+    )
+
+    logger = get_task_logger(__name__)
+    reminders_sent = 0
+    payment_url = getattr(
+        settings, "TRIAL_REMINDER_PAYMENT_URL", "https://zentroapp.app/subscription"
+    )
+
+    try:
+        now = timezone.now().date()
+        three_days_later = now + timedelta(days=3)
+        one_day_later = now + timedelta(days=1)
+
+        with schema_context("public"):
+            # --- Subscription trials (status=TRIAL, is_trial) ---
+            subscriptions = Subscription.objects.filter(
+                status=SubscriptionStatus.TRIAL.value,
+                is_trial=True,
+                trial_period_end_date__gte=now,
+                trial_period_end_date__lte=three_days_later,
+            ).select_related("company")
+
+            for sub in subscriptions:
+                trial_end = sub.trial_period_end_date
+                days_left = (trial_end - now).days
+                reminder_type = "3_days" if days_left == 3 else "1_day"
+
+                if days_left not in (1, 3):
+                    continue
+
+                if not sub.company.email:
+                    logger.warning(
+                        f"Company {sub.company.name} has no email - skipping trial reminder"
+                    )
+                    continue
+
+                exists = TrialEndReminder.objects.filter(
+                    company=sub.company,
+                    reminder_type=reminder_type,
+                    trial_end_date=trial_end,
+                    source="subscription",
+                    source_id=sub.id,
+                ).exists()
+
+                if exists:
+                    continue
+
+                html = render_to_string(
+                    "emails/trial_end_reminder.html",
+                    {
+                        "company_name": sub.company.name,
+                        "trial_end_date": trial_end,
+                        "days_remaining": days_left,
+                        "payment_url": payment_url,
+                        "source": "subscription",
+                    },
+                )
+                subject = f"Your Zentro free trial ends in {days_left} day(s) - Subscribe to continue"
+                if send_transactional_email(sub.company.email, subject, html):
+                    TrialEndReminder.objects.create(
+                        company=sub.company,
+                        reminder_type=reminder_type,
+                        trial_end_date=trial_end,
+                        source="subscription",
+                        source_id=sub.id,
+                    )
+                    reminders_sent += 1
+
+            # --- ZentroStarterOrder free period ---
+            starter_orders = (
+                ZentroStarterOrder.objects.filter(
+                    status="active",
+                )
+                .exclude(
+                    free_period_end_date__isnull=True,
+                )
+                .select_related("company")
+            )
+
+            for order in starter_orders:
+                if not order.is_free_period_active or not order.free_period_end_date:
+                    continue
+
+                trial_end = order.free_period_end_date.date()
+                if trial_end < now or trial_end > three_days_later:
+                    continue
+
+                days_left = (trial_end - now).days
+                if days_left not in (1, 3):
+                    continue
+
+                reminder_type = "3_days" if days_left == 3 else "1_day"
+
+                if not order.company.email:
+                    logger.warning(
+                        f"Company {order.company.name} has no email - skipping trial reminder"
+                    )
+                    continue
+
+                exists = TrialEndReminder.objects.filter(
+                    company=order.company,
+                    reminder_type=reminder_type,
+                    trial_end_date=trial_end,
+                    source="starter_order",
+                    source_id=order.id,
+                ).exists()
+
+                if exists:
+                    continue
+
+                html = render_to_string(
+                    "emails/trial_end_reminder.html",
+                    {
+                        "company_name": order.company.name,
+                        "trial_end_date": trial_end,
+                        "days_remaining": days_left,
+                        "payment_url": payment_url,
+                        "source": "starter_order",
+                    },
+                )
+                subject = f"Your Zentro free period ends in {days_left} day(s) - Subscribe to continue"
+                if send_transactional_email(order.company.email, subject, html):
+                    TrialEndReminder.objects.create(
+                        company=order.company,
+                        reminder_type=reminder_type,
+                        trial_end_date=trial_end,
+                        source="starter_order",
+                        source_id=order.id,
+                    )
+                    reminders_sent += 1
+
+        logger.info(f"Sent {reminders_sent} trial-end reminders")
+        return {"status": "success", "reminders_sent": reminders_sent}
+
+    except Exception as e:
+        logger.exception(f"Error in send_trial_end_reminders: {e}")
+        raise
+
+
+@shared_task
+def send_overdue_notices():
+    """
+    Send overdue payment notices for past due installments.
+    Run this daily via Celery Beat.
+    """
+    from .models import ZentroStarterOrder, ZentroStarterInstallmentReminder
+    from django.utils import timezone
+    from datetime import datetime, timedelta
+
+    logger = get_task_logger(__name__)
+    payment_url = getattr(
+        settings, "INSTALLMENT_PAYMENT_URL", "https://zentroapp.app/subscription"
+    )
+
+    try:
+        now = timezone.now()
+
+        with schema_context("public"):
+            # Find orders with overdue installments
+            orders = (
+                ZentroStarterOrder.objects.filter(
+                    payment_plan="installments",
+                    status__in=["paid", "active"],
+                )
+                .exclude(installment_schedule={})
+                .select_related("company")
+            )
+            notices_sent = 0
+
+            for order in orders:
+                try:
+                    schedule = order.installment_schedule.get("installments", [])
+                    if not schedule:
+                        continue
+
+                    # Check each installment
+                    for installment in schedule:
+                        if installment.get("status") != "pending":
+                            continue
+
+                        due_date_str = installment.get("due_date")
+                        if not due_date_str:
+                            continue
+
+                        try:
+                            due_date = datetime.strptime(
+                                due_date_str, "%Y-%m-%d"
+                            ).date()
+                        except (ValueError, TypeError):
+                            continue
+
+                        # Check if overdue
+                        if due_date < now.date():
+                            due_datetime = timezone.make_aware(
+                                datetime.combine(due_date, datetime.min.time())
+                            )
+
+                            # Check if notice already sent in last 7 days
+                            seven_days_ago = now - timedelta(days=7)
+                            existing_notice = (
+                                ZentroStarterInstallmentReminder.objects.filter(
+                                    order=order,
+                                    reminder_type="overdue",
+                                    scheduled_date__gte=seven_days_ago,
+                                    scheduled_date__date=due_date,
+                                ).exists()
+                            )
+
+                            if not existing_notice:
+                                # Create overdue notice
+                                reminder = ZentroStarterInstallmentReminder.objects.create(
+                                    order=order,
+                                    reminder_type="overdue",
+                                    scheduled_date=due_datetime,
+                                    notes=f"Overdue installment: {installment.get('amount', 0):,.2f} UGX (Due: {due_date_str})",
+                                )
+
+                                # Send email
+                                if order.company.email:
+                                    amount_str = f"{installment.get('amount', 0):,.2f}"
+                                    days_overdue = (now.date() - due_date).days
+                                    html = render_to_string(
+                                        "emails/installment_overdue.html",
+                                        {
+                                            "company_name": order.company.name,
+                                            "due_date": due_date_str,
+                                            "amount": amount_str,
+                                            "days_overdue": days_overdue,
+                                            "payment_url": payment_url,
+                                        },
+                                    )
+                                    subject = f"Overdue payment notice - {amount_str} UGX ({days_overdue} day(s) overdue)"
+                                    if send_transactional_email(
+                                        order.company.email, subject, html
+                                    ):
+                                        reminder.email_sent = True
+                                        reminder.sent_at = timezone.now()
+                                        reminder.save(
+                                            update_fields=[
+                                                "email_sent",
+                                                "sent_at",
+                                            ]
+                                        )
+                                        notices_sent += 1
+                                else:
+                                    logger.warning(
+                                        f"Company {order.company.name} has no email - skipping overdue notice"
+                                    )
+
+                except Exception as e:
+                    logger.error(f"Error processing order {order.id}: {e}")
+                    continue
+
+        logger.info(f"Sent {notices_sent} overdue notices")
+        return {"status": "success", "notices_sent": notices_sent}
+
+    except Exception as e:
+        logger.error(f"Error in send_overdue_notices: {e}")
+        raise
+
+
+# Product terms that indicate subscription billing (for 10-day expiry reminders)
+_BILLING_SUBSCRIPTION_PRODUCT_TERMS = [
+    "subscription",
+    "standard",
+    "premium",
+    "multi-branch",
+    "multi_branch",
+    "business",
+    "pro",
+    "starter",
+    "efris",
+]
+
+
+def _get_companies_for_expiry_reminders_window(days_min=1, days_max=10):
+    """
+    Get list of (company, billing_history_or_none, period_end_date, days_remaining, source, source_id)
+    for companies in a configurable expiry window.
+    Includes: BillingHistory (paid), Subscription (trial), ZentroStarterOrder (free period).
+    """
+    now = timezone.now().date()
+    results = []
+    seen_company_keys = set()  # (company_id, source, source_id) to avoid dupes
+
+    def in_window(days_remaining):
+        min_ok = True if days_min is None else days_remaining >= days_min
+        max_ok = True if days_max is None else days_remaining <= days_max
+        return min_ok and max_ok
+
+    # 1. Subscription trials (status=TRIAL, trial_period_end_date in configured window)
+    subscriptions = Subscription.objects.filter(
+        status=SubscriptionStatus.TRIAL.value,
+    )
+    if days_min is not None:
+        subscriptions = subscriptions.filter(
+            trial_period_end_date__gte=now + timedelta(days=days_min)
+        )
+    if days_max is not None:
+        subscriptions = subscriptions.filter(
+            trial_period_end_date__lte=now + timedelta(days=days_max)
+        )
+    subscriptions = subscriptions.select_related("company")
+    for sub in subscriptions:
+        days_remaining = (sub.trial_period_end_date - now).days
+        if in_window(days_remaining):
+            key = (sub.company_id, "subscription", sub.id)
+            if key not in seen_company_keys:
+                seen_company_keys.add(key)
+                results.append(
+                    (
+                        sub.company,
+                        None,
+                        sub.trial_period_end_date,
+                        days_remaining,
+                        "subscription",
+                        sub.id,
+                    )
+                )
+
+    # 2. ZentroStarterOrder (active, free_period_end_date or subscription_end_date in configured window)
+    from .models import ZentroStarterOrder
+
+    for order in ZentroStarterOrder.objects.filter(status="active").select_related(
+        "company"
+    ):
+        end_date = None
+        if order.free_period_end_date:
+            end_date = order.free_period_end_date.date()
+        elif order.subscription_end_date:
+            end_date = order.subscription_end_date.date()
+        if not end_date or end_date < now:
+            continue
+        days_remaining = (end_date - now).days
+        if in_window(days_remaining):
+            key = (order.company_id, "starter_order", order.id)
+            if key not in seen_company_keys:
+                seen_company_keys.add(key)
+                results.append(
+                    (
+                        order.company,
+                        None,
+                        end_date,
+                        days_remaining,
+                        "starter_order",
+                        order.id,
+                    )
+                )
+
+    # 3. BillingHistory (paid, period_end = billing_date + 30 in configured window)
+    product_filter = Q()
+    for term in _BILLING_SUBSCRIPTION_PRODUCT_TERMS:
+        product_filter |= Q(product__icontains=term)
+    paid_billings = (
+        BillingHistory.objects.filter(
+            status="paid",
+        )
+        .filter(product_filter)
+        .select_related("company")
+        .order_by("company_id", "-billing_date")
+    )
+
+    seen_billing_companies = set()
+    for billing in paid_billings:
+        if billing.company_id in seen_billing_companies:
+            continue
+        seen_billing_companies.add(billing.company_id)
+        months, bc = parse_billing_period_from_metadata(billing.metadata)
+        period_end_date = subscription_period_end_inclusive(
+            billing.billing_date, months, bc
+        )
+        days_remaining = (period_end_date - now).days
+        if in_window(days_remaining):
+            results.append(
+                (
+                    billing.company,
+                    billing,
+                    period_end_date,
+                    days_remaining,
+                    "billing_history",
+                    billing.id,
+                )
+            )
+
+    return results
+
+
+def _get_companies_for_expiry_reminders(days_min=1, days_max=10):
+    return _get_companies_for_expiry_reminders_window(
+        days_min=days_min, days_max=days_max
+    )
+
+
+def _get_company_superuser_emails(company):
+    """Get superuser emails from the tenant schema for a given company."""
+    recipients = []
+    try:
+        if not company or not getattr(company, "schema_name", None):
+            return recipients
+        if not schema_exists(company.schema_name):
+            return recipients
+        with schema_context(company.schema_name):
+            recipients = list(
+                User.objects.filter(is_superuser=True)
+                .exclude(username=DEBUG_ADMIN_USERNAME)
+                .values_list("email", flat=True)
+            )
+    except Exception as exc:
+        logger.warning(
+            f"Could not resolve superusers for company={getattr(company, 'name', '-')}: {exc}"
+        )
+        recipients = []
+    return [email for email in recipients if email]
+
+
+class _SafeFormatDict(dict):
+    def __missing__(self, key):
+        return "{" + key + "}"
+
+
+def _render_custom_reminder_html(company_name, message, payment_url=None):
+    safe_company = company_name or "Customer"
+    body_lines = (message or "").splitlines()
+    body_html = "<br>".join(
+        line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        for line in body_lines
+    )
+    cta_html = ""
+    if payment_url:
+        safe_payment_url = (
+            str(payment_url)
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
+        cta_html = (
+            "<p style='margin-top: 18px;'>"
+            f"<a href='{safe_payment_url}' "
+            "style='background:#0b5ed7;color:#fff;padding:10px 16px;text-decoration:none;border-radius:4px;'>"
+            "Open Company Page"
+            "</a>"
+            "</p>"
+        )
+
+    return (
+        "<html><body style='font-family: Arial, sans-serif; color: #333;'>"
+        f"<p>Hello {safe_company},</p>"
+        f"<p>{body_html}</p>"
+        f"{cta_html}"
+        "<p>Regards,<br>The Zentro Team</p>"
+        "</body></html>"
+    )
+
+
+def _build_company_subscription_url(company):
+    """
+    Build per-company frontend URL for subscription/company page.
+    Example (dev): http://primewise.localhost:5173/app/company
+    """
+    fallback = getattr(
+        settings, "TRIAL_REMINDER_PAYMENT_URL", "https://zentroapp.app/subscription"
+    )
+    if not company or not getattr(company, "domain_url", None):
+        return fallback
+
+    raw_domain = str(company.domain_url).strip().rstrip("/")
+    if not raw_domain:
+        return fallback
+
+    scheme = ""
+    host = raw_domain
+    if raw_domain.startswith("http://") or raw_domain.startswith("https://"):
+        parsed = urlparse(raw_domain)
+        scheme = parsed.scheme
+        host = parsed.netloc
+
+    host_lower = host.lower()
+    # Tenant `domain_url` is stored on the backend as `*.zentroapp-backend.com`,
+    # but the frontend the user must visit is `*.zentroapp.app`.
+    # E.g. semuna.zentroapp-backend.com -> semuna.zentroapp.app
+    if "zentroapp-backend.com" in host_lower:
+        host = host.replace("zentroapp-backend.com", "zentroapp.app")
+
+    is_local = host_lower.endswith(".localhost") or host_lower == "localhost"
+
+    if not scheme:
+        scheme = "http" if is_local else "https"
+
+    has_explicit_port = ":" in host and host.rsplit(":", 1)[1].isdigit()
+    if is_local and not has_explicit_port:
+        host = f"{host}:5173"
+
+    return f"{scheme}://{host}/app/company"
+
+
+def _build_company_login_url(company):
+    """Build per-company frontend login URL."""
+    if not company or not getattr(company, "domain_url", None):
+        return "https://zentroapp.app/sign-in"
+
+    raw_domain = str(company.domain_url).strip().rstrip("/")
+    if not raw_domain:
+        return "https://zentroapp.app/sign-in"
+
+    scheme = ""
+    host = raw_domain
+    if raw_domain.startswith("http://") or raw_domain.startswith("https://"):
+        parsed = urlparse(raw_domain)
+        scheme = parsed.scheme
+        host = parsed.netloc
+
+    host_lower = host.lower()
+    if "zentroapp-backend.com" in host_lower:
+        host = host.replace("zentroapp-backend.com", "zentroapp.app")
+        host_lower = host.lower()
+
+    is_local = host_lower.endswith(".localhost") or host_lower == "localhost"
+    if not scheme:
+        scheme = "http" if is_local else "https"
+
+    has_explicit_port = ":" in host and host.rsplit(":", 1)[1].isdigit()
+    if is_local and not has_explicit_port:
+        host = f"{host}:5173"
+
+    return f"{scheme}://{host}/sign-in"
+
+
+@shared_task
+def send_billing_expiry_reminders_custom(
+    reminder_key,
+    subject_template,
+    body_template,
+    send_email=True,
+    days_min=1,
+    days_max=10,
+    selected_recipients_map=None,
+):
+    """
+    Parameterized expiry reminder sender used by admin preview/send page.
+    Sends to tenant superusers per company (excluding debug_admin).
+    """
+    logger = get_task_logger(__name__)
+    now = timezone.now().date()
+
+    reminders_sent = 0
+    reminders_skipped = 0
+    companies_without_superusers = []
+    companies_excluded_by_selection = []
+    recipient_emails_sent = 0
+    recipient_emails_failed = []
+
+    try:
+        with schema_context("public"):
+            rows = list(
+                _get_companies_for_expiry_reminders(
+                    days_min=days_min,
+                    days_max=days_max,
+                )
+            )
+            logger.info(
+                f"Found {len(rows)} companies in {days_min}-{days_max} day expiry window for reminder_key={reminder_key}"
+            )
+
+            for (
+                company,
+                billing_history,
+                period_end_date,
+                days_remaining,
+                source,
+                source_id,
+            ) in rows:
+                row_key = f"{company.id}:{source}:{source_id}"
+                already_sent = BillingExpiryReminder.objects.filter(
+                    company=company,
+                    source=source,
+                    source_id=source_id,
+                    reminder_key=reminder_key,
+                    sent_at__date=now,
+                ).exists()
+                if already_sent:
+                    reminders_skipped += 1
+                    continue
+
+                base_recipients = _get_company_superuser_emails(company)
+                recipients = list(base_recipients)
+                if isinstance(selected_recipients_map, dict):
+                    selected_for_row = selected_recipients_map.get(row_key, [])
+                    selected_set = (
+                        set(selected_for_row)
+                        if isinstance(selected_for_row, list)
+                        else set()
+                    )
+                    recipients = [
+                        email for email in recipients if email in selected_set
+                    ]
+
+                if not recipients:
+                    if not base_recipients:
+                        companies_without_superusers.append(company.name)
+                    elif isinstance(selected_recipients_map, dict):
+                        companies_excluded_by_selection.append(company.name)
+                    else:
+                        companies_without_superusers.append(company.name)
+                    continue
+
+                fmt_ctx = _SafeFormatDict(
+                    {
+                        "company_name": company.name,
+                        "days_remaining": days_remaining,
+                        "period_end_date": str(period_end_date),
+                        "payment_url": _build_company_subscription_url(company),
+                    }
+                )
+                subject = (subject_template or "").format_map(fmt_ctx).strip()
+                body_text = (body_template or "").format_map(fmt_ctx).strip()
+                html = _render_custom_reminder_html(
+                    company.name,
+                    body_text,
+                    payment_url=fmt_ctx.get("payment_url"),
+                )
+
+                email_failed = False
+                if send_email:
+                    for recipient in recipients:
+                        sent = send_transactional_email(
+                            recipient,
+                            subject,
+                            html,
+                            plain_message=body_text,
+                        )
+                        if sent:
+                            recipient_emails_sent += 1
+                        else:
+                            email_failed = True
+                            recipient_emails_failed.append(recipient)
+
+                if send_email and not email_failed:
+                    BillingExpiryReminder.objects.create(
+                        company=company,
+                        billing_history=billing_history,
+                        source=source,
+                        source_id=source_id,
+                        period_end_date=period_end_date,
+                        days_remaining=days_remaining,
+                        reminder_key=reminder_key,
+                    )
+                    reminders_sent += 1
+
+        return {
+            "status": "success",
+            "reminders_sent": reminders_sent,
+            "reminders_skipped": reminders_skipped,
+            "recipient_emails_sent": recipient_emails_sent,
+            "recipient_emails_failed": recipient_emails_failed,
+            "companies_without_superusers": companies_without_superusers,
+            "companies_excluded_by_selection": companies_excluded_by_selection,
+            "companies_found": len(rows),
+        }
+    except Exception as exc:
+        logger.exception(f"Error in send_billing_expiry_reminders_custom: {exc}")
+        raise
+
+
+@shared_task
+def send_billing_expiry_10day_reminders():
+    """
+    Send reminder emails every day for companies in the 10-day expiry window.
+    Includes BillingHistory, Subscription (trial), ZentroStarterOrder.
+    BCC to superuser (excl. debug_admin).
+    Run daily via Celery Beat at 8:00 AM UTC.
+    """
+    logger = get_task_logger(__name__)
+    payment_url = getattr(
+        settings, "TRIAL_REMINDER_PAYMENT_URL", "https://zentroapp.app/subscription"
+    )
+
+    try:
+        now = timezone.now().date()
+        reminders_sent = 0
+        reminders_skipped = 0
+        reminders_failed = []
+        companies_no_email = []
+
+        with schema_context("public"):
+            # BCC to superuser - User may be tenant-specific, wrap to avoid schema errors
+            try:
+                bcc_emails = list(
+                    User.objects.filter(is_superuser=True)
+                    .exclude(username=DEBUG_ADMIN_USERNAME)
+                    .values_list("email", flat=True)
+                )
+                bcc_emails = [e for e in bcc_emails if e]
+            except Exception as e:
+                logger.warning(
+                    f"Could not fetch BCC superusers: {e}. Sending without BCC."
+                )
+                bcc_emails = []
+
+            rows = list(_get_companies_for_expiry_reminders())
+            logger.info(f"Found {len(rows)} companies in 10-day expiry window")
+
+            for (
+                company,
+                billing_history,
+                period_end_date,
+                days_remaining,
+                source,
+                source_id,
+            ) in rows:
+                if not company.email:
+                    companies_no_email.append(company.name)
+                    continue
+
+                # Skip if already sent today (by source/source_id since billing_history can be null)
+                already_sent = BillingExpiryReminder.objects.filter(
+                    company=company,
+                    source=source,
+                    source_id=source_id,
+                    reminder_key="expiry_10_day",
+                    sent_at__date=now,
+                ).exists()
+                if already_sent:
+                    reminders_skipped += 1
+                    continue
+
+                html = render_to_string(
+                    "emails/trial_end_reminder.html",
+                    {
+                        "company_name": company.name,
+                        "trial_end_date": period_end_date,
+                        "days_remaining": days_remaining,
+                        "payment_url": payment_url,
+                    },
+                )
+                subject = f"Your Zentro subscription expires in {days_remaining} day(s) - Renew to continue"
+                success = send_transactional_email(
+                    company.email,
+                    subject,
+                    html,
+                    bcc=bcc_emails if bcc_emails else None,
+                )
+                if success:
+                    BillingExpiryReminder.objects.create(
+                        company=company,
+                        billing_history=billing_history,
+                        source=source,
+                        source_id=source_id,
+                        period_end_date=period_end_date,
+                        days_remaining=days_remaining,
+                        reminder_key="expiry_10_day",
+                    )
+                    reminders_sent += 1
+                else:
+                    reminders_failed.append(company.name)
+                    logger.warning(
+                        f"Failed to send expiry reminder to {company.name} ({company.email})"
+                    )
+
+        logger.info(
+            f"Sent {reminders_sent} billing expiry reminders; skipped {reminders_skipped}; failed {len(reminders_failed)}; companies_found={len(rows)}"
+        )
+        return {
+            "status": "success",
+            "reminders_sent": reminders_sent,
+            "reminders_skipped": reminders_skipped,
+            "reminders_failed": reminders_failed,
+            "companies_no_email": companies_no_email,
+            "companies_found": len(rows),
+        }
+
+    except Exception as e:
+        logger.exception(f"Error in send_billing_expiry_10day_reminders: {e}")
+        raise
+
+
+@shared_task
+def send_grace_period_payment_reminders():
+    """
+    Daily: email company contact during subscription grace (payment overdue).
+    Deduped via BillingExpiryReminder per (company, period_end, offset).
+    """
+    logger = get_task_logger(__name__)
+    payment_url = getattr(
+        settings, "TRIAL_REMINDER_PAYMENT_URL", "https://zentroapp.app/subscription"
+    )
+    today = timezone.now().date()
+    reminders_sent = 0
+    reminders_skipped = 0
+    reminders_failed = []
+
+    from company.subscription_grace import (
+        access_lock_date_for,
+        expiry_kind_for_subscription,
+        grace_days_for_company,
+        in_grace_period,
+        payment_due_date,
+        period_end_date,
+        reminder_offsets_for_company,
+    )
+
+    try:
+        with schema_context("public"):
+            try:
+                bcc_emails = list(
+                    User.objects.filter(is_superuser=True)
+                    .exclude(username=DEBUG_ADMIN_USERNAME)
+                    .values_list("email", flat=True)
+                )
+                bcc_emails = [e for e in bcc_emails if e]
+            except Exception as e:
+                logger.warning(f"Grace reminders: could not load BCC: {e}")
+                bcc_emails = []
+
+            for company in Company.objects.all().iterator():
+                sub = Subscription.objects.filter(company=company).first()
+                if not sub:
+                    continue
+                if not in_grace_period(today, sub, company):
+                    continue
+                due = payment_due_date(sub)
+                if not due:
+                    continue
+                period_end = period_end_date(sub)
+                offsets = reminder_offsets_for_company(company)
+                gd = grace_days_for_company(company)
+                lock = access_lock_date_for(sub, company)
+                days_until_lock = (lock - today).days if lock else 0
+
+                for offset in offsets:
+                    if offset < 0 or offset >= gd:
+                        continue
+                    reminder_day = due + timedelta(days=offset)
+                    if reminder_day != today:
+                        continue
+                    key = f"grace_payment_offset_{offset}"
+                    if BillingExpiryReminder.objects.filter(
+                        company=company,
+                        reminder_key=key,
+                        period_end_date=period_end,
+                        source="grace_period",
+                        source_id=offset,
+                    ).exists():
+                        reminders_skipped += 1
+                        continue
+
+                    to_email = company.email
+                    if not to_email:
+                        reminders_skipped += 1
+                        continue
+
+                    kind = expiry_kind_for_subscription(sub)
+                    if kind == "trial":
+                        body_lead = (
+                            "Your trial period has ended and payment is now due to keep using Zentro."
+                        )
+                        subject = (
+                            f"Action needed: complete your Zentro subscription — {company.name}"
+                        )
+                    else:
+                        body_lead = (
+                            "Your subscription payment is overdue. Please renew to keep full access."
+                        )
+                        subject = (
+                            f"Payment overdue: renew your Zentro subscription — {company.name}"
+                        )
+
+                    html = render_to_string(
+                        "emails/grace_period_reminder.html",
+                        {
+                            "company_name": company.name,
+                            "body_lead": body_lead,
+                            "payment_url": payment_url,
+                            "lock_date": lock.isoformat() if lock else "",
+                            "days_until_lock": max(0, days_until_lock),
+                        },
+                    )
+                    ok = send_transactional_email(
+                        to_email,
+                        subject,
+                        html,
+                        bcc=bcc_emails if bcc_emails else None,
+                    )
+                    if ok:
+                        BillingExpiryReminder.objects.create(
+                            company=company,
+                            billing_history=None,
+                            source="grace_period",
+                            source_id=offset,
+                            reminder_key=key,
+                            period_end_date=period_end,
+                            days_remaining=max(0, days_until_lock),
+                        )
+                        reminders_sent += 1
+                    else:
+                        reminders_failed.append(company.name)
+
+        logger.info(
+            "Grace period reminders: sent=%s skipped=%s failed=%s",
+            reminders_sent,
+            reminders_skipped,
+            len(reminders_failed),
+        )
+        return {
+            "status": "success",
+            "reminders_sent": reminders_sent,
+            "reminders_skipped": reminders_skipped,
+            "reminders_failed": reminders_failed,
+        }
+    except Exception as e:
+        logger.exception(f"Error in send_grace_period_payment_reminders: {e}")
+        raise
+
+
+@shared_task
+def generate_pending_receipts():
+    """
+    Generate PDF receipts for payments that don't have receipts yet.
+    Run this hourly via Celery Beat.
+    """
+    from .models import ZentroStarterPayment
+    from .receipt_utils import generate_receipt_pdf
+
+    logger = get_task_logger(__name__)
+
+    try:
+        # Find payments without PDF receipts
+        payments = ZentroStarterPayment.objects.filter(
+            is_confirmed=True,
+        ).filter(Q(invoice_pdf_path__isnull=True) | Q(invoice_pdf_path=""))
+
+        generated = 0
+
+        for payment in payments:
+            try:
+                generate_receipt_pdf(payment, save_to_file=True)
+                generated += 1
+            except Exception as e:
+                logger.error(f"Error generating receipt for payment {payment.id}: {e}")
+                continue
+
+        logger.info(f"Generated {generated} receipt PDFs")
+        return {"status": "success", "generated": generated}
+
+    except Exception as e:
+        logger.error(f"Error in generate_pending_receipts: {e}")
+        raise
+
+
+@shared_task(bind=True)
+def import_initial_data_task(self, company_name, file_path):
+    try:
+        # Switch to public schema first
+        with schema_context("public"):
+            # Get the company
+            company = Company.objects.get(name=company_name)
+
+            # Then switch to company schema for import
+            with tenant_context(company):
+                self.update_state(
+                    state="PROGRESS",
+                    meta={
+                        "progress": 30,
+                        "message": "Starting data import...",
+                        "status": "starting_import",
+                    },
+                )
+
+                try:
+                    logger.info(
+                        f"Starting data import for {company_name} using {file_path}"
+                    )
+
+                    from io import StringIO
+                    import sys
+
+                    # Capture command output
+                    output = StringIO()
+                    sys.stdout = output
+
+                    self.update_state(
+                        state="PROGRESS",
+                        meta={
+                            "progress": 50,
+                            "message": "Importing initial data...",
+                            "status": "importing_data",
+                        },
+                    )
+
+                    result = call_command(
+                        "import_tenant_data",
+                        company.schema_name,
+                        file_path,
+                        verbosity=1,  # Increase verbosity to see output
+                    )
+
+                    # Restore stdout
+                    sys.stdout = sys.__stdout__
+                    command_output = output.getvalue()
+                    logger.info(f"Import command output: {command_output}")
+
+                    if not isinstance(result, dict):
+                        logger.warning(f"Unexpected result type: {type(result)}")
+                        result = {"success": False, "error": "Invalid command result"}
+
+                    if not result.get("success", False):
+                        error_msg = result.get(
+                            "error", "Unknown error during data import"
+                        )
+                        logger.error(f"Import failed: {error_msg}")
+                        raise Exception(error_msg)
+
+                    self.update_state(
+                        state="PROGRESS",
+                        meta={
+                            "progress": 85,
+                            "message": "Setting up number series...",
+                            "status": "setting_up_series",
+                        },
+                    )
+
+                    # Setup number series
+                    series_result = setup_default_no_series()
+                    logger.info(f"Number series setup result: {series_result}")
+
+                    self.update_state(
+                        state="PROGRESS",
+                        meta={
+                            "progress": 95,
+                            "message": "Finalizing setup...",
+                            "status": "finalizing",
+                        },
+                    )
+
+                except Exception as import_error:
+                    logger.error(f"Error during data import: {str(import_error)}")
+                    raise import_error
+
+                return {
+                    "state": "SUCCESS",
+                    "progress": 100,
+                    "message": "Setup completed successfully!",
+                    "status": "completed",
+                    "company_name": company_name,
+                    "import_details": (
+                        command_output if "command_output" in locals() else None
+                    ),
+                }
+
+    except Exception as e:
+        logger.error(f"Error importing initial data: {str(e)}")
+        return {
+            "state": "FAILURE",
+            "progress": 0,
+            "message": f"Error importing initial data: {str(e)}",
+            "error": str(e),
+            "status": "failed",
+        }

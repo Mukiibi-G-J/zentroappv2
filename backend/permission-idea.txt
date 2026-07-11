@@ -1,0 +1,818 @@
+I'll help you implement the permission set lines with the specific fields you mentioned. Here's the complete implementation:
+
+1. Enhanced Django Models
+python
+# models.py
+from django.db import models
+from django.contrib.auth.models import User, Group
+from django.core.validators import MinValueValidator
+
+class ObjectType(models.Model):
+    """Defines types of objects (Table, Page, Report, Codeunit, etc.)"""
+    name = models.CharField(max_length=100)
+    code = models.CharField(max_length=20, unique=True)
+    description = models.TextField(blank=True)
+    sort_order = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ['sort_order', 'name']
+
+    def __str__(self):
+        return self.name
+
+class ApplicationObject(models.Model):
+    """Represents tables, pages, reports, etc. in the system"""
+    name = models.CharField(max_length=100)
+    object_type = models.ForeignKey(ObjectType, on_delete=models.CASCADE)
+    object_id = models.IntegerField(
+        validators=[MinValueValidator(1)],
+        help_text="Unique numeric ID for the object"
+    )
+    code = models.CharField(max_length=50, unique=True)
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    related_model = models.CharField(max_length=100, blank=True, null=True)
+    is_auto_generated = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['object_type__sort_order', 'object_type__name', 'object_id', 'name']
+        unique_together = [['object_type', 'object_id'], ['name', 'object_type']]
+
+    def __str__(self):
+        return f"{self.name} ({self.object_type.name})"
+
+class PermissionSet(models.Model):
+    """Collection of permissions that can be assigned to groups"""
+    name = models.CharField(max_length=100, unique=True)
+    code = models.CharField(max_length=50, unique=True)
+    description = models.TextField(blank=True)
+    is_system = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+class PermissionSetLine(models.Model):
+    """Individual permission lines within a permission set"""
+    
+    PERMISSION_CHOICES = [
+        ('none', 'None'),
+        ('yes', 'Yes'),
+        ('indirect', 'Indirect'),
+    ]
+    
+    EXECUTE_PERMISSION_CHOICES = [
+        ('none', 'None'),
+        ('yes', 'Yes'),
+    ]
+
+    permission_set = models.ForeignKey(
+        PermissionSet, 
+        on_delete=models.CASCADE, 
+        related_name='permission_lines'
+    )
+    object_type = models.ForeignKey(ObjectType, on_delete=models.CASCADE)
+    object_id = models.IntegerField(
+        validators=[MinValueValidator(1)],
+        help_text="Object ID number"
+    )
+    object_name = models.CharField(max_length=100)
+    
+    # Permission fields
+    read_permission = models.CharField(
+        max_length=10, 
+        choices=PERMISSION_CHOICES, 
+        default='none'
+    )
+    insert_permission = models.CharField(
+        max_length=10, 
+        choices=PERMISSION_CHOICES, 
+        default='none'
+    )
+    modify_permission = models.CharField(
+        max_length=10, 
+        choices=PERMISSION_CHOICES, 
+        default='none'
+    )
+    delete_permission = models.CharField(
+        max_length=10, 
+        choices=PERMISSION_CHOICES, 
+        default='none'
+    )
+    execute_permission = models.CharField(
+        max_length=10, 
+        choices=EXECUTE_PERMISSION_CHOICES, 
+        default='none'
+    )
+    
+    # Link to application object (optional, for reference)
+    application_object = models.ForeignKey(
+        ApplicationObject, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['object_type__sort_order', 'object_type__name', 'object_id', 'object_name']
+        unique_together = ['permission_set', 'object_type', 'object_id']
+        verbose_name = "Permission Set Line"
+        verbose_name_plural = "Permission Set Lines"
+
+    def __str__(self):
+        return f"{self.permission_set.name} - {self.object_name}"
+
+    def save(self, *args, **kwargs):
+        # Auto-populate object_name from application_object if not provided
+        if not self.object_name and self.application_object:
+            self.object_name = self.application_object.name
+        super().save(*args, **kwargs)
+
+class UserGroup(models.Model):
+    """Extended group model to link with permission sets"""
+    group = models.OneToOneField(Group, on_delete=models.CASCADE)
+    permission_sets = models.ManyToManyField(PermissionSet, blank=True)
+    description = models.TextField(blank=True)
+
+    def __str__(self):
+        return self.group.name
+2. Django Serializers
+python
+# serializers.py
+from rest_framework import serializers
+from django.contrib.auth.models import Group
+from .models import *
+
+class ObjectTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ObjectType
+        fields = '__all__'
+
+class ApplicationObjectSerializer(serializers.ModelSerializer):
+    object_type_name = serializers.CharField(source='object_type.name', read_only=True)
+    
+    class Meta:
+        model = ApplicationObject
+        fields = '__all__'
+
+class PermissionSetSerializer(serializers.ModelSerializer):
+    line_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = PermissionSet
+        fields = '__all__'
+    
+    def get_line_count(self, obj):
+        return obj.permission_lines.count()
+
+class PermissionSetLineSerializer(serializers.ModelSerializer):
+    object_type_name = serializers.CharField(source='object_type.name', read_only=True)
+    object_type_code = serializers.CharField(source='object_type.code', read_only=True)
+    permission_set_name = serializers.CharField(source='permission_set.name', read_only=True)
+    application_object_name = serializers.CharField(source='application_object.name', read_only=True, allow_null=True)
+    
+    class Meta:
+        model = PermissionSetLine
+        fields = '__all__'
+        read_only_fields = ['created_at', 'updated_at']
+
+class PermissionSetWithLinesSerializer(serializers.ModelSerializer):
+    permission_lines = PermissionSetLineSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = PermissionSet
+        fields = '__all__'
+
+class UserGroupSerializer(serializers.ModelSerializer):
+    group_name = serializers.CharField(source='group.name', read_only=True)
+    permission_set_names = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UserGroup
+        fields = '__all__'
+
+    def get_permission_set_names(self, obj):
+        return [ps.name for ps in obj.permission_sets.all()]
+3. Django Views
+python
+# views.py
+from rest_framework import viewsets, permissions, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from django.db.models import Q
+from .models import *
+from .serializers import *
+
+class PermissionSetLineViewSet(viewsets.ModelViewSet):
+    queryset = PermissionSetLine.objects.all()
+    serializer_class = PermissionSetLineSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        queryset = PermissionSetLine.objects.select_related(
+            'object_type', 'permission_set', 'application_object'
+        )
+        
+        # Filter by permission_set if provided
+        permission_set = self.request.query_params.get('permission_set', None)
+        if permission_set:
+            queryset = queryset.filter(permission_set_id=permission_set)
+        
+        # Filter by object_type if provided
+        object_type = self.request.query_params.get('object_type', None)
+        if object_type:
+            queryset = queryset.filter(object_type_id=object_type)
+        
+        return queryset
+
+class PermissionSetViewSet(viewsets.ModelViewSet):
+    queryset = PermissionSet.objects.all()
+    serializer_class = PermissionSetSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return PermissionSetWithLinesSerializer
+        return PermissionSetSerializer
+
+    @action(detail=True, methods=['post'])
+    def add_permission_line(self, request, pk=None):
+        permission_set = self.get_object()
+        serializer = PermissionSetLineSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            serializer.save(permission_set=permission_set)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['get'])
+    def permission_lines(self, request, pk=None):
+        permission_set = self.get_object()
+        permission_lines = permission_set.permission_lines.all()
+        serializer = PermissionSetLineSerializer(permission_lines, many=True)
+        return Response(serializer.data)
+
+class PermissionUtility:
+    """Utility class to check user permissions based on permission set lines"""
+    
+    @staticmethod
+    def get_user_permission_sets(user):
+        """Get all permission sets for a user"""
+        permission_sets = set()
+        
+        user_groups = UserGroup.objects.filter(group__in=user.groups.all())
+        
+        for user_group in user_groups:
+            permission_sets.update(user_group.permission_sets.all())
+        
+        return permission_sets
+    
+    @staticmethod
+    def check_object_permission(user, object_type_code, object_id, permission_type):
+        """Check if user has specific permission for an object"""
+        permission_sets = PermissionUtility.get_user_permission_sets(user)
+        
+        # Look for permission set lines that match the object
+        permission_lines = PermissionSetLine.objects.filter(
+            permission_set__in=permission_sets,
+            object_type__code=object_type_code,
+            object_id=object_id
+        )
+        
+        for line in permission_lines:
+            permission_value = getattr(line, f"{permission_type}_permission")
+            if permission_value in ['yes', 'indirect']:
+                return True
+        
+        return False
+    
+    @staticmethod
+    def get_user_permissions(user):
+        """Get all permissions for a user in a structured format"""
+        permission_sets = PermissionUtility.get_user_permission_sets(user)
+        
+        permissions = {}
+        permission_lines = PermissionSetLine.objects.filter(
+            permission_set__in=permission_sets
+        ).select_related('object_type')
+        
+        for line in permission_lines:
+            key = f"{line.object_type.code}_{line.object_id}"
+            permissions[key] = {
+                'object_type': line.object_type.code,
+                'object_id': line.object_id,
+                'object_name': line.object_name,
+                'read': line.read_permission,
+                'insert': line.insert_permission,
+                'modify': line.modify_permission,
+                'delete': line.delete_permission,
+                'execute': line.execute_permission,
+            }
+        
+        return permissions
+
+class UserPermissionsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        user_permissions = PermissionUtility.get_user_permissions(request.user)
+        return Response(user_permissions)
+
+class CheckPermissionView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        object_type_code = request.data.get('object_type_code')
+        object_id = request.data.get('object_id')
+        permission_type = request.data.get('permission_type')
+        
+        if not all([object_type_code, object_id, permission_type]):
+            return Response(
+                {'error': 'object_type_code, object_id, and permission_type are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        has_permission = PermissionUtility.check_object_permission(
+            request.user, object_type_code, object_id, permission_type
+        )
+        
+        return Response({
+            'has_permission': has_permission,
+            'object_type_code': object_type_code,
+            'object_id': object_id,
+            'permission_type': permission_type
+        })
+4. React Components
+Permission Set Lines Manager
+jsx
+// components/PermissionSetLinesManager.jsx
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+
+const PermissionSetLinesManager = ({ permissionSetId }) => {
+  const [permissionLines, setPermissionLines] = useState([]);
+  const [objectTypes, setObjectTypes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newLine, setNewLine] = useState({
+    object_type: '',
+    object_id: '',
+    object_name: '',
+    read_permission: 'none',
+    insert_permission: 'none',
+    modify_permission: 'none',
+    delete_permission: 'none',
+    execute_permission: 'none'
+  });
+
+  useEffect(() => {
+    loadData();
+  }, [permissionSetId]);
+
+  const loadData = async () => {
+    try {
+      const [linesRes, typesRes] = await Promise.all([
+        axios.get(`/api/permission-sets/${permissionSetId}/permission-lines/`),
+        axios.get('/api/object-types/')
+      ]);
+      
+      setPermissionLines(linesRes.data);
+      setObjectTypes(typesRes.data);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddLine = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.post(`/api/permission-sets/${permissionSetId}/add_permission_line/`, newLine);
+      setShowAddForm(false);
+      setNewLine({
+        object_type: '',
+        object_id: '',
+        object_name: '',
+        read_permission: 'none',
+        insert_permission: 'none',
+        modify_permission: 'none',
+        delete_permission: 'none',
+        execute_permission: 'none'
+      });
+      loadData();
+    } catch (error) {
+      console.error('Error adding permission line:', error);
+    }
+  };
+
+  const handleUpdatePermission = async (lineId, field, value) => {
+    try {
+      await axios.patch(`/api/permission-set-lines/${lineId}/`, {
+        [field]: value
+      });
+      loadData();
+    } catch (error) {
+      console.error('Error updating permission:', error);
+    }
+  };
+
+  const handleDeleteLine = async (lineId) => {
+    if (window.confirm('Are you sure you want to delete this permission line?')) {
+      try {
+        await axios.delete(`/api/permission-set-lines/${lineId}/`);
+        loadData();
+      } catch (error) {
+        console.error('Error deleting permission line:', error);
+      }
+    }
+  };
+
+  const permissionOptions = [
+    { value: 'none', label: 'None' },
+    { value: 'yes', label: 'Yes' },
+    { value: 'indirect', label: 'Indirect' },
+  ];
+
+  const executeOptions = [
+    { value: 'none', label: 'None' },
+    { value: 'yes', label: 'Yes' },
+  ];
+
+  if (loading) return <div>Loading permission lines...</div>;
+
+  return (
+    <div className="permission-set-lines-manager">
+      <div className="card">
+        <div className="card-header">
+          <h4 className="card-title">Permission Set Lines</h4>
+          <button 
+            className="btn btn-primary btn-sm"
+            onClick={() => setShowAddForm(!showAddForm)}
+          >
+            Add New Line
+          </button>
+        </div>
+
+        {showAddForm && (
+          <div className="card-body border-bottom">
+            <form onSubmit={handleAddLine}>
+              <div className="row">
+                <div className="col-md-2">
+                  <div className="form-group">
+                    <label>Object Type</label>
+                    <select
+                      className="form-control"
+                      value={newLine.object_type}
+                      onChange={(e) => setNewLine({...newLine, object_type: e.target.value})}
+                      required
+                    >
+                      <option value="">Select Type</option>
+                      {objectTypes.map(type => (
+                        <option key={type.id} value={type.id}>
+                          {type.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="col-md-2">
+                  <div className="form-group">
+                    <label>Object ID</label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      value={newLine.object_id}
+                      onChange={(e) => setNewLine({...newLine, object_id: e.target.value})}
+                      required
+                      min="1"
+                    />
+                  </div>
+                </div>
+                <div className="col-md-3">
+                  <div className="form-group">
+                    <label>Object Name</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={newLine.object_name}
+                      onChange={(e) => setNewLine({...newLine, object_name: e.target.value})}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="col-md-5">
+                  <div className="form-group">
+                    <label>Permissions</label>
+                    <div className="d-flex gap-2">
+                      {['read', 'insert', 'modify', 'delete'].map(permType => (
+                        <select
+                          key={permType}
+                          className="form-control form-control-sm"
+                          value={newLine[`${permType}_permission`]}
+                          onChange={(e) => setNewLine({
+                            ...newLine, 
+                            [`${permType}_permission`]: e.target.value
+                          })}
+                        >
+                          {permissionOptions.map(option => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      ))}
+                      <select
+                        className="form-control form-control-sm"
+                        value={newLine.execute_permission}
+                        onChange={(e) => setNewLine({
+                          ...newLine, 
+                          execute_permission: e.target.value
+                        })}
+                      >
+                        {executeOptions.map(option => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-2">
+                <button type="submit" className="btn btn-success btn-sm">Add Line</button>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary btn-sm ml-2"
+                  onClick={() => setShowAddForm(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        <div className="table-responsive">
+          <table className="table table-striped table-hover">
+            <thead>
+              <tr>
+                <th>Object Type</th>
+                <th>Object ID</th>
+                <th>Object Name</th>
+                <th>Read</th>
+                <th>Insert</th>
+                <th>Modify</th>
+                <th>Delete</th>
+                <th>Execute</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {permissionLines.map(line => (
+                <tr key={line.id}>
+                  <td>{line.object_type_name}</td>
+                  <td>{line.object_id}</td>
+                  <td>{line.object_name}</td>
+                  <td>
+                    <select
+                      value={line.read_permission}
+                      onChange={(e) => handleUpdatePermission(line.id, 'read_permission', e.target.value)}
+                      className="form-control form-control-sm"
+                    >
+                      {permissionOptions.map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <select
+                      value={line.insert_permission}
+                      onChange={(e) => handleUpdatePermission(line.id, 'insert_permission', e.target.value)}
+                      className="form-control form-control-sm"
+                    >
+                      {permissionOptions.map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <select
+                      value={line.modify_permission}
+                      onChange={(e) => handleUpdatePermission(line.id, 'modify_permission', e.target.value)}
+                      className="form-control form-control-sm"
+                    >
+                      {permissionOptions.map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <select
+                      value={line.delete_permission}
+                      onChange={(e) => handleUpdatePermission(line.id, 'delete_permission', e.target.value)}
+                      className="form-control form-control-sm"
+                    >
+                      {permissionOptions.map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <select
+                      value={line.execute_permission}
+                      onChange={(e) => handleUpdatePermission(line.id, 'execute_permission', e.target.value)}
+                      className="form-control form-control-sm"
+                    >
+                      {executeOptions.map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <button
+                      className="btn btn-danger btn-sm"
+                      onClick={() => handleDeleteLine(line.id)}
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {permissionLines.length === 0 && (
+                <tr>
+                  <td colSpan="9" className="text-center text-muted">
+                    No permission lines found. Add your first permission line above.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default PermissionSetLinesManager;
+Enhanced Permission Context
+jsx
+// contexts/PermissionContext.js
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import axios from 'axios';
+
+const PermissionContext = createContext();
+
+export const usePermissions = () => {
+  const context = useContext(PermissionContext);
+  if (!context) {
+    throw new Error('usePermissions must be used within a PermissionProvider');
+  }
+  return context;
+};
+
+export const PermissionProvider = ({ children }) => {
+  const [permissions, setPermissions] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
+
+  const loadPermissions = async () => {
+    try {
+      setLoading(true);
+      const response = await axios.get('/api/user-permissions/');
+      setPermissions(response.data);
+      setHasLoaded(true);
+    } catch (error) {
+      console.error('Error loading permissions:', error);
+      setPermissions({});
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const checkPermission = (objectType, objectId, permissionType) => {
+    if (!hasLoaded) return false;
+    
+    const key = `${objectType}_${objectId}`;
+    const objectPermissions = permissions[key];
+    
+    if (!objectPermissions) return false;
+
+    const permissionValue = objectPermissions[permissionType];
+    
+    if (permissionType === 'execute') {
+      return permissionValue === 'yes';
+    }
+    
+    return ['yes', 'indirect'].includes(permissionValue);
+  };
+
+  const getObjectPermissions = (objectType, objectId) => {
+    const key = `${objectType}_${objectId}`;
+    return permissions[key] || null;
+  };
+
+  useEffect(() => {
+    loadPermissions();
+  }, []);
+
+  const value = {
+    permissions,
+    loading,
+    hasLoaded,
+    checkPermission,
+    getObjectPermissions,
+    reloadPermissions: loadPermissions
+  };
+
+  return (
+    <PermissionContext.Provider value={value}>
+      {children}
+    </PermissionContext.Provider>
+  );
+};
+5. Usage Example
+jsx
+// Example component using the new permission system
+import React from 'react';
+import { usePermissions } from '../contexts/PermissionContext';
+
+const CustomerPage = () => {
+  const { checkPermission } = usePermissions();
+
+  const canReadCustomers = checkPermission('TABLE', 18, 'read'); // Customer table
+  const canInsertCustomers = checkPermission('TABLE', 18, 'insert');
+  const canModifyCustomers = checkPermission('TABLE', 18, 'modify');
+  const canDeleteCustomers = checkPermission('TABLE', 18, 'delete');
+
+  if (!canReadCustomers) {
+    return (
+      <div className="alert alert-warning">
+        You don't have permission to view customers.
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="page-header">
+        <h1>Customers</h1>
+        {canInsertCustomers && (
+          <button className="btn btn-primary">New Customer</button>
+        )}
+      </div>
+      
+      {/* Customer list implementation */}
+      <div className="customer-list">
+        {/* Your customer list content */}
+      </div>
+
+      {/* Show permissions for debugging */}
+      <div className="permission-info mt-3">
+        <small className="text-muted">
+          Permissions: 
+          Read: {canReadCustomers ? 'Yes' : 'No'}, 
+          Insert: {canInsertCustomers ? 'Yes' : 'No'}, 
+          Modify: {canModifyCustomers ? 'Yes' : 'No'}, 
+          Delete: {canDeleteCustomers ? 'Yes' : 'No'}
+        </small>
+      </div>
+    </div>
+  );
+};
+
+export default CustomerPage;
+This implementation provides:
+
+Object Type & ID Based Permissions: Sort by Object Type (ascending) and Object ID (ascending)
+
+Complete Permission Fields: Read, Insert, Modify, Delete, Execute permissions
+
+Proper Ordering: As specified in your requirements
+
+React Management Interface: Easy-to-use interface for managing permission set lines
+
+Flexible Permission Checking: Support for different permission types and levels
+
+Business Central-like Structure: Mirrors the permission set line concept from Business Central
+
+The system now properly handles the hierarchical structure with Object Type and Object ID as the primary sorting criteria, exactly as you specified.
+
+This response is AI-generated, for reference only.

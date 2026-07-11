@@ -1,0 +1,219 @@
+{% extends "admin/base_site.html" %}
+{% load humanize %}
+
+{% block content %}
+{% include "admin/includes/preview_posting_surface.html" %}
+<div class="preview-posting-surface" style="max-width: 1400px; margin: 20px auto; padding: 20px; background: white; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);">
+    <h1>Preview Posting - Production Order {{ production_order.no }}</h1>
+    <p><strong>Item:</strong> {{ production_order.item.item_name }} ({{ production_order.item.no }})</p>
+    <p><strong>Quantity:</strong> {{ production_order.quantity }}</p>
+    <p><strong>Posting Date:</strong> {{ production_order.created_at|date:"Y-m-d" }}</p>
+
+    <div style="margin-top: 30px;">
+        <div class="related-entries" style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+            <h3>Summary</h3>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
+                <div>
+                    <strong>G/L Entries:</strong> {{ preview_data.gl_entries|length }}
+                </div>
+                <div>
+                    <strong>Item Ledger Entries:</strong> {{ preview_data.item_ledger_entries|length }}
+                </div>
+                <div>
+                    <strong>Value Entries:</strong> {{ preview_data.value_entries|length }}
+                </div>
+                <div>
+                    <strong>Capacity Ledger Entries:</strong> {{ preview_data.capacity_ledger_entries|length }}
+                </div>
+            </div>
+        </div>
+
+        <!-- G/L Entries -->
+        {% if preview_data.gl_entries %}
+        <div id="gl-entries" style="margin-top: 30px;">
+            <h2>G/L Entries</h2>
+            <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+                <thead>
+                    <tr style="background: #417690; color: white;">
+                        <th style="padding: 10px; border: 1px solid #ddd;">Posting Date</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Document No.</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">G/L Account No.</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">G/L Account</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Description</th>
+                        <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Amount</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Entry Type</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in preview_data.gl_entries %}
+                    <tr style="background: {% if entry.entry_type == 'Debit' %}#e8f5e9{% else %}#fff3e0{% endif %};">
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.posting_date|date:"Y-m-d" }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.document_no }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.gl_account_no }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.gl_account }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.description }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: right; {% if entry.amount < 0 %}color: red;{% else %}color: green;{% endif %}">
+                            {{ entry.amount|floatformat:2|intcomma }}
+                        </td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.entry_type }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- Item Ledger Entries -->
+        {% if preview_data.item_ledger_entries %}
+        <div id="item-entries" style="margin-top: 30px;">
+            <h2>Item Ledger Entries</h2>
+            <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+                <thead>
+                    <tr style="background: #417690; color: white;">
+                        <th style="padding: 10px; border: 1px solid #ddd;">Item No.</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Item Name</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Entry Type</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Document No.</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Location</th>
+                        <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Quantity</th>
+                        <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Unit Cost</th>
+                        <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Cost Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in preview_data.item_ledger_entries %}
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.item_no }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.item_name }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.entry_type }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.document_no }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.location_code|default:"N/A" }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: right; {% if entry.quantity < 0 %}color: red;{% else %}color: green;{% endif %}">
+                            {{ entry.quantity|floatformat:2|intcomma }}
+                        </td>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">{{ entry.unit_cost|floatformat:2|intcomma }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: right; {% if entry.cost_amount < 0 %}color: red;{% else %}color: green;{% endif %}">
+                            {{ entry.cost_amount|floatformat:2|intcomma }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- Value Entries -->
+        {% if preview_data.value_entries %}
+        <div id="value-entries" style="margin-top: 30px;">
+            <h2>Value Entries</h2>
+            <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+                <thead>
+                    <tr style="background: #417690; color: white;">
+                        <th style="padding: 10px; border: 1px solid #ddd;">Item No.</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Item Name</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Entry Type</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Document No.</th>
+                        <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Item Ledger Entry Quantity</th>
+                        <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Valued Quantity</th>
+                        <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Invoiced Quantity</th>
+                        <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Cost per Unit</th>
+                        <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Cost Amount (Actual)</th>
+                        <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Cost Amount (Expected)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in preview_data.value_entries %}
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.item_no }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.item_name }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.entry_type }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.document_no }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: right; {% if entry.item_ledger_entry_quantity < 0 %}color: red;{% elif entry.item_ledger_entry_quantity > 0 %}color: green;{% endif %}">
+                            {{ entry.item_ledger_entry_quantity|floatformat:2|intcomma }}
+                        </td>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: right; {% if entry.valued_quantity < 0 %}color: red;{% elif entry.valued_quantity > 0 %}color: green;{% endif %}">
+                            {{ entry.valued_quantity|floatformat:2|intcomma }}
+                        </td>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">{{ entry.invoiced_quantity|floatformat:2|intcomma }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">{{ entry.cost_per_unit|floatformat:2|intcomma }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: right; {% if entry.cost_amount_actual < 0 %}color: red;{% elif entry.cost_amount_actual > 0 %}color: green;{% endif %}">
+                            {{ entry.cost_amount_actual|floatformat:2|intcomma }}
+                        </td>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: right; {% if entry.cost_amount_expected < 0 %}color: red;{% elif entry.cost_amount_expected > 0 %}color: green;{% endif %}">
+                            {{ entry.cost_amount_expected|floatformat:2|intcomma }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- Capacity Ledger Entries -->
+        {% if preview_data.capacity_ledger_entries %}
+        <div id="capacity-entries" style="margin-top: 30px;">
+            <h2>Capacity Ledger Entries</h2>
+            <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+                <thead>
+                    <tr style="background: #417690; color: white;">
+                        <th style="padding: 10px; border: 1px solid #ddd;">Posting Date</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Type</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">No.</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Document No.</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Description</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Work Center</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Item No.</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Item Name</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Order No.</th>
+                        <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Quantity</th>
+                        <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Output Quantity</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Unit of Measure</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in preview_data.capacity_ledger_entries %}
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.posting_date|date:"Y-m-d" }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.type|title }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.no|default:"N/A" }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.document_no }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.description }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.work_center|default:"N/A" }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.item_no }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.item_name }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.order_no }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">{{ entry.quantity|floatformat:2|intcomma }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">{{ entry.output_quantity|floatformat:2|intcomma }}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{{ entry.cap_unit_of_measure_code|default:"N/A" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <div style="margin-top: 30px; text-align: center; display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+            {% if show_finish_button %}
+            <form method="post" action="{% url 'admin:production_productionorder_finish_production_post' production_order.id %}" style="display: inline;">
+                {% csrf_token %}
+                <input type="hidden" name="preview_data" value="{{ preview_data_json|escape }}">
+                <button type="submit" 
+                        style="display: inline-block; padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;"
+                        onclick="return confirm('Post journals and set production order to Finished?');">
+                    Finish Production (Post)
+                </button>
+            </form>
+            {% endif %}
+            <a href="{% url 'admin:production_productionorder_change' production_order.id %}" 
+               style="display: inline-block; padding: 10px 20px; background: #417690; color: white; text-decoration: none; border-radius: 5px;">
+                Back to Production Order
+            </a>
+            <a href="{% url 'admin:production_productionorder_changelist' %}" 
+               style="display: inline-block; padding: 10px 20px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px;">
+                Back to List
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

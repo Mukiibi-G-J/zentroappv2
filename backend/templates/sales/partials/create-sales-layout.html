@@ -1,0 +1,19 @@
+{% extends "base/base.html" %} {% block content %}
+<div id="root" class="h-full">
+  <!-- App Layout-->
+  <div class="app-layout-classic flex flex-auto flex-col h-full">
+    <div class="flex flex-auto min-w-0 h-full">
+      <div class="flex flex-col flex-auto min-h-screen min-w-0 relative w-full">
+        {% include "partials/dashboard-navbar.html" %}
+        <div class="flex flex-auto min-h-0 w-full">
+          <!-- Content start -->
+          {% block page_content %}{% endblock %}
+          <!-- Content end -->
+        </div>
+        {% include "partials/dashboard-footer.html" %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock content %}
+{% block scripts %} {% endblock %}

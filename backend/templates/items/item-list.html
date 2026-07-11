@@ -1,0 +1,197 @@
+{% extends "dashboard/dashboard-layout.html" %}
+<!-- prettier-ignore -->
+{% block title %}Items List{% endblock %}
+{% load humanize %}
+<!-- prettier-ignore -->
+{% load static %} {% block page-content %}
+<!-- Content start -->
+<main class="h-full">
+  <div
+    class="page-container relative h-full flex flex-auto flex-col px-4 sm:px-6 md:px-8 py-4 sm:py-6"
+  >
+    <div class="container mx-auto">
+      <div class="card adaptable-card">
+        <div class="card-body">
+          <div class="lg:flex items-center justify-between mb-4">
+            <h3 class="mb-4 lg:mb-0">Products</h3>
+            <div class="flex items-center gap-2">
+              <a href="{% url 'items:new-item' %}" class="btn btn-solid">
+                <span class="flex justify-center items-center gap-2">
+                  <svg
+                    stroke="currentColor"
+                    fill="none"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                    height="1em"
+                    width="1em"
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="text-white font-bold text-lg"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 4v16m8-8H4"
+                    />
+                  </svg>
+                  <span>Add Item</span>
+                </span>
+              </a>
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <table
+              id="product-list-data-table"
+              class="table-default table-hover data-table"
+            >
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Category</th>
+                  <th>Quantity</th>
+                  <th>Status</th>
+                  <th>Price</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for item in items %}
+                <tr>
+                  <td>
+                    <div class="flex items-center">
+                      <span class="avatar avatar-rounded avatar-md">
+                        <img
+                          class="avatar-img avatar-rounded"
+                          src="{{ item.get_image.url }}"
+                          loading="lazy"
+                          alt="{{ item.image.alt_text|truncatechars:10 }}"
+                        />
+                      </span>
+                      <span class="ml-2 rtl:mr-2 font-semibold">
+                        {% if item.item_name|length > 30 %}
+                        <!-- prettier-ignore -->
+                        {{ item.item_name|truncatechars:30 }}... 
+                        {% else %} 
+                        {{ item.item_name }} 
+                        {% endif %}
+                      </span>
+                    </div>
+                  </td>
+                  <td>
+                    <span class="capitalize"
+                      >{{ item.item_category.description }}</span
+                    >
+                  </td>
+
+                  <td>
+                    <a
+                      href="{% url 'items:item-ledger-entries' item.id %} "
+                      class="cursor-pointer underline hover:text-indigo-600"
+                    >
+                      {{ item.inventory }}
+                    </a>
+                  </td>
+                  {% if item.inventory > 0 %}
+                  <td>
+                    <div class="flex items-center gap-2">
+                      <span class="badge-dot bg-emerald-500"></span>
+                      <span
+                        class="capitalize font-semibold text-emerald-500"
+                        style="display: block"
+                        >In Stock</span
+                      >
+                    </div>
+                  </td>
+                  {% else %}
+                  <td>
+                    <div class="flex items-center gap-2">
+                      <span class="badge-dot bg-red-500"></span>
+                      <span
+                        class="capitalize font-semibold text-red-500"
+                        style="display: block"
+                        >Out of Stock</span
+                      >
+                    </div>
+                  </td>
+                  {% endif %}
+                  <td>
+                    <span>{{ item.unit_price|intcomma }}</span>
+                  </td>
+                  <td>
+                    <div class="flex justify-end text-lg">
+                      <span class="cursor-pointer p-2 hover:text-indigo-600">
+                        <a href="{% url 'items:edit-item' item.id %}">
+                          <svg
+                            stroke="currentColor"
+                            fill="none"
+                            stroke-width="2"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                            height="1em"
+                            width="1em"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                            ></path>
+                          </svg>
+                        </a>
+                      </span>
+                      <span
+                        class="cursor-pointer p-2 hover:text-red-500"
+                        data-bs-toggle="modal"
+                        data-bs-target="#deleteDialog"
+                        data-item-id="{{ item.id }}"
+                        data-item-name="{{ item.item_name }}"
+                        data-delete-url="{% url 'items:delete-item' item.id %}"
+                      >
+                        <svg
+                          stroke="currentColor"
+                          fill="none"
+                          stroke-width="2"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                          height="1em"
+                          width="1em"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                          ></path>
+                        </svg>
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Include the delete dialog -->
+{% include "components/delete-dialog.html" %} {% endblock %} {% block scripts %}
+<!-- Other Vendors JS -->
+<script src="{% static 'vendors/datatables/jquery.dataTables.min.js' %}"></script>
+<script src="{% static 'vendors/datatables/dataTables.custom-ui.min.js' %}"></script>
+
+<!-- Page js -->
+<script src="{% static 'js/pages/product-list.js' %}"></script>
+<script src="{% static 'js/components/delete-dialog.js' %}"></script>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    /* accessing the initialize method of the DeleteDialog class  since it is a static method since
+    it can be called on the class itself, not on an instance of the class
+    */
+    DeleteDialog.initialize();
+  });
+</script>
+{% endblock %}

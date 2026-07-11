@@ -1,0 +1,39 @@
+{
+  "column_group": {
+    "name": "MONTHLY",
+    "description": "Monthly Report Columns"
+  },
+  "column_lines": [
+    {
+      "line_no": 10000,
+      "column_no": "10000",
+      "column_header": "This Month",
+      "column_type": "Net Change",
+      "comparison_period_formula": "0M",
+      "amount_type": "Net Amount",
+      "show_opposite_sign": false
+    },
+    {
+      "line_no": 20000,
+      "column_no": "20000",
+      "column_header": "Last Month",
+      "column_type": "Net Change",
+      "comparison_period_formula": "-1M",
+      "amount_type": "Net Amount",
+      "show_opposite_sign": false
+    },
+    {
+      "line_no": 30000,
+      "column_no": "30000",
+      "column_header": "This Year",
+      "column_type": "Net Change",
+      "comparison_period_formula": "0Y",
+      "amount_type": "Net Amount",
+      "show_opposite_sign": false
+    }
+  ],
+  "financial_report_link": {
+    "name": "INCOME",
+    "column_definition": "MONTHLY"
+  }
+}

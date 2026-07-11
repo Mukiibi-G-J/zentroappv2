@@ -1,0 +1,15 @@
+env/
+node/
+media/
+tmp/
+# migrations/
+__pycache__/
+db.sqlite3
+.env
+.DS_Store
+core/.env
+core/firebase-service-account.json
+firebase-service-account.json
+dumps/
+*.dump
+celerybeat-schedule*

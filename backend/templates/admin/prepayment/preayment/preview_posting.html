@@ -1,0 +1,390 @@
+{% extends "admin/base_site.html" %}
+{% load humanize %}
+
+{% block content %}
+{% include "admin/includes/preview_posting_surface.html" %}
+<div class="preview-posting-surface" style="max-width: 1200px; margin: 20px auto; padding: 20px; background: white; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);">
+    <h2>Prepayment Posting Preview</h2>
+
+    <div class="expense-info">
+        <h3>Document Information</h3>
+        <table style="width: 100%; margin-bottom: 20px;">
+            <tr>
+                <td><strong>Document No.:</strong></td>
+                <td>{{ preayment.document_no }}</td>
+                <td><strong>Posting Date:</strong></td>
+                <td>{{ preayment.posting_date|date:"Y-m-d" }}</td>
+            </tr>
+            <tr>
+                <td><strong>Customer:</strong></td>
+                <td colspan="3">{{ preayment.customer.name }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <div style="margin-top: 20px">
+        <p>{{ preview_entries.invoice }}</p>
+        {% for step in preview_entries.steps %}
+            <p>{{ step }}</p>
+        {% endfor %}
+    </div>
+
+    <div class="related-entries">
+        <div class="entry-header">
+            <span>Related Entries</span>
+            <span>No. of Entries</span>
+        </div>
+        <div class="entry-row">
+            <a href="#gl-entries">G/L Entries</a>
+            <span>{{ preview_entries.entries.gl_entries|length }}</span>
+        </div>
+        <div class="entry-row">
+            <a href="#customer-entries">Customer Ledger Entries</a>
+            <span>{{ preview_entries.entries.customer_entries|length }}</span>
+        </div>
+        <div class="entry-row">
+            <a href="#detailed-customer-entries">Detailed Customer Ledger Entries</a>
+            <span>{{ preview_entries.entries.detailed_customer_entries|length }}</span>
+        </div>
+        <div class="entry-row">
+            <a href="#item-entries">Item Ledger Entries</a>
+            <span>{{ preview_entries.entries.item_entries|length }}</span>
+        </div>
+        <div class="entry-row">
+            <a href="#value-entries">Value Entries</a>
+            <span>{{ preview_entries.entries.value_entries|length }}</span>
+        </div>
+    </div>
+
+    <div id="gl-entries" class="entry-details">
+        <h3>G/L Entries</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Posting Date</th>
+                    <th>Document Type</th>
+                    <th>Document No.</th>
+                    <th>G/L Account</th>
+                    <th>Description</th>
+                    <th>Amount (UGX)</th>
+                    <th>Transaction No.</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in preview_entries.entries.gl_entries %}
+                <tr>
+                    <td>{{ entry.posting_date|date:"Y-m-d" }}</td>
+                    <td>{{ entry.document_type }}</td>
+                    <td>{{ entry.document_no }}</td>
+                    <td>
+                        {% if entry.gl_account.no %}
+                            <strong>{{ entry.gl_account.no }}</strong> - {{ entry.gl_account.name }}
+                        {% else %}
+                            {{ entry.gl_account }}
+                        {% endif %}
+                    </td>
+                    <td>{{ entry.description }}</td>
+                    <td style="text-align: right;">{{ entry.amount|floatformat:2|intcomma }}</td>
+                    <td>{{ entry.transaction_no|default:"-" }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7">No G/L entries generated.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div id="customer-entries" class="entry-details">
+        <h3>Customer Ledger Entries</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Posting Date</th>
+                    <th>Document Type</th>
+                    <th>Document No.</th>
+                    <th>Customer No.</th>
+                    <th>Description</th>
+                    <th>Amount</th>
+                    <th>Remaining Amount</th>
+                    <th>Sales Amount</th>
+                    <th>Transaction No.</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in preview_entries.entries.customer_entries %}
+                <tr>
+                    <td>{{ entry.posting_date|date:"Y-m-d" }}</td>
+                    <td>{{ entry.document_type }}</td>
+                    <td>{{ entry.document_no }}</td>
+                    <td>{{ entry.customer_no }}</td>
+                    <td>{{ entry.description }}</td>
+                    <td style="text-align: right;">{{ entry.amount|floatformat:2|intcomma }}</td>
+                    <td style="text-align: right;">{{ entry.remaining_amount|floatformat:2|intcomma }}</td>
+                    <td style="text-align: right;">{{ entry.sales|floatformat:2|intcomma }}</td>
+                    <td>{{ entry.transaction_no|default:"-" }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="9">No customer ledger entries generated.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div id="detailed-customer-entries" class="entry-details">
+        <h3>Detailed Customer Ledger Entries</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Posting Date</th>
+                    <th>Entry Type</th>
+                    <th>Document Type</th>
+                    <th>Document No.</th>
+                    <th>Customer No.</th>
+                    <th>Amount</th>
+                    <th>Debit Amount</th>
+                    <th>Credit Amount</th>
+                    <th>Initial Entry Due Date</th>
+                    <th>Transaction No.</th>
+                    <th>Initial Document Type</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in preview_entries.entries.detailed_customer_entries %}
+                <tr>
+                    <td>{{ entry.posting_date|date:"Y-m-d" }}</td>
+                    <td>{{ entry.entry_type }}</td>
+                    <td>{{ entry.document_type }}</td>
+                    <td>{{ entry.document_no }}</td>
+                    <td>{{ entry.customer_no }}</td>
+                    <td style="text-align: right;">{{ entry.amount|floatformat:2|intcomma }}</td>
+                    <td style="text-align: right;">
+                        {{ entry.debit_amount|default:0|floatformat:2|intcomma }}
+                    </td>
+                    <td style="text-align: right;">
+                        {{ entry.credit_amount|default:0|floatformat:2|intcomma }}
+                    </td>
+                    <td>{{ entry.initial_entry_due_date|date:"Y-m-d"|default:"-" }}</td>
+                    <td>{{ entry.transaction_no|default:"-" }}</td>
+                    <td>{{ entry.initial_document_type|default:"-" }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="11">No detailed customer ledger entries generated.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div id="item-entries" class="entry-details">
+        <h3>Item Ledger Entries</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Posting Date</th>
+                    <th>Document Type</th>
+                    <th>Document No.</th>
+                    <th>Item No.</th>
+                    <th>Location</th>
+                    <th>Quantity</th>
+                    <th>Unit of Measure</th>
+                    <th>Cost Amount</th>
+                    <th>Sales Amount</th>
+                    <th>Purchase Amount</th>
+                    <th>Transaction No.</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in preview_entries.entries.item_entries %}
+                <tr>
+                    <td>{{ entry.posting_date|date:"Y-m-d" }}</td>
+                    <td>{{ entry.document_type }}</td>
+                    <td>{{ entry.document_no }}</td>
+                    <td>
+                        {% if entry.item.no %}
+                            <strong>{{ entry.item.no }}</strong> - {{ entry.item.item_name }}
+                        {% else %}
+                            {{ entry.item }}
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if entry.location.code %}
+                            {{ entry.location.code }}
+                        {% else %}
+                            {{ entry.location }}
+                        {% endif %}
+                    </td>
+                    <td style="text-align: right;">{{ entry.quantity|floatformat:2|intcomma }}</td>
+                    <td>
+                        {% if entry.unit_of_measure %}
+                            {{ entry.unit_of_measure.code|default:entry.unit_of_measure }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td style="text-align: right;">{{ entry.cost_amount|floatformat:2|intcomma }}</td>
+                    <td style="text-align: right;">{{ entry.sales_amount|floatformat:2|intcomma }}</td>
+                    <td style="text-align: right;">{{ entry.purchase_amount|floatformat:2|intcomma }}</td>
+                    <td>{{ entry.transaction_no|default:"-" }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="11">No item ledger entries generated.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div id="value-entries" class="entry-details">
+        <h3>Value Entries</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Posting Date</th>
+                    <th>Entry Type</th>
+                    <th>Document No.</th>
+                    <th>Item No.</th>
+                    <th>Cost Amount</th>
+                    <th>Item Ledger Qty</th>
+                    <th>Invoiced Qty</th>
+                    <th>Valued Qty</th>
+                    <th>Cost per Unit</th>
+                    <th>Gen. Prod. Posting Group</th>
+                    <th>Inventory Posting Group</th>
+                    <th>Transaction No.</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in preview_entries.entries.value_entries %}
+                <tr>
+                    <td>{{ entry.posting_date|date:"Y-m-d" }}</td>
+                    <td>{{ entry.entry_type }}</td>
+                    <td>{{ entry.document_no }}</td>
+                    <td>
+                        {% if entry.item.no %}
+                            <strong>{{ entry.item.no }}</strong> - {{ entry.item.item_name }}
+                        {% else %}
+                            {{ entry.item }}
+                        {% endif %}
+                    </td>
+                    <td style="text-align: right;">{{ entry.cost_amount|floatformat:2|intcomma }}</td>
+                    <td style="text-align: right;">{{ entry.item_ledger_entry_quantity|floatformat:2|intcomma }}</td>
+                    <td style="text-align: right;">{{ entry.invoiced_quantity|floatformat:2|intcomma }}</td>
+                    <td style="text-align: right;">{{ entry.valued_quantity|floatformat:2|intcomma }}</td>
+                    <td style="text-align: right;">{{ entry.cost_per_unit|floatformat:2|intcomma }}</td>
+                    <td>
+                        {% if entry.general_product_posting_group %}
+                            {{ entry.general_product_posting_group.code }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if entry.inventory_posting_group %}
+                            {{ entry.inventory_posting_group.code }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>{{ entry.transaction_no|default:"-" }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="12">No value entries generated.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if preview_entries.posted_invoice_lines %}
+    <div id="posted-invoice-lines" class="entry-details">
+        <h3>Posted Sales Invoice Lines (Preview)</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>No.</th>
+                    <th>Item Reference No.</th>
+                    <th>Description</th>
+                    <th>Quantity</th>
+                    <th>Unit of Measure Code</th>
+                    <th>Unit Price Incl. VAT</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for line in preview_entries.posted_invoice_lines %}
+                <tr>
+                    <td>{{ line.type }}</td>
+                    <td>
+                        {% if line.no %}
+                            <strong>{{ line.no }}</strong>
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>{{ line.item_reference_no|default:"-" }}</td>
+                    <td>{{ line.description }}</td>
+                    <td style="text-align: right;">{{ line.quantity|floatformat:0|intcomma }}</td>
+                    <td>{{ line.unit_of_measure_code|default:"-" }}</td>
+                    <td style="text-align: right;">{{ line.unit_price_incl_vat|floatformat:2|intcomma }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7">No invoice lines will be created.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <div style="margin-top: 20px">
+        <a href="{% url 'admin:prepayment_preayment_changelist' %}" class="button">Back to Prepayments</a>
+    </div>
+</div>
+
+<style>
+    .expense-info {
+        background-color: #f9f9f9;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+    }
+    .expense-info table {
+        border-collapse: collapse;
+    }
+    .expense-info td {
+        padding: 5px 10px;
+        border: none;
+    }
+    .related-entries {
+        border: 1px solid #ddd;
+        margin-bottom: 20px;
+    }
+    .entry-header {
+        display: flex;
+        justify-content: space-between;
+        padding: 10px;
+        background: #f5f5f5;
+        font-weight: bold;
+    }
+    .entry-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 10px;
+        border-top: 1px solid #ddd;
+    }
+    .entry-row:hover {
+        background: #f9f9f9;
+    }
+    .entry-details table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+    }
+    .entry-details th,
+    .entry-details td {
+        padding: 8px;
+        border: 1px solid #ddd;
+        text-align: left;
+    }
+    .entry-details th {
+        background: #f5f5f5;
+    }
+</style>
+{% endblock %}
+

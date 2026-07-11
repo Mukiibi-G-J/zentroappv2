@@ -1,0 +1,7 @@
+python-3.12.3
+
+
+python manage.py tenant_command seed_pages --schema=primewise
+python manage.py tenant_command sync_page_permission_objects --schema=primewise
+python manage.py tenant_command setup_page_permissions --schema=primewise
+python manage.py tenant_command seed_user_management_groups --schema=primewise

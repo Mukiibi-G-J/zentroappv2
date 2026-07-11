@@ -1,0 +1,181 @@
+{% extends 'base/base.html' %} {% load widget_tweaks %} {% load static %}
+<!-- prettier-ignore -->
+{% block title %}Verify Account{% endblock %} {% block content %}
+<div id="root">
+  <div class="app-layout-blank flex flex-auto flex-col h-[100vh]">
+    <main class="h-full">
+      <div class="page-container relative h-full flex flex-auto flex-col">
+        <div class="h-full">
+          <div class="container mx-auto flex flex-col flex-auto items-center justify-center min-w-0 h-full">
+            <div class="card min-w-[320px] md:min-w-[450px] max-w-[450px] card-shadow">
+              <div class="card-body md:p-10">
+                <div class="text-center">
+                  <div class="logo">
+                    <img class="mx-auto" 
+                    src="{% static 'images/logo/logo-light-streamline.png' %}" 
+                    style="width: 80px; height:80px;"
+                    alt="Zentro Logo" />
+                  </div>
+                </div>
+                <div class="text-center">
+                  <div class="mb-4">
+                    <h3 class="mb-1">Verify Your Account</h3>
+                    <p>
+                      Please enter the verification code sent to this {{email}}
+                    </p>
+                  </div>
+                  <div>
+                    <form method="POST" action={% url 'authentication:verify-account' email %} id="verify-form">
+                      {% csrf_token %}
+                      <div class="form-container vertical">
+                        <div class="flex justify-center gap-2 mb-6">
+                          <input type="text" maxlength="1"
+                            class="w-10 h-10 text-center text-lg border rounded-md focus:border-primary-600 focus:ring-1 focus:ring-primary-600"
+                            required />
+                          <input type="text" maxlength="1"
+                            class="w-10 h-10 text-center text-lg border rounded-md focus:border-primary-600 focus:ring-1 focus:ring-primary-600"
+                            required />
+                          <input type="text" maxlength="1"
+                            class="w-10 h-10 text-center text-lg border rounded-md focus:border-primary-600 focus:ring-1 focus:ring-primary-600"
+                            required />
+                          <input type="text" maxlength="1"
+                            class="w-10 h-10 text-center text-lg border rounded-md focus:border-primary-600 focus:ring-1 focus:ring-primary-600"
+                            required />
+                          <input type="text" maxlength="1"
+                            class="w-10 h-10 text-center text-lg border rounded-md focus:border-primary-600 focus:ring-1 focus:ring-primary-600"
+                            required />
+                          <input type="text" maxlength="1"
+                            class="w-10 h-10 text-center text-lg border rounded-md focus:border-primary-600 focus:ring-1 focus:ring-primary-600"
+                            required />
+                        </div>
+                        <button type="submit" id="submit-btn" class="btn btn-solid w-full">
+                          Verify Account
+                        </button>
+                        <div class="mt-4 text-center">
+                          <span>Didn't receive the code?</span>
+                          <button type="button" id="resend-btn" class="text-primary-600 hover:underline ml-1">
+                            Resend Code
+                          </button>
+                        </div>
+                        <div id="countdown" class="mt-2 text-sm text-gray-500 hidden">
+                          Resend available in <span id="timer">60</span> seconds
+                        </div>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+{% endblock %} {% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const form = document.getElementById("verify-form");
+    const inputs = form.querySelectorAll('input[type="text"]');
+    const resendBtn = document.getElementById("resend-btn");
+    const countdown = document.getElementById("countdown");
+    const timer = document.getElementById("timer");
+    let timeLeft = 60;
+
+    // Handle input of OTP
+    inputs.forEach((input, index) => {
+      // Allow pasting of complete OTP
+      input.addEventListener("paste", (e) => {
+        e.preventDefault();
+        const pastedData = e.clipboardData.getData("text").trim();
+        if (pastedData.length === inputs.length) {
+          [...pastedData].forEach((char, i) => {
+            if (i < inputs.length) {
+              inputs[i].value = char;
+            }
+          });
+          inputs[inputs.length - 1].focus();
+        }
+      });
+
+      // Handle individual input
+      input.addEventListener("input", function () {
+        if (this.value.length === 1) {
+          if (index < inputs.length - 1) {
+            inputs[index + 1].focus();
+          }
+        }
+      });
+
+      // Handle backspace
+      input.addEventListener("keydown", function (e) {
+        if (e.key === "Backspace" && !this.value && index > 0) {
+          inputs[index - 1].focus();
+        }
+      });
+    });
+
+    // Handle form submission
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      const otp = [...inputs].map((input) => input.value).join("");
+
+      // Create a hidden input to store the combined OTP
+      const otpInput = document.createElement("input");
+      otpInput.type = "hidden";
+      otpInput.name = "otp";
+      otpInput.value = otp;
+
+      // Clear any existing hidden OTP input
+      const existingOtpInput = form.querySelector('input[name="otp"]');
+      if (existingOtpInput) {
+        existingOtpInput.remove();
+      }
+
+      form.appendChild(otpInput);
+
+      // Submit the form
+      form.submit();
+    });
+
+    // Handle resend functionality
+    function startCountdown() {
+      resendBtn.disabled = true;
+      countdown.classList.remove("hidden");
+
+      const interval = setInterval(() => {
+        timeLeft--;
+        timer.textContent = timeLeft;
+
+        if (timeLeft <= 0) {
+          clearInterval(interval);
+          resendBtn.disabled = false;
+          countdown.classList.add("hidden");
+          timeLeft = 60;
+        }
+      }, 1000);
+    }
+
+    resendBtn.addEventListener("click", function () {
+      // Add your resend logic here
+      fetch("/api/auth/resend-otp/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": document.querySelector('input[name="csrfmiddlewaretoken"]').value,
+        },
+        body: JSON.stringify({ email: "{{email}}" }),
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          console.log(data);
+        })
+        .catch((error) => {
+          console.error("Error:", error);
+        });
+      console.log("Resending OTP...");
+      startCountdown();
+    });
+  });
+</script>
+{% endblock %}

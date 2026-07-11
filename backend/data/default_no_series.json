@@ -1,0 +1,334 @@
+{
+  "no_series": [
+    {
+      "code": "ITM",
+      "description": "Item",
+      "no_series_lines": {
+        "start_number": "ITM-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "ITMJ",
+      "description": "Item Journal",
+      "no_series_lines": {
+        "start_number": "ITMJ-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "PUR",
+      "description": "Purchase",
+      "no_series_lines": {
+        "start_number": "PUR-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "VENDOR",
+      "description": "Vendor",
+      "no_series_lines": {
+        "start_number": "VENDOR-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "INV",
+      "description": "Invoice",
+      "no_series_lines": {
+        "start_number": "INV-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "POSTINV",
+      "description": "Post Invoice",
+      "no_series_lines": {
+        "start_number": "POSTINV-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "SALES",
+      "description": "Sales",
+      "no_series_lines": {
+        "start_number": "SALES-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "SALESINV",
+      "description": "Sales Invoice",
+      "no_series_lines": {
+        "start_number": "SIN-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "CUSTOMER",
+      "description": "Customer",
+      "no_series_lines": {
+        "start_number": "CUST-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "PSIN",
+      "description": "Post Sales Invoice",
+      "no_series_lines": {
+        "start_number": "PSIN-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "CM",
+      "description": "Credit Memo",
+      "no_series_lines": {
+        "start_number": "CM-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "POSTCM",
+      "description": "Posted Credit Memo",
+      "no_series_lines": {
+        "start_number": "POSTCM-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "PAYMENT",
+      "description": "Payment Journal",
+      "no_series_lines": {
+        "start_number": "PAY-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "EXP",
+      "description": "Expense",
+      "no_series_lines": {
+        "start_number": "EXP-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "POSTPREPINV",
+      "description": "Posted Prepayment Invoice",
+      "no_series_lines": {
+        "start_number": "POSTPREPINV-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "POSTPREPCM",
+      "description": "Posted Prepayment Credit Memo",
+      "no_series_lines": {
+        "start_number": "POSTPREPCM-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "SO",
+      "description": "Sales Order",
+      "no_series_lines": {
+        "start_number": "SO-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "SPL",
+      "description": "Sales Price List",
+      "no_series_lines": {
+        "start_number": "SPL-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "BANK",
+      "description": "Bank Account",
+      "no_series_lines": {
+        "start_number": "BANK-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "PURCR",
+      "description": "Purchase Credit Memo",
+      "no_series_lines": {
+        "start_number": "PURCR-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "POSTPURCR",
+      "description": "Posted Purchase Credit Memo",
+      "no_series_lines": {
+        "start_number": "POSTPURCR-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "BOM",
+      "description": "Production BOM",
+      "no_series_lines": {
+        "start_number": "BOM-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "PROD",
+      "description": "Production Order",
+      "no_series_lines": {
+        "start_number": "PROD-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "PRODORDE",
+      "description": "Production Order Item Journal",
+      "no_series_lines": {
+        "start_number": "PRODORDE-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "WORKCTR",
+      "description": "Work Center",
+      "no_series_lines": {
+        "start_number": "WORKCTR-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "MACHCTR",
+      "description": "Machine Center",
+      "no_series_lines": {
+        "start_number": "MACHCTR-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "PRODBOM",
+      "description": "Production BOM (PRODBOM)",
+      "no_series_lines": {
+        "start_number": "PRODBOM-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "ROUTING",
+      "description": "Routing",
+      "no_series_lines": {
+        "start_number": "ROUTING-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "PHYSINVJNL",
+      "description": "Physical Inventory Journal",
+      "no_series_lines": {
+        "start_number": "PHYSINV-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    },
+    {
+      "code": "RESOURCE",
+      "description": "Resource",
+      "no_series_lines": {
+        "start_number": "RES-000001",
+        "end_number": "",
+        "last_used_number": "",
+        "last_used_date": "",
+        "increment_by": 1
+      }
+    }
+  ]
+}

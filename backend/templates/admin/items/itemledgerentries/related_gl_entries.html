@@ -1,0 +1,408 @@
+{% extends "admin/base_site.html" %}
+{% load humanize %}
+
+{% block extrastyle %}
+<style>
+    .related-entries-container {
+        max-width: 1400px;
+        margin: 20px auto;
+        padding: 20px;
+        background: white;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        border-radius: 8px;
+    }
+    
+    .section-header {
+        background: #f8f9fa;
+        padding: 15px 20px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+        border-left: 4px solid #417690;
+    }
+    
+    .section-header h2 {
+        margin: 0 0 10px 0;
+        color: #417690;
+        font-size: 24px;
+    }
+    
+    .info-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        font-size: 14px;
+    }
+    
+    .info-label {
+        font-weight: 600;
+        color: #666;
+    }
+    
+    .info-value {
+        color: #333;
+    }
+    
+    .entries-summary {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+        margin: 20px 0;
+    }
+    
+    .summary-card {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 6px;
+        border-left: 4px solid #417690;
+    }
+    
+    .summary-card h3 {
+        margin: 0 0 10px 0;
+        font-size: 16px;
+        color: #417690;
+    }
+    
+    .summary-count {
+        font-size: 32px;
+        font-weight: bold;
+        color: #417690;
+    }
+    
+    .entries-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+        background: white;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+    
+    .entries-table thead {
+        background: #417690;
+        color: white;
+    }
+    
+    .entries-table th {
+        padding: 12px 15px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 13px;
+        text-transform: uppercase;
+    }
+    
+    .entries-table th.text-right {
+        text-align: right;
+    }
+    
+    .entries-table tbody tr {
+        border-bottom: 1px solid #e9ecef;
+    }
+    
+    .entries-table tbody tr:hover {
+        background: #f8f9fa;
+    }
+    
+    .entries-table td {
+        padding: 12px 15px;
+        font-size: 14px;
+    }
+    
+    .entries-table td.text-right {
+        text-align: right;
+        font-family: 'Courier New', monospace;
+    }
+    
+    .amount-positive {
+        color: #28a745;
+        font-weight: 600;
+    }
+    
+    .amount-negative {
+        color: #dc3545;
+        font-weight: 600;
+    }
+    
+    .no-entries {
+        text-align: center;
+        padding: 40px;
+        color: #6c757d;
+        font-style: italic;
+    }
+    
+    .back-button {
+        display: inline-block;
+        padding: 10px 20px;
+        background: #417690;
+        color: white;
+        text-decoration: none;
+        border-radius: 4px;
+        margin-bottom: 20px;
+    }
+    
+    .back-button:hover {
+        background: #2e5469;
+        color: white;
+    }
+    
+    .badge {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    
+    .badge-info {
+        background: #d1ecf1;
+        color: #0c5460;
+    }
+    
+    .selected-entry {
+        background: #fff3cd !important;
+        border-left: 4px solid #ffc107;
+    }
+    
+    .selected-entry:hover {
+        background: #ffe69c !important;
+    }
+    
+    .highlight-label {
+        display: inline-block;
+        background: #ffc107;
+        color: #000;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        margin-left: 8px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="related-entries-container">
+    <a href="{% url 'admin:items_itemledgerentries_changelist' %}" class="back-button">
+        ← Back to Item Ledger Entries
+    </a>
+    
+    <div class="section-header">
+        <h2>Related G/L Entries</h2>
+        <div class="info-grid">
+            <div>
+                <span class="info-label">Source Item Entries:</span>
+                <span class="info-value">{{ item_entries|length }}</span>
+            </div>
+            <div>
+                <span class="info-label">Related G/L Entries:</span>
+                <span class="info-value">{{ gl_entries|length }}</span>
+            </div>
+            {% if transaction_nos %}
+            <div>
+                <span class="info-label">Transaction Numbers:</span>
+                <span class="info-value">{{ transaction_nos|join:", " }}</span>
+            </div>
+            {% endif %}
+            {% if document_nos %}
+            <div>
+                <span class="info-label">Document Numbers:</span>
+                <span class="info-value">{{ document_nos|join:", " }}</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <div class="entries-summary">
+        <div class="summary-card">
+            <h3>Item Ledger Entries (Source)</h3>
+            <div class="summary-count">{{ item_entries.count }}</div>
+            <div style="font-size: 14px; color: #666; margin-top: 5px;">
+                Selected entries
+            </div>
+        </div>
+        <div class="summary-card">
+            <h3>G/L Entries (Related)</h3>
+            <div class="summary-count">{{ gl_entries.count }}</div>
+            <div style="font-size: 14px; color: #666; margin-top: 5px;">
+                Linked by transaction/document numbers
+            </div>
+        </div>
+    </div>
+    
+    <div class="entries-summary" style="grid-template-columns: 1fr;">
+        <div class="summary-card">
+            <h3>Value Entries (Related)</h3>
+            <div class="summary-count">{{ value_entries.count }}</div>
+            <div style="font-size: 14px; color: #666; margin-top: 5px;">
+                Cost and valuation entries
+            </div>
+        </div>
+    </div>
+    
+    <h3 style="margin-top: 30px; margin-bottom: 15px; color: #417690;">General Ledger Entries</h3>
+    
+    {% if gl_entries %}
+    <table class="entries-table">
+        <thead>
+            <tr>
+                <th>Posting Date</th>
+                <th>Document No.</th>
+                <th>G/L Account</th>
+                <th>Description</th>
+                <th>Document Type</th>
+                <th class="text-right">Amount (UGX)</th>
+                <th>Transaction No.</th>
+                <th>User</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in gl_entries %}
+            <tr>
+                <td>{{ entry.posting_date|date:"Y-m-d" }}</td>
+                <td>
+                    <span class="badge badge-info">{{ entry.document_no }}</span>
+                </td>
+                <td>
+                    <strong>{{ entry.gl_account.no }}</strong> - {{ entry.gl_account.name }}
+                </td>
+                <td>{{ entry.description|truncatewords:10 }}</td>
+                <td>{{ entry.document_type|default:"-" }}</td>
+                <td class="text-right {% if entry.amount >= 0 %}amount-positive{% else %}amount-negative{% endif %}">
+                    {{ entry.amount|floatformat:2|intcomma }}
+                </td>
+                <td>{{ entry.transaction_no|default:"-" }}</td>
+                <td>{{ entry.user.username }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr style="background: #f8f9fa; font-weight: 600;">
+                <td colspan="5" style="text-align: right; padding: 12px 15px;">Total:</td>
+                <td class="text-right" style="padding: 12px 15px;">
+                    {% widthratio gl_entries 1 1 as total %}
+                    {{ gl_entries|length }} entries
+                </td>
+                <td colspan="2"></td>
+            </tr>
+        </tfoot>
+    </table>
+    {% else %}
+    <div class="no-entries">
+        <p style="font-size: 18px;">No G/L entries found for the selected item ledger entries.</p>
+        <p>The entries may not have been posted to G/L yet, or they may use different transaction/document numbers.</p>
+    </div>
+    {% endif %}
+    
+    <h3 style="margin-top: 40px; margin-bottom: 15px; color: #417690;">Value Entries</h3>
+    
+    {% if value_entries %}
+    <table class="entries-table">
+        <thead>
+            <tr>
+                <th>Entry No.</th>
+                <th>Posting Date</th>
+                <th>Document No.</th>
+                <th>Item</th>
+                <th>Entry Type</th>
+                <th class="text-right">Cost Amount</th>
+                <th class="text-right">Item Ledger Qty</th>
+                <th class="text-right">Invoiced Qty</th>
+                <th class="text-right">Valued Qty</th>
+                <th class="text-right">Cost/Unit</th>
+                <th>Gen. Prod. Group</th>
+                <th>Inv. Posting Group</th>
+                <th>Transaction No.</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in value_entries %}
+            <tr>
+                <td>{{ entry.id }}</td>
+                <td>{{ entry.posting_date|date:"Y-m-d" }}</td>
+                <td>
+                    <span class="badge badge-info">{{ entry.document_no }}</span>
+                </td>
+                <td>
+                    <strong>{{ entry.item.no }}</strong> - {{ entry.item.item_name }}
+                </td>
+                <td>{{ entry.entry_type }}</td>
+                <td class="text-right">{{ entry.cost_amount|floatformat:2|intcomma }}</td>
+                <td class="text-right">{{ entry.item_ledger_entry_quantity|floatformat:0|intcomma }}</td>
+                <td class="text-right">{{ entry.invoiced_quantity|floatformat:0|intcomma }}</td>
+                <td class="text-right">{{ entry.valued_quantity|floatformat:0|intcomma }}</td>
+                <td class="text-right">{{ entry.cost_per_unit|floatformat:2|intcomma }}</td>
+                <td>{{ entry.general_product_posting_group.code|default:"-" }}</td>
+                <td>{{ entry.inventory_posting_group.code|default:"-" }}</td>
+                <td>{{ entry.transaction_no|default:"-" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr style="background: #f8f9fa; font-weight: 600;">
+                <td colspan="5" style="text-align: right; padding: 12px 15px;">Total:</td>
+                <td class="text-right" style="padding: 12px 15px;">
+                    {{ value_entries|length }} entries
+                </td>
+                <td colspan="7"></td>
+            </tr>
+        </tfoot>
+    </table>
+    {% else %}
+    <div class="no-entries">
+        <p>No value entries found for the selected item ledger entries.</p>
+    </div>
+    {% endif %}
+    
+    <h3 style="margin-top: 40px; margin-bottom: 15px; color: #417690;">
+        Source Item Ledger Entries
+        <span style="font-size: 14px; color: #666; font-weight: normal; margin-left: 10px;">
+            (Selected entries are highlighted)
+        </span>
+    </h3>
+    
+    <table class="entries-table">
+        <thead>
+            <tr>
+                <th>Entry No.</th>
+                <th>Date</th>
+                <th>Document No.</th>
+                <th>Item</th>
+                <th>Entry Type</th>
+                <th class="text-right">Quantity</th>
+                <th class="text-right">Amount</th>
+                <th>Transaction No.</th>
+                <th>Location</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in item_entries %}
+            <tr {% if entry.id in selected_ids %}class="selected-entry"{% endif %}>
+                <td>
+                    {{ entry.id }}
+                    {% if entry.id in selected_ids %}
+                    <span class="highlight-label">SELECTED</span>
+                    {% endif %}
+                </td>
+                <td>{{ entry.date|date:"Y-m-d" }}</td>
+                <td>
+                    <span class="badge badge-info">{{ entry.document_no }}</span>
+                </td>
+                <td>
+                    <strong>{{ entry.item.no }}</strong> - {{ entry.item.item_name }}
+                </td>
+                <td>{{ entry.entry_type }}</td>
+                <td class="text-right">{{ entry.quantity|floatformat:0|intcomma }}</td>
+                <td class="text-right">{{ entry.total|floatformat:2|intcomma }}</td>
+                <td>{{ entry.transaction_no|default:"-" }}</td>
+                <td>{{ entry.location.code|default:"-" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    <div style="margin-top: 30px; text-align: center;">
+        <a href="{% url 'admin:items_itemledgerentries_changelist' %}" class="back-button">
+            ← Back to Item Ledger Entries
+        </a>
+    </div>
+</div>
+{% endblock %}
+

@@ -1,0 +1,48 @@
+<div class="modal fade" id="deleteDialog" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog dialog">
+    <div class="dialog-content">
+      <span
+        class="close-btn absolute z-10 ltr:right-6 rtl:left-6"
+        role="button"
+        data-bs-dismiss="modal"
+      >
+        <svg
+          stroke="currentColor"
+          fill="currentColor"
+          stroke-width="0"
+          viewBox="0 0 20 20"
+          aria-hidden="true"
+          height="1em"
+          width="1em"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            fill-rule="evenodd"
+            d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+            clip-rule="evenodd"
+          ></path>
+        </svg>
+      </span>
+      <h5 class="mb-4">Confirm Delete</h5>
+      <p>
+        Are you sure you want to delete
+        <span id="deleteItemName" class="font-semibold"></span>?
+      </p>
+      <p class="text-md text-red-500">This action cannot be undone.</p>
+      <div class="text-right mt-6">
+        <button class="btn btn-plain ltr:mr-2 rtl:ml-2" data-bs-dismiss="modal">
+          Cancel
+        </button>
+        <form id="deleteForm" method="POST" class="inline">
+          {% csrf_token %}
+          <button
+            type="submit"
+            class="btn bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white"
+          >
+            Delete
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,144 @@
+{% extends 'base/base.html' %} {% load widget_tweaks %} {% load static %}
+
+<!-- prettier-ignore -->
+{% block title %}Login{% endblock %} {% block content %}
+<!-- App Start-->
+<div id="root">
+  <!-- App Layout-->
+  <div class="app-layout-blank flex flex-auto flex-col h-[100vh]">
+    <main class="h-full">
+      <div class="page-container relative h-full flex flex-auto flex-col">
+        <div class="h-full">
+          <div
+            class="container mx-auto flex flex-col flex-auto items-center justify-center min-w-0 h-full"
+          >
+            <div
+              class="card min-w-[320px] md:min-w-[450px] card-shadow"
+              role="presentation"
+            >
+              <div class="card-body md:p-10">
+                <div class="text-center">
+                  <div class="logo">
+                    <img
+                      class="mx-auto"
+                      style="width: 80px; height: 80px"
+                      src="{% static 'images/logo/logo-light-streamline.png' %}"
+                      alt="Zentro Logo"
+                    />
+                  </div>
+                </div>
+                <div class="text-center">
+                  <div class="mb-4">
+                    <h3 class="mb-1">Welcome back!</h3>
+                    <p>Please enter your credentials to sign in!</p>
+                  </div>
+                  <div>
+                    <form
+                      action="{% url 'authentication:login' %}"
+                      method="POST"
+                      id="login-form"
+                    >
+                      {% csrf_token %}
+                      <div class="form-container vertical">
+                        <div class="form-item vertical">
+                          <label class="form-label mb-2">Email</label>
+                          <div>
+                            {{ form.email|add_class:"input" }}
+                            <!-- prettier-ignore -->
+                            {% if form.email.errors %}
+                            <span class="text-red-500 text-sm"
+                              >{{ form.email.errors|join:", " }}</span
+                            >
+                            {% endif %} {% comment %} {% render_field form.email
+                            class="input" placeholder="Email" type="email"
+                            autocomplete="off" %} {% endcomment %}
+                          </div>
+                        </div>
+                        <div class="form-item vertical">
+                          <label class="form-label mb-2">Password</label>
+                          <div class="relative">
+                            <!-- Added relative positioning -->
+                            <!-- prettier-ignore -->
+                            {% render_field form.password class="input" placeholder="Password" type="password" id="password-input" autocomplete="off" value=password %}
+                            {% if form.password.errors %}
+                            <span class="text-red-500 text-sm"
+                              >{{ form.password.errors|join:", " }}</span
+                            >
+                            {% endif %}
+                            <span
+                              class="absolute right-2 top-2 cursor-pointer"
+                              onclick="togglePassword()"
+                            >
+                              <i
+                                class="fa-regular fa-eye-slash"
+                                id="togglePassword"
+                              ></i>
+                            </span>
+                          </div>
+                        </div>
+                        <div class="flex justify-between mb-6">
+                          <label class="checkbox-label mb-0">
+                            {% comment %}
+                            <input
+                              class="checkbox"
+                              type="checkbox"
+                              value="true"
+                              checked
+                            />
+                            <span class="ltr:ml-2 rtl:mr-2">Remember Me</span>
+                            {% endcomment %}
+                          </label>
+                          <a
+                            class="text-primary-600 hover:underline"
+                            href="forgot-password-simple.html"
+                            >Forgot Password?</a
+                          >
+                        </div>
+                        <button
+                          type="submit"
+                          id="submit-btn"
+                          class="btn btn-solid w-full"
+                        >
+                          Sign In
+                        </button>
+                        <div class="mt-4 text-center">
+                          <span>Don't have an account yet?</span>
+                          <a class="text-primary-600 hover:underline"
+                            >Contact Your Admin</a
+                          >
+                        </div>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+{% endblock %} {% block scripts %}
+<script>
+  function togglePassword() {
+    const passwordInput = document.getElementById("password-input"); // Updated ID const
+    toggleIcon = document.getElementById("togglePassword");
+    if (passwordInput && toggleIcon) {
+      // Added null check if (passwordInput.type === 'password') {
+      if (passwordInput.type === "password") {
+        passwordInput.type = "text";
+        toggleIcon.classList.remove("fa-eye-slash");
+        toggleIcon.classList.add("fa-eye");
+      } else {
+        passwordInput.type = "password";
+        toggleIcon.classList.remove("fa-eye");
+        toggleIcon.classList.add("fa-eye-slash");
+      }
+    } else {
+      console.error("Password input or toggle icon not found");
+    }
+  }
+</script>
+{% endblock %}

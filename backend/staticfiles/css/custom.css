@@ -1,0 +1,179 @@
+.selection-option.selected {
+  @apply ring-2 ring-primary-600 border-primary-600 bg-primary-50;
+}
+
+.dialog-content {
+  position: relative;
+  padding: 1.5rem;
+  background-color: white;
+  border-radius: 0.5rem;
+}
+
+.close-btn {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 10;
+  cursor: pointer;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* For RTL support */
+[dir="rtl"] .close-btn {
+  right: auto;
+  left: 1rem;
+}
+
+.htmx-indicator {
+  display: none;
+  margin-left: 0.5rem;
+}
+.htmx-request .htmx-indicator {
+  display: inline-block;
+}
+.htmx-request.htmx-indicator {
+  display: inline-block;
+}
+
+/* upload data */
+.upload-modal-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.upload-modal-content {
+  position: relative;
+  width: 100%;
+  max-width: 500px;
+  margin: 1.75rem;
+  pointer-events: auto;
+  background-color: white;
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  z-index: 1051;
+}
+
+.upload-modal-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  cursor: pointer;
+  z-index: 10;
+}
+
+.upload-modal-title {
+  margin-bottom: 1rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.upload-modal-text {
+  margin-bottom: 1.5rem;
+}
+
+.upload-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+
+.upload-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1050;
+}
+
+/* process upload results */
+.upload-modal-body {
+  padding: 1.5rem 0;
+}
+
+/* Optional: Add these if you want to adjust the avatar sizes */
+.avatar.avatar-lg {
+  width: 3rem;
+  height: 3rem;
+}
+
+.avatar.avatar-md {
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+/* Toast Notifications */
+.toast-wrapper {
+  position: fixed;
+  right: 1rem;
+  top: 1rem;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  pointer-events: none;
+}
+
+.toast {
+  min-width: 250px;
+  max-width: 350px;
+  margin-bottom: 0.5rem;
+  pointer-events: auto;
+  background: white;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.notification {
+  padding: 1rem;
+  border-radius: 0.5rem;
+}
+
+.notification.success {
+  background-color: #f0fdf4;
+  border: 1px solid #86efac;
+}
+
+.notification.danger {
+  background-color: #fef2f2;
+  border: 1px solid #fca5a5;
+}
+
+.notification-content {
+  display: flex;
+  align-items: flex-start;
+}
+
+.notification-title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.notification-description {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+/* Animation */
+.fade {
+  transition: opacity 0.3s ease-in-out;
+}
+
+.fade.show {
+  opacity: 1;
+}
+

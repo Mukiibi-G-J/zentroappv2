@@ -1,0 +1,28 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<p>Are you sure you want to post the following {{ objects_name }}?</p>
+<h3>Selected Items:</h3>
+<ul>
+    {% for obj in queryset %}
+    <li>{{ obj }}</li>
+    {% endfor %}
+</ul>
+
+<form action="" method="post">
+    {% csrf_token %}
+    
+    {# Include the selected items #}
+    {% for obj in queryset %}
+    <input type="hidden" name="{{ action_checkbox_name }}" value="{{ obj.pk }}">
+    {% endfor %}
+    
+    <input type="hidden" name="action" value="postItemJournalReFactor">
+    <input type="hidden" name="apply" value="yes">
+    
+    <div class="submit-row">
+        <input type="submit" class="default" value="Confirm Posting">
+        <a href="{{ request.get_full_path }}" class="button cancel-link">Cancel</a>
+    </div>
+</form>
+{% endblock %}

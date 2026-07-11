@@ -1,0 +1,285 @@
+{% extends "dashboard/dashboard-layout.html" %}
+<!--prettier-ignore-->
+{% load static %} 
+{% block page-content %}
+<!-- Content start -->
+<div
+  class="page-container relative h-full flex flex-auto flex-col px-4 sm:px-6 md:px-8 py-4 sm:py-6"
+>
+  <div class="container mx-auto">
+    <!-- Instructions Card -->
+    <div class="card adaptable-card mb-6">
+      <div class="card-body p-6">
+        <div class="flex items-start">
+          <div class="flex-shrink-0">
+            <svg
+              class="w-8 h-8 text-primary-500"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          </div>
+          <div class="ml-4">
+            <h3 class="text-lg font-semibold mb-2">Bulk Upload Instructions</h3>
+            <div class="space-y-2 text-gray-600 dark:text-gray-400">
+              <p>Follow these steps to upload your products:</p>
+              <ol class="list-decimal ml-4 space-y-1">
+                <li>Download the template using the button below</li>
+                <li>
+                  Fill in your product details following the template format
+                </li>
+                <li>Save the file and upload it using the upload section</li>
+                <li>Click Process to begin the import</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6">
+      <!-- Template Download Card -->
+      <div class="card adaptable-card">
+        <div class="card-body p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold">Template Download</h3>
+            <span class="badge-dot bg-emerald-500">Required</span>
+          </div>
+          <p class="text-gray-500 mb-6">
+            Download our standardized template to ensure your product data is
+            formatted correctly
+          </p>
+          <a
+            href="{{ item_upload_templates.file.url }}"
+            download
+            class="btn btn-default w-full flex items-center justify-center hover:bg-gray-50"
+          >
+            <svg
+              class="w-5 h-5 mr-2"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
+            </svg>
+            Download Template
+          </a>
+        </div>
+      </div>
+
+      <!-- Upload Card -->
+      <div class="card adaptable-card">
+        <div class="card-body py-6">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold">Upload Products</h3>
+            <div class="text-sm text-gray-500">Supported: .xlsx, .xls</div>
+          </div>
+
+          <div class="upload-container">
+            <form
+              id="uploadForm"
+              method="POST"
+              enctype="multipart/form-data"
+              action="{% url 'items:item-upload' %}"
+              hx-encoding="multipart/form-data"
+              hx-post="{% url 'items:item-upload' %}"
+              hx-target="#dialogContainer"
+              hx-indicator="#loadingIndicator"
+              class="space-y-4"
+            >
+              {% csrf_token %}
+
+              <!-- Upload Zone -->
+              <div
+                class="border-2 border-dashed border-gray-200 dark:border-gray-600 rounded-lg p-8 text-center hover:border-primary-500 transition-colors"
+              >
+                <input
+                  type="file"
+                  id="fileInput"
+                  name="file"
+                  class="hidden"
+                  accept=".xlsx, .xls"
+                />
+                <label for="fileInput" class="cursor-pointer">
+                  <div class="flex items-center justify-center space-y-4">
+                    <svg
+                      class="w-8 h-8 mx-auto text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      style="width: 60px; height: 60px"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                      />
+                    </svg>
+
+                    <div class="text-gray-600 dark:text-gray-400">
+                      <span class="font-medium text-primary-500"
+                        >Click to upload</span
+                      >
+                      or drag and drop
+                      <p class="text-sm">Excel files only (max. 10MB)</p>
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              <!-- File Info -->
+              <div class="file-info hidden" id="fileInfo">
+                <div
+                  class="flex items-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
+                >
+                  <svg
+                    class="w-8 h-8 text-primary-500 mr-3"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    style="width: 60px; height: 60px"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                  <div class="flex-1">
+                    <span class="file-name font-medium"></span>
+                    <span class="file-size text-sm text-gray-500 ml-2"></span>
+                  </div>
+                  <button
+                    type="button"
+                    class="remove-file text-gray-400 hover:text-red-500"
+                    onclick="removeFile()"
+                  >
+                    <svg
+                      class="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="card-footer bg-gray-50 dark:bg-gray-700 px-3 py-3">
+          <div class="flex justify-end">
+            <button
+              type="submit"
+              form="uploadForm"
+              class="btn bg-sky-500 hover:bg-sky-400 active:bg-sky-600 text-white hidden"
+              id="processButton"
+            >
+              <span class="flex items-center">
+                <svg
+                  class="w-4 h-4 mr-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                Process Upload
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Dialog Container -->
+<div id="dialogContainer"></div>
+
+<!-- Loading Indicator -->
+<div
+  id="loadingIndicator"
+  class="htmx-indicator fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]"
+  style="display: none"
+>
+  <div class="card w-[450px]">
+    <div
+      class="card-header flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-600"
+    >
+      <h5 class="font-semibold">Processing File</h5>
+    </div>
+    <div class="card-body p-6">
+      <div class="flex flex-col items-center">
+        <div class="mb-6">
+          <div
+            class="loading loading-spinner loading-lg text-primary-600"
+          ></div>
+        </div>
+        <p class="text-sm text-gray-600 dark:text-gray-400 text-center">
+          Processing your file, please wait...
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %} {% block scripts %}
+<script>
+  const fileInput = document.getElementById("fileInput");
+  const fileInfo = document.getElementById("fileInfo");
+  const fileName = fileInfo.querySelector(".file-name");
+  const fileSize = fileInfo.querySelector(".file-size");
+  const processButton = document.getElementById("processButton");
+
+  fileInput.addEventListener("change", function (e) {
+    const file = e.target.files[0];
+    if (file) {
+      fileName.textContent = file.name;
+      fileSize.textContent = formatFileSize(file.size);
+      fileInfo.classList.remove("hidden");
+      processButton.classList.remove("hidden");
+    }
+  });
+
+  function removeFile() {
+    fileInput.value = "";
+    fileInfo.classList.add("hidden");
+    processButton.classList.add("hidden");
+  }
+  function formatFileSize(bytes) {
+    if (bytes === 0) return "0 Bytes";
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  }
+</script>
+{% endblock %}

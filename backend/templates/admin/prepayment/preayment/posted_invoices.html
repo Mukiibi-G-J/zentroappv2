@@ -1,0 +1,42 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div style="max-width: 1000px; margin: 20px auto; background: #fff; padding: 20px; box-shadow: 0 0 10px rgba(0,0,0,0.05);">
+  <h2>Posted Invoices for {{ preayment.document_no }}</h2>
+  <p>
+    Customer: <strong>{{ preayment.customer.name }}</strong><br />
+    Posting Date: {{ preayment.posting_date|date:"Y-m-d" }}<br />
+    Status: {{ preayment.get_status_display }}
+  </p>
+
+  {% if invoices %}
+  <table style="width: 100%; border-collapse: collapse;">
+    <thead>
+      <tr>
+        <th style="text-align: left; border-bottom: 1px solid #ddd; padding: 8px;">Posted Invoice No.</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd; padding: 8px;">Posting Date</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd; padding: 8px;">Customer Invoice No.</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for invoice in invoices %}
+      <tr>
+        <td style="border-bottom: 1px solid #f0f0f0; padding: 8px;">
+          <a href="{% url 'admin:sales_postedsalesinvoice_change' invoice.pk %}">{{ invoice.no }}</a>
+        </td>
+        <td style="border-bottom: 1px solid #f0f0f0; padding: 8px;">{{ invoice.posting_date|date:"Y-m-d" }}</td>
+        <td style="border-bottom: 1px solid #f0f0f0; padding: 8px;">{{ invoice.customer_invoice_no }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No posted invoices found for this prepayment.</p>
+  {% endif %}
+
+  <div style="margin-top: 20px;">
+    <a class="button" href="{% url 'admin:prepayment_preayment_changelist' %}">Back to Prepayments</a>
+  </div>
+</div>
+{% endblock %}
+

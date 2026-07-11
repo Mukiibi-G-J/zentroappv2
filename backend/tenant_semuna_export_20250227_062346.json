@@ -1,0 +1,1576 @@
+{
+  "metadata": {
+    "schema_name": "semuna",
+    "tenant_name": "semuna",
+    "export_date": "2025-02-27T06:23:45.945196",
+    "version": "1.0"
+  },
+  "data": {
+    "financials.G_LAccount": [
+      {
+        "no": "1000",
+        "name": "BALANCE SHEET",
+        "indentation": 0,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "",
+        "debit_credit": "Both",
+        "accounttype": "Heading",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "1002",
+        "name": "ASSETS",
+        "indentation": 0,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "1003",
+        "name": "Fixed Assets",
+        "indentation": 1,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "1005",
+        "name": "Tangible Fixed Assets",
+        "indentation": 2,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "1110",
+        "name": "Land and Buildings",
+        "indentation": 4,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "1310",
+        "name": "Vehicles",
+        "indentation": 4,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "1395",
+        "name": "Tangible Fixed Assets, Total",
+        "indentation": 2,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "1999",
+        "name": "Fixed Assets, Total",
+        "indentation": 1,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "2000",
+        "name": "Current Assets",
+        "indentation": 1,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "2100",
+        "name": "Inventory",
+        "indentation": 2,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "2110",
+        "name": "Resale Items",
+        "indentation": 3,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "2140",
+        "name": "WIP Account, Finished goods",
+        "indentation": 3,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "2190",
+        "name": "Inventory, Total",
+        "indentation": 2,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "2300",
+        "name": "Accounts Receivable",
+        "indentation": 2,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "2310",
+        "name": "Customers Domestic",
+        "indentation": 3,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "2390",
+        "name": "Accounts Receivable, Total",
+        "indentation": 2,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "2900",
+        "name": "Liquid Assets",
+        "indentation": 2,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "2910",
+        "name": "Cash",
+        "indentation": 3,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "2920",
+        "name": "Bank, LCY",
+        "indentation": 3,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "2930",
+        "name": "Mobile Money Accounts",
+        "indentation": 3,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "2990",
+        "name": "Liquid Assets, Total",
+        "indentation": 2,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "2995",
+        "name": "Current Assets, Total",
+        "indentation": 1,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "2999",
+        "name": "TOTAL ASSETS",
+        "indentation": 0,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "3000",
+        "name": "LIABILITIES AND EQUITY",
+        "indentation": 0,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "",
+        "debit_credit": "Both",
+        "accounttype": "Heading",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "3100",
+        "name": "Stockholder's Equity",
+        "indentation": 0,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Equity",
+        "debit_credit": "Both",
+        "accounttype": "Heading",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "3110",
+        "name": "Capital Stock",
+        "indentation": 0,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Equity",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "3120",
+        "name": "Retained Earnings",
+        "indentation": 0,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Equity",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "3195",
+        "name": "Net Income for the Year",
+        "indentation": 0,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Equity",
+        "debit_credit": "Both",
+        "accounttype": "Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "3199",
+        "name": "Total Stockholder's Equity",
+        "indentation": 0,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Equity",
+        "debit_credit": "Both",
+        "accounttype": "Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "4999",
+        "name": "Allowances, Total",
+        "indentation": 0,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Equity",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "5000",
+        "name": "Liabilities",
+        "indentation": 0,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Liabilities",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "5100",
+        "name": "Long-term Liabilities",
+        "indentation": 1,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Liabilities",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "5110",
+        "name": "Long-term Bank Loans",
+        "indentation": 2,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Liabilities",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "5290",
+        "name": "Long-term Liabilities, Total",
+        "indentation": 1,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Liabilities",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "5300",
+        "name": "Short-term Liabilities",
+        "indentation": 1,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Liabilities",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "5310",
+        "name": "Revolving Credit",
+        "indentation": 2,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Liabilities",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "5350",
+        "name": "Sales Prepayments",
+        "indentation": 2,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Liabilities",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "5360",
+        "name": "Customer Prepayments VAT 0%",
+        "indentation": 3,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Liabilities",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "5390",
+        "name": "Sales Prepayments, Total",
+        "indentation": 2,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Liabilities",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": "5350..5389",
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "5400",
+        "name": "Accounts Payable",
+        "indentation": 2,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Liabilities",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "5410",
+        "name": "Vendors, Domestic",
+        "indentation": 3,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Liabilities",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "5490",
+        "name": "Accounts Payable, Total",
+        "indentation": 2,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Liabilities",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "5600",
+        "name": "VAT",
+        "indentation": 2,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Liabilities",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "5610",
+        "name": "Sales VAT 25 %",
+        "indentation": 3,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Liabilities",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "5611",
+        "name": "Sales VAT 10 %",
+        "indentation": 3,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Liabilities",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "5630",
+        "name": "Purchase VAT 25 %",
+        "indentation": 3,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "5631",
+        "name": "Purchase VAT 10 %",
+        "indentation": 3,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Assets",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "5780",
+        "name": "VAT Payable",
+        "indentation": 3,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Liabilities",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "5790",
+        "name": "VAT, Total",
+        "indentation": 2,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Liabilities",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "5995",
+        "name": "Short-term Liabilities, Total",
+        "indentation": 1,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Liabilities",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "5997",
+        "name": "Total Liabilities",
+        "indentation": 0,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Liabilities",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "5999",
+        "name": "TOTAL LIABILITIES AND EQUITY",
+        "indentation": 0,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "",
+        "debit_credit": "Both",
+        "accounttype": "Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "6000",
+        "name": "INCOME STATEMENT",
+        "indentation": 0,
+        "income_balance": "Income Statement",
+        "accountcategory": "",
+        "debit_credit": "Both",
+        "accounttype": "Heading",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "6100",
+        "name": "Revenue",
+        "indentation": 0,
+        "income_balance": "Income Statement",
+        "accountcategory": "Income",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "6105",
+        "name": "Sales of Retail",
+        "indentation": 1,
+        "income_balance": "Income Statement",
+        "accountcategory": "Income",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "6110",
+        "name": "Sales, Retail - Dom.",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Income",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "6195",
+        "name": "Total Sales of Retail",
+        "indentation": 1,
+        "income_balance": "Income Statement",
+        "accountcategory": "Income",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "6405",
+        "name": "Sales of Service",
+        "indentation": 1,
+        "income_balance": "Income Statement",
+        "accountcategory": "Income",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "6410",
+        "name": "Sales, Service - Dom.",
+        "indentation": 1,
+        "income_balance": "Income Statement",
+        "accountcategory": "Income",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "6495",
+        "name": "Total Sales of Service",
+        "indentation": 1,
+        "income_balance": "Income Statement",
+        "accountcategory": "Income",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "6910",
+        "name": "Discount Granted",
+        "indentation": 1,
+        "income_balance": "Income Statement",
+        "accountcategory": "Income",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "6995",
+        "name": "Total Revenue",
+        "indentation": 0,
+        "income_balance": "Income Statement",
+        "accountcategory": "Income",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "7100",
+        "name": "Cost",
+        "indentation": 0,
+        "income_balance": "Income Statement",
+        "accountcategory": "Cost of Goods Sold",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "7105",
+        "name": "Cost of Retail",
+        "indentation": 1,
+        "income_balance": "Income Statement",
+        "accountcategory": "Cost of Goods Sold",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "7110",
+        "name": "Purch., Retail - Dom.",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Cost of Goods Sold",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "7120",
+        "name": "Purch., Retail - EU",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Cost of Goods Sold",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "7130",
+        "name": "Purch., Retail - Export",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Cost of Goods Sold",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "7140",
+        "name": "Disc. Received, Retail",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Cost of Goods Sold",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "7150",
+        "name": "Delivery Expenses, Retail",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Cost of Goods Sold",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "7170",
+        "name": "Inventory Adjmt., Retail",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Cost of Goods Sold",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "7181",
+        "name": "Job Cost Adjmt., Retail",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Cost of Goods Sold",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "7190",
+        "name": "Cost of Retail Sold",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Cost of Goods Sold",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "7191",
+        "name": "Direct Cost Applied, Retail",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Cost of Goods Sold",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "7195",
+        "name": "Total Cost of Retail",
+        "indentation": 1,
+        "income_balance": "Income Statement",
+        "accountcategory": "Cost of Goods Sold",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "7792",
+        "name": "Overhead Applied, Cap.",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Cost of Goods Sold",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "7795",
+        "name": "Total Cost of Capacities",
+        "indentation": 1,
+        "income_balance": "Income Statement",
+        "accountcategory": "Cost of Goods Sold",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "7995",
+        "name": "Total Cost",
+        "indentation": 0,
+        "income_balance": "Income Statement",
+        "accountcategory": "Cost of Goods Sold",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "8000",
+        "name": "Operating Expenses",
+        "indentation": 0,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "8100",
+        "name": "Building Maintenance Expenses",
+        "indentation": 1,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "8110",
+        "name": "Cleaning",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "8120",
+        "name": "Electricity and Heating",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "8130",
+        "name": "Repairs and Maintenance",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "8150",
+        "name": "Rent",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "8190",
+        "name": "Total Bldg. Maint. Expenses",
+        "indentation": 1,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "8200",
+        "name": "Administrative Expenses",
+        "indentation": 1,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "8210",
+        "name": "Office Supplies",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "8230",
+        "name": "Phone and Fax",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "8240",
+        "name": "Postage",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "8300",
+        "name": "Computer Expenses",
+        "indentation": 1,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "8310",
+        "name": "Software",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "8320",
+        "name": "Consultant Services",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "8330",
+        "name": "Other Computer Expenses",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "8390",
+        "name": "Total Computer Expenses",
+        "indentation": 1,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "8400",
+        "name": "Selling Expenses",
+        "indentation": 1,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "8410",
+        "name": "Advertising",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "8420",
+        "name": "Entertainment and PR",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "8430",
+        "name": "Travel",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "8450",
+        "name": "Delivery Expenses",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "8490",
+        "name": "Total Selling Expenses",
+        "indentation": 1,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "8600",
+        "name": "Other Operating Expenses",
+        "indentation": 1,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "8610",
+        "name": "Cash Discrepancies",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "8620",
+        "name": "Bad Debt Expenses",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "8640",
+        "name": "Miscellaneous",
+        "indentation": 2,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "8690",
+        "name": "Other Operating Exp., Total",
+        "indentation": 1,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "8695",
+        "name": "Total Operating Expenses",
+        "indentation": 0,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "8700",
+        "name": "Personnel Expenses",
+        "indentation": 0,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Begin-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "8710",
+        "name": "Wages",
+        "indentation": 1,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "8720",
+        "name": "Salaries",
+        "indentation": 1,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "8790",
+        "name": "Total Personnel Expenses",
+        "indentation": 0,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "End-Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "8910",
+        "name": "Other Costs of Operations",
+        "indentation": 0,
+        "income_balance": "Income Statement",
+        "accountcategory": "Expense",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      },
+      {
+        "no": "8995",
+        "name": "Net Operating Income",
+        "indentation": 0,
+        "income_balance": "Income Statement",
+        "accountcategory": "",
+        "debit_credit": "Both",
+        "accounttype": "Total",
+        "totaling": null,
+        "direct_posting": false,
+        "blocked": false
+      },
+      {
+        "no": "9999",
+        "name": "Opening Balances",
+        "indentation": 0,
+        "income_balance": "Balance Sheet",
+        "accountcategory": "Equity",
+        "debit_credit": "Both",
+        "accounttype": "Posting",
+        "totaling": null,
+        "direct_posting": true,
+        "blocked": false
+      }
+    ],
+    "postings.GeneralBusinessPostingGroup": [
+      {
+        "code": "DOMESTIC",
+        "description": "DOMESTIC",
+        "default": false
+      }
+    ],
+    "postings.GeneralProductPostingGroup": [
+      {
+        "code": "SERVICE",
+        "description": "SERVICE",
+        "default": false
+      },
+      {
+        "code": "RETAIL",
+        "description": "RETAIL",
+        "default": true
+      }
+    ],
+    "postings.GeneralPostingSetup": [
+      {
+        "id": 2,
+        "general_product_posting_group": "RETAIL",
+        "general_business_posting_group": null,
+        "sales_account": "Sales, Retail - Dom.",
+        "purchase_account": "Purch., Retail - Dom.",
+        "cogs_account": "Cost of Retail Sold",
+        "inventory_adjustment_account": "Inventory Adjmt., Retail",
+        "direct_cost_applied_account": "Direct Cost Applied, Retail",
+        "prepayment_account": "Customer Prepayments VAT 0%",
+        "sales_line_discount_account": "Discount Granted"
+      },
+      {
+        "id": 1,
+        "general_product_posting_group": "RETAIL",
+        "general_business_posting_group": "DOMESTIC",
+        "sales_account": "Sales, Retail - Dom.",
+        "purchase_account": "Purch., Retail - Dom.",
+        "cogs_account": "Cost of Retail Sold",
+        "inventory_adjustment_account": "Inventory Adjmt., Retail",
+        "direct_cost_applied_account": "Direct Cost Applied, Retail",
+        "prepayment_account": "Customer Prepayments VAT 0%",
+        "sales_line_discount_account": "Discount Granted"
+      },
+      {
+        "id": 3,
+        "general_product_posting_group": "SERVICE",
+        "general_business_posting_group": null,
+        "sales_account": null,
+        "purchase_account": null,
+        "cogs_account": "Cost of Retail Sold",
+        "inventory_adjustment_account": "Inventory Adjmt., Retail",
+        "direct_cost_applied_account": "Direct Cost Applied, Retail",
+        "prepayment_account": "Customer Prepayments VAT 0%",
+        "sales_line_discount_account": "Discount Granted"
+      },
+      {
+        "id": 4,
+        "general_product_posting_group": "SERVICE",
+        "general_business_posting_group": "DOMESTIC",
+        "sales_account": "Sales, Service - Dom.",
+        "purchase_account": "Purch., Retail - Dom.",
+        "cogs_account": "Cost of Retail Sold",
+        "inventory_adjustment_account": "Inventory Adjmt., Retail",
+        "direct_cost_applied_account": "Direct Cost Applied, Retail",
+        "prepayment_account": "Customer Prepayments VAT 0%",
+        "sales_line_discount_account": "Discount Granted"
+      }
+    ],
+    "postings.InventoryPostingGroup": [
+      {
+        "code": "RETAIL",
+        "description": "RETAIL",
+        "default": true
+      },
+      {
+        "code": "RAW MAT",
+        "description": "Raw Materials",
+        "default": false
+      }
+    ],
+    "postings.InventoryPostingSetup": [
+      {
+        "id": 1,
+        "inventory_posting_group": "RETAIL",
+        "inventory_account": "Resale Items",
+        "wip_account": "WIP Account, Finished goods"
+      },
+      {
+        "inventory_posting_group": "RAW MAT",
+        "inventory_account": "Resale Items",
+        "wip_account": "WIP Account, Finished goods"
+      }
+    ],
+    "financials.PaymentMethod": [
+      {
+        "id": 1,
+        "code": "CASH",
+        "description": "Cash Cust.",
+        "bal_account_type": "GL_Account",
+        "bal_account_no": "Cash",
+        "requires_amount_received": true
+      },
+      {
+        "id": 2,
+        "code": "AIRTEL_MONEY",
+        "description": "Airtel Money",
+        "bal_account_type": "Bank_Account",
+        "bal_bank_account_no": "AIRTEL_MONEY",
+        "requires_amount_received": true
+      },
+      {
+        "id": 3,
+        "code": "MTN_MONEY",
+        "description": "MTN Money",
+        "bal_account_type": "Bank_Account",
+        "bal_bank_account_no": "MTN_MONEY",
+        "requires_amount_received": true
+      },
+      {
+        "id": 3,
+        "code": "NOT_PAID",
+        "description": "Not Paid Yet",
+        "bal_account_type": "GL_Account",
+        "bal_account_no": "Customers Domestic",
+        "requires_amount_received": false
+      }
+    ],
+    "sales.CustomerPostingGroup": [
+      {
+        "code": "DOMESTIC",
+        "description": "DOMESTIC",
+        "receivables_account": "Customers Domestic"
+      }
+    ],
+    "items.UnitOfMeasure": [
+      {
+        "code": "BOX",
+        "description": "BOX",
+        "international_stnd_code": "BOX"
+      },
+      {
+        "code": "CATON",
+        "description": "CATON",
+        "international_stnd_code": null
+      },
+      {
+        "code": "G",
+        "description": "Gram",
+        "international_stnd_code": null
+      },
+      {
+        "code": "KG",
+        "description": "Kilogram",
+        "international_stnd_code": null
+      },
+      {
+        "code": "L",
+        "description": "Liter",
+        "international_stnd_code": null
+      },
+      {
+        "code": "ML",
+        "description": "Milliliter",
+        "international_stnd_code": null
+      },
+      {
+        "code": "PACK",
+        "description": "PACK",
+        "international_stnd_code": null
+      },
+      {
+        "code": "PCS",
+        "description": "PCS",
+        "international_stnd_code": "PCS"
+      },
+      {
+        "code": "STRIP",
+        "description": "STRIP",
+        "international_stnd_code": null
+      }
+    ],
+    "purchases.VendorPostingGroup": [
+      {
+        "id": 1,
+        "code": "DOMESTIC",
+        "description": "DOMESTIC",
+        "payables_account": "Vendors, Domestic"
+      }
+    ],
+    "bank_account.BankAccountPostingGroup": [
+      {
+        "code": "BANK",
+        "description": "Bank, LCY",
+        "bank_account": "Bank, LCY"
+      },
+      {
+        "code": "MOBILE_MONEY",
+        "description": "Mobile Money",
+        "bank_account": "Mobile Money Accounts"
+      }
+    ],
+    "bank_account.BankAccount": [
+      {
+        "no": "MTN_MONEY",
+        "name": "MTN Money",
+        "address": "N/A",
+        "contact": "N/A",
+        "bank_account_no": "MTN_MONEY",
+        "bank_account_posting_group": "MOBILE_MONEY"
+      },
+      {
+        "no": "AIRTEL_MONEY",
+        "name": "Airtel Money",
+        "address": "N/A",
+        "contact": "N/A",
+        "bank_account_no": "AIRTEL_MONEY",
+        "bank_account_posting_group": "MOBILE_MONEY"
+      }
+    ]
+  }
+}

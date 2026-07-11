@@ -1,0 +1,372 @@
+{% extends "admin/base_site.html" %} {% load humanize %} {% block content %}
+{% include "admin/includes/preview_posting_surface.html" %}
+<div
+  class="preview-posting-surface"
+  style="
+    max-width: 1200px;
+    margin: 20px auto;
+    padding: 20px;
+    background: white;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  "
+>
+  {% if messages %}
+  <ul class="messagelist">
+    {% for message in messages %}
+    <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <h2>Preview Credit Memo Posting (Reversal)</h2>
+
+  <div style="margin-top: 20px; padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107;">
+    <p><strong>{{ preview_entries.credit_memo }}</strong></p>
+    <p><strong>Original Invoice:</strong> {{ preview_entries.original_invoice }}</p>
+    {% for step in preview_entries.steps %}
+    <p>✓ {{ step }}</p>
+    {% endfor %}
+  </div>
+
+  <div style="margin-top: 40px">
+    <div class="related-entries">
+      <div class="entry-header">
+        <span>Related Entries (Reversals)</span>
+        <span>No. of Entries</span>
+      </div>
+      <div class="entry-row">
+        <a href="#gl-entries">G/L Entry (Reversals)</a>
+        <span>{{ preview_entries.entries.gl_entries|length }}</span>
+      </div>
+      <div class="entry-row">
+        <a href="#vendor-entries">Vendor Ledger Entry (Reversals)</a>
+        <span>{{ preview_entries.entries.vendor_entries|length }}</span>
+      </div>
+      <div class="entry-row">
+        <a href="#item-entries">Item Ledger Entry (Returns)</a>
+        <span>{{ preview_entries.entries.item_entries|length }}</span>
+      </div>
+      <div class="entry-row">
+        <a href="#value-entries">Value Entry (Reversals)</a>
+        <span>{{ preview_entries.entries.value_entries|length }}</span>
+      </div>
+      <div class="entry-row">
+        <a href="#detailed-vendor-entries">Detailed Vendor Ledger Entry (Reversals)</a>
+        <span
+          >{{ preview_entries.entries.detailed_vendor_entries|length }}</span
+        >
+      </div>
+    </div>
+
+    <div id="gl-entries" class="entry-details">
+      <h3>G/L Entries (Reversals)</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Posting Date</th>
+            <th>Document Type</th>
+            <th>Document No.</th>
+            <th>G/L Account No.</th>
+            <th>Description</th>
+            <th>Amount</th>
+            <th>Original Amount</th>
+            <th>Transaction No.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entry in preview_entries.entries.gl_entries %}
+          <tr>
+            <td>{{ entry.posting_date|date:"Y-m-d" }}</td>
+            <td>{{ entry.document_type }}</td>
+            <td>{{ entry.document_no }}</td>
+            <td>{{ entry.gl_account }}</td>
+            <td>{{ entry.description }}</td>
+            <td style="text-align: right; {% if entry.amount < 0 %}color: red;{% else %}color: green;{% endif %}">
+              {{ entry.amount|floatformat:2|intcomma }}
+            </td>
+            <td style="text-align: right">
+              {{ entry.original_amount|floatformat:2|intcomma }}
+            </td>
+            <td>{{ entry.transaction_no|default:"-" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div id="vendor-entries" class="entry-details">
+      <h3>Vendor Ledger Entries (Reversals)</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Posting Date</th>
+            <th>Document Type</th>
+            <th>Document No.</th>
+            <th>Vendor No.</th>
+            <th>Description</th>
+            <th>Amount</th>
+            <th>Remaining Amount</th>
+            <th>Original Amount</th>
+            <th>Transaction No.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entry in preview_entries.entries.vendor_entries %}
+          <tr>
+            <td>{{ entry.posting_date|date:"Y-m-d" }}</td>
+            <td>{{ entry.document_type }}</td>
+            <td>{{ entry.document_no }}</td>
+            <td>{{ entry.vendor_no }}</td>
+            <td>{{ entry.description }}</td>
+            <td style="text-align: right; {% if entry.amount < 0 %}color: red;{% else %}color: green;{% endif %}">
+              {{ entry.amount|floatformat:2|intcomma }}
+            </td>
+            <td style="text-align: right">
+              {{ entry.remaining_amount|floatformat:2|intcomma }}
+            </td>
+            <td style="text-align: right">
+              {{ entry.original_amount|floatformat:2|intcomma }}
+            </td>
+            <td>{{ entry.transaction_no|default:"-" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div id="item-entries" class="entry-details">
+      <h3>Item Ledger Entries (Returns)</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Posting Date</th>
+            <th>Entry Type</th>
+            <th>Document No.</th>
+            <th>Item No.</th>
+            <th>Description</th>
+            <th>Location</th>
+            <th>Quantity</th>
+            <th>Remaining Qty</th>
+            <th>Unit Cost</th>
+            <th>Total</th>
+            <th>Lot No.</th>
+            <th>Serial No.</th>
+            <th>Expiry Date</th>
+            <th>Transaction No.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entry in preview_entries.entries.item_entries %}
+          <tr>
+            <td>{{ entry.posting_date|date:"Y-m-d" }}</td>
+            <td>{{ entry.entry_type }}</td>
+            <td>{{ entry.document_no }}</td>
+            <td>{{ entry.item }}</td>
+            <td>{{ entry.description }}</td>
+            <td>{{ entry.location }}</td>
+            <td style="text-align: right; {% if entry.quantity < 0 %}color: red;{% else %}color: green;{% endif %}">
+              {{ entry.quantity|floatformat:2|intcomma }}
+            </td>
+            <td style="text-align: right">
+              {{ entry.remaining_quantity|floatformat:2|intcomma }}
+            </td>
+            <td style="text-align: right">
+              {{ entry.unit_cost|floatformat:2|intcomma }}
+            </td>
+            <td style="text-align: right; {% if entry.total < 0 %}color: red;{% else %}color: green;{% endif %}">
+              {{ entry.total|floatformat:2|intcomma }}
+            </td>
+            <td>{{ entry.lot_no|default:"-" }}</td>
+            <td>{{ entry.serial_no|default:"-" }}</td>
+            <td>{{ entry.expiry_date|date:"Y-m-d"|default:"-" }}</td>
+            <td>{{ entry.transaction_no|default:"-" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div id="value-entries" class="entry-details">
+      <h3>Value Entries (Reversals)</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Posting Date</th>
+            <th>Entry Type</th>
+            <th>Document No.</th>
+            <th>Item No.</th>
+            <th>Cost Amount</th>
+            <th>Item Ledger Qty</th>
+            <th>Invoiced Qty</th>
+            <th>Valued Qty</th>
+            <th>Cost per Unit</th>
+            <th>Gen. Prod. Posting Group</th>
+            <th>Inventory Posting Group</th>
+            <th>Transaction No.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entry in preview_entries.entries.value_entries %}
+          <tr>
+            <td>{{ entry.posting_date|date:"Y-m-d" }}</td>
+            <td>{{ entry.entry_type }}</td>
+            <td>{{ entry.document_no }}</td>
+            <td>{{ entry.item }}</td>
+            <td style="text-align: right; {% if entry.cost_amount < 0 %}color: red;{% else %}color: green;{% endif %}">
+              {{ entry.cost_amount|floatformat:2|intcomma }}
+            </td>
+            <td style="text-align: right">
+              {{ entry.item_ledger_entry_quantity|floatformat:2|intcomma }}
+            </td>
+            <td style="text-align: right">
+              {{ entry.invoiced_quantity|floatformat:2|intcomma }}
+            </td>
+            <td style="text-align: right">
+              {{ entry.valued_quantity|floatformat:2|intcomma }}
+            </td>
+            <td style="text-align: right">
+              {{ entry.cost_per_unit|floatformat:2|intcomma }}
+            </td>
+            <td>{{ entry.general_product_posting_group }}</td>
+            <td>{{ entry.inventory_posting_group }}</td>
+            <td>{{ entry.transaction_no|default:"-" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div id="detailed-vendor-entries" class="entry-details">
+      <h3>Detailed Vendor Ledger Entries (Reversals)</h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Posting Date</th>
+            <th>Entry Type</th>
+            <th>Document Type</th>
+            <th>Document No.</th>
+            <th>Vendor No.</th>
+            <th>Amount</th>
+            <th>Debit Amount</th>
+            <th>Credit Amount</th>
+            <th>Initial Entry Due Date</th>
+            <th>Initial Document Type</th>
+            <th>Applied Vend. Ledger Entry No.</th>
+            <th>Transaction No.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if preview_entries.entries.detailed_vendor_entries %}
+            {% for entry in preview_entries.entries.detailed_vendor_entries %}
+              <tr>
+                <td>{{ entry.posting_date|date:"Y-m-d" }}</td>
+                <td>{{ entry.entry_type }}</td>
+                <td>{{ entry.document_type }}</td>
+                <td>{{ entry.document_no }}</td>
+                <td>{{ entry.vendor_no }}</td>
+                <td style="text-align: right; {% if entry.amount < 0 %}color: red;{% else %}color: green;{% endif %}">
+                  {{ entry.amount|floatformat:2|intcomma }}
+                </td>
+                <td style="text-align: right">
+                  {{ entry.debit_amount|default:0|floatformat:2|intcomma }}
+                </td>
+                <td style="text-align: right">
+                  {{ entry.credit_amount|default:0|floatformat:2|intcomma }}
+                </td>
+                <td>{{ entry.initial_entry_due_date|date:"Y-m-d"|default:"-" }}</td>
+                <td>{{ entry.initial_document_type|default:"-" }}</td>
+                <td style="text-align: right">
+                  {{ entry.applied_vendor_ledger_entry_no|default:0|intcomma }}
+                </td>
+                <td>{{ entry.transaction_no|default:"-" }}</td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="12">No detailed vendor entries found.</td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <div style="margin-top: 30px">
+    <a
+      href="{% url 'admin:purchases_purchasecreditmemo_changelist' %}"
+      class="button"
+      >Back to Credit Memos</a
+    >
+  </div>
+</div>
+
+<style>
+  .related-entries {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .entry-header {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px;
+    background: #f8f9fa;
+    font-weight: bold;
+    border-bottom: 1px solid #ddd;
+  }
+  .entry-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-bottom: 1px solid #eee;
+  }
+  .entry-row:last-child {
+    border-bottom: none;
+  }
+  .entry-row:hover {
+    background: #f8f9fa;
+  }
+  .entry-row a {
+    text-decoration: none;
+    color: #0066cc;
+  }
+  .entry-row a:hover {
+    text-decoration: underline;
+  }
+  .entry-details {
+    margin-top: 30px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 4px;
+  }
+  .entry-details h3 {
+    margin-top: 0;
+    color: #333;
+    border-bottom: 2px solid #0066cc;
+    padding-bottom: 8px;
+  }
+  .entry-details table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+    background: white;
+  }
+  .entry-details th {
+    background: #0066cc;
+    color: white;
+    padding: 10px;
+    text-align: left;
+    font-weight: 600;
+  }
+  .entry-details td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #ddd;
+  }
+  .entry-details tr:hover {
+    background: #f0f8ff;
+  }
+</style>
+{% endblock %}
+

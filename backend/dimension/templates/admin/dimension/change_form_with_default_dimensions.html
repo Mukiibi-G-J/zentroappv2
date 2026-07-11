@@ -1,0 +1,67 @@
+{% extends "admin/change_form.html" %}
+{% load i18n admin_urls static admin_modify %}
+
+{% block after_field_sets %}
+{{ block.super }}
+{% if show_default_dimensions and default_dimension_formset %}
+<fieldset class="module aligned">
+    <h2>{% translate "Default Dimensions" %}</h2>
+    <p class="description">{% translate "Set default dimensions for this record. These will be applied when creating sales or purchase lines." %}</p>
+    {{ default_dimension_formset.management_form }}
+    <table>
+        <thead>
+            <tr>
+                <th>{% translate "Dimension Code" %}</th>
+                <th>{% translate "Dimension Value" %}</th>
+                <th>{% translate "Value Posting" %}</th>
+                <th>{% translate "Delete" %}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for form in default_dimension_formset %}
+            <tr>
+                <td>{% for field in form.hidden_fields %}{{ field }}{% endfor %}{{ form.dimension_code }}{{ form.dimension_code.errors }}</td>
+                <td>{{ form.dimension_value }}{{ form.dimension_value.errors }}</td>
+                <td>{{ form.value_posting }}{{ form.value_posting.errors }}</td>
+                <td>{{ form.DELETE }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% if default_dimension_formset.non_form_errors %}
+    <ul class="errorlist"><li>{{ default_dimension_formset.non_form_errors }}</li></ul>
+    {% endif %}
+</fieldset>
+{{ dimension_values_by_code|json_script:"dimension-values-data" }}
+<script>
+(function() {
+    const el = document.getElementById('dimension-values-data');
+    const valuesByCode = el ? JSON.parse(el.textContent) : {};
+    function escapeHtml(s) {
+        const div = document.createElement('div');
+        div.textContent = s;
+        return div.innerHTML;
+    }
+    function updateValueSelect(codeSelect, valueSelect) {
+        const dimCodeId = codeSelect.value;
+        const options = valuesByCode[dimCodeId] || [];
+        const currentValue = valueSelect.value;
+        valueSelect.innerHTML = '<option value="">--------</option>' +
+            options.map(function(v) {
+                const sel = (String(v.id) === String(currentValue)) ? ' selected' : '';
+                return '<option value="' + escapeHtml(String(v.id)) + '"' + sel + '>' + escapeHtml(v.code) + '</option>';
+            }).join('');
+    }
+    document.querySelectorAll('select[name$="-dimension_code"]').forEach(function(codeSelect) {
+        const prefix = codeSelect.name.replace('-dimension_code', '');
+        const valueSelect = document.querySelector('select[name="' + prefix + '-dimension_value"]');
+        if (!valueSelect) return;
+        codeSelect.addEventListener('change', function() {
+            updateValueSelect(codeSelect, valueSelect);
+        });
+        updateValueSelect(codeSelect, valueSelect);
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,1 @@
+import{B as n,r as a,j as i,J as s}from"./index-DfF6hWFi.js";const p=()=>{const o=n().state;return a.useEffect(()=>{if(o!=null&&o.subdomain){const t=`${window.location.protocol}//${o.subdomain}.zentroapp.app/sign-in`;window.location.href=t}},[o]),i.jsx(s,{loading:!0})};export{p as default};

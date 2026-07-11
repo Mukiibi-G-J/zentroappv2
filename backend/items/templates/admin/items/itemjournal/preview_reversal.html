@@ -1,0 +1,378 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static humanize %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  .reversal-preview-container {
+    max-width: 1200px;
+    margin: 20px auto;
+    padding: 20px;
+  }
+
+  .preview-header {
+    background: linear-gradient(135deg, #0d9488 0%, #115e59 100%);
+    color: white;
+    padding: 30px;
+    border-radius: 10px 10px 0 0;
+  }
+
+  .preview-header h1 {
+    margin: 0 0 10px 0;
+    font-size: 28px;
+    font-weight: 600;
+  }
+
+  .preview-content {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-top: none;
+    border-radius: 0 0 10px 10px;
+    padding: 30px;
+  }
+
+  .info-card {
+    background: #f8f9fa;
+    border-left: 4px solid #0d9488;
+    padding: 20px;
+    margin-bottom: 25px;
+    border-radius: 5px;
+  }
+
+  .info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 15px;
+  }
+
+  .info-label {
+    font-weight: 600;
+    color: #666;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .info-value {
+    font-size: 16px;
+    color: #333;
+    font-weight: 500;
+    margin-top: 4px;
+  }
+
+  .steps-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .steps-list li {
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    background: #ecfdf5;
+    border-left: 4px solid #10b981;
+    border-radius: 4px;
+  }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 16px;
+    margin: 20px 0;
+  }
+
+  .stat-card {
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+  }
+
+  .stat-number {
+    font-size: 32px;
+    font-weight: bold;
+    color: #0d9488;
+  }
+
+  .stat-label {
+    font-size: 12px;
+    color: #666;
+    text-transform: uppercase;
+  }
+
+  .entries-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0 24px;
+    font-size: 14px;
+  }
+
+  .entries-table th,
+  .entries-table td {
+    padding: 12px;
+    border-bottom: 1px solid #f0f0f0;
+    text-align: left;
+  }
+
+  .entries-table thead {
+    background: #0d9488;
+    color: white;
+  }
+
+  .section-title {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 24px 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 3px solid #0d9488;
+  }
+
+  .warning-box {
+    background: #fff3cd;
+    border: 2px solid #ffc107;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 24px 0;
+  }
+
+  .action-buttons {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 2px solid #e5e7eb;
+  }
+
+  .btn {
+    padding: 12px 24px;
+    border-radius: 6px;
+    font-weight: 600;
+    text-decoration: none;
+    border: none;
+    cursor: pointer;
+  }
+
+  .btn-secondary {
+    background: #6c757d;
+    color: white !important;
+  }
+
+  .btn-danger {
+    background: #dc3545;
+    color: white;
+  }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+  &rsaquo;
+  <a href="{% url 'admin:items_itemjournal_changelist' %}">{% trans 'Item journals' %}</a>
+  &rsaquo; {% trans 'Preview reversal' %}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="reversal-preview-container">
+  <div class="preview-header">
+    <h1>Preview item journal reversal</h1>
+    <p><strong>Document:</strong> {{ journal.document_no }}</p>
+    <p><strong>Reversing document:</strong> {{ preview_data.plan.reversal_document_no }}</p>
+  </div>
+
+  <div class="preview-content">
+    <div class="info-card">
+      <h2>Original journal</h2>
+      <div class="info-grid">
+        <div>
+          <div class="info-label">Document no.</div>
+          <div class="info-value">{{ journal.document_no }}</div>
+        </div>
+        <div>
+          <div class="info-label">Item</div>
+          <div class="info-value">{{ journal.item.no }} — {{ journal.item.item_name }}</div>
+        </div>
+        <div>
+          <div class="info-label">Entry type</div>
+          <div class="info-value">{{ journal.entry_type }}</div>
+        </div>
+        <div>
+          <div class="info-label">Posting date</div>
+          <div class="info-value">{{ journal.date|date:"Y-m-d" }}</div>
+        </div>
+        <div>
+          <div class="info-label">Quantity</div>
+          <div class="info-value">{{ journal.quantity|intcomma }}</div>
+        </div>
+        <div>
+          <div class="info-label">Amount</div>
+          <div class="info-value">{{ journal.amount|floatformat:2|intcomma }}</div>
+        </div>
+        <div>
+          <div class="info-label">Status</div>
+          <div class="info-value">{{ journal.status }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <h2>Reversal steps</h2>
+      <ul class="steps-list">
+        {% for step in preview_data.steps %}
+        <li>{{ step }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <h2 class="section-title">Entries to create</h2>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-number">{{ preview_data.gl_entries_count }}</div>
+        <div class="stat-label">G/L entries</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">{{ preview_data.item_ledger_entries_count }}</div>
+        <div class="stat-label">Item ledger</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">{{ preview_data.value_entries_count }}</div>
+        <div class="stat-label">Value entries</div>
+      </div>
+      {% if preview_data.fifo_restore_count %}
+      <div class="stat-card">
+        <div class="stat-number">{{ preview_data.fifo_restore_count }}</div>
+        <div class="stat-label">FIFO restores</div>
+      </div>
+      {% endif %}
+    </div>
+
+    {% if preview_data.plan.gl_entries %}
+    <h2 class="section-title">G/L entries (opposite amounts)</h2>
+    <table class="entries-table">
+      <thead>
+        <tr>
+          <th>Entry ID</th>
+          <th>Account</th>
+          <th>Original amount</th>
+          <th>Reversal amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in preview_data.plan.gl_entries %}
+        <tr>
+          <td>{{ row.id }}</td>
+          <td>{{ row.account }}</td>
+          <td>{{ row.amount|floatformat:2|intcomma }}</td>
+          <td><strong>{{ row.reversal_amount|floatformat:2|intcomma }}</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    {% if preview_data.plan.item_ledger_entries %}
+    <h2 class="section-title">Item ledger entries</h2>
+    <table class="entries-table">
+      <thead>
+        <tr>
+          <th>Entry ID</th>
+          <th>Lot</th>
+          <th>Original qty</th>
+          <th>Reversal qty</th>
+          <th>Original total</th>
+          <th>Reversal total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in preview_data.plan.item_ledger_entries %}
+        <tr>
+          <td>{{ row.id }}</td>
+          <td>{{ row.lot_no|default:"—" }}</td>
+          <td>{{ row.quantity }}</td>
+          <td><strong>{{ row.reversal_quantity }}</strong></td>
+          <td>{{ row.total|floatformat:2|intcomma }}</td>
+          <td><strong>{{ row.reversal_total|floatformat:2|intcomma }}</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    {% if preview_data.plan.value_entries %}
+    <h2 class="section-title">Value entries</h2>
+    <table class="entries-table">
+      <thead>
+        <tr>
+          <th>Entry ID</th>
+          <th>Original qty</th>
+          <th>Original cost</th>
+          <th>Reversal type</th>
+          <th>Reversal qty</th>
+          <th>Reversal cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in preview_data.plan.value_entries %}
+        <tr>
+          <td>{{ row.id }}</td>
+          <td>{{ row.qty }}</td>
+          <td>{{ row.cost|floatformat:2|intcomma }}</td>
+          <td>{{ row.reversal_entry_type|default:"—" }}</td>
+          <td><strong>{{ row.reversal_qty }}</strong></td>
+          <td><strong>{{ row.reversal_cost|floatformat:2|intcomma }}</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    {% if preview_data.plan.fifo_restore %}
+    <h2 class="section-title">FIFO restoration</h2>
+    <table class="entries-table">
+      <thead>
+        <tr>
+          <th>Detail</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in preview_data.plan.fifo_restore %}
+        <tr>
+          <td>{{ row }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    <div class="warning-box">
+      <p>
+        <strong>This will post reversing ledger entries</strong> under document
+        <strong>{{ preview_data.plan.reversal_document_no }}</strong> and mark the
+        original rows as reversed. Use this when a journal was posted incorrectly.
+      </p>
+      <p style="margin-top: 12px">
+        After reversal, clone or create a new open journal and post the corrected
+        adjustment if inventory still needs updating.
+      </p>
+    </div>
+
+    <form method="post" action="{% url 'admin:items_itemjournal_reverse_apply' journal.pk %}">
+      {% csrf_token %}
+      <div class="action-buttons">
+        <a href="{% url 'admin:items_itemjournal_changelist' %}" class="btn btn-secondary">
+          Cancel
+        </a>
+        <button
+          type="submit"
+          class="btn btn-danger"
+          onclick="return confirm('Reverse {{ journal.document_no }}? This posts reversing G/L, item ledger, and value entries.');"
+        >
+          Confirm reversal
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

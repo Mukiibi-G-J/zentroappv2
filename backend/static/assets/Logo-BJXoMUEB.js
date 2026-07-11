@@ -1,0 +1,1 @@
+import{j as s,d as i,A as c}from"./index-DfF6hWFi.js";const r="/img/logo/",d=o=>{const{type:l="full",mode:t="light",className:a,imgClass:e,style:m,logoWidth:g="auto"}=o;return s.jsx("div",{className:i("logo",a,"mt-4"),style:{...m,width:g},children:s.jsx("img",{className:e,src:`${r}logo-${t}-${l}.png`,alt:`${c} logo`})})};export{d as L};
