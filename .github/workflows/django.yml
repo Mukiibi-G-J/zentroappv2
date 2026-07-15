@@ -61,6 +61,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Repo historically had a frontend gitlink without .gitmodules
+          submodules: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -85,6 +88,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Repo historically had a frontend gitlink without .gitmodules
+          submodules: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
