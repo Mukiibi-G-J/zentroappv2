@@ -64,19 +64,23 @@ def create_default_payment_methods():
                 "bal_bank_account_no": mtn_bank_account,
                 "requires_amount_received": True,
             })
-            {
-                "code": "DEBIT",
-                "description": "Debit Card",
-                "bal_account_type": BalacingAccountType.GLAccount.value,
-                "requires_amount_received": True,
-            },
-            {
-                "code": "NOT_PAID",
-                "description": "Not Paid Yet",
-                "bal_account_type": BalacingAccountType.GLAccount.value,
-                "requires_amount_received": False,
-            },
-        ]
+
+        default_methods.extend(
+            [
+                {
+                    "code": "DEBIT",
+                    "description": "Debit Card",
+                    "bal_account_type": BalacingAccountType.GLAccount.value,
+                    "requires_amount_received": True,
+                },
+                {
+                    "code": "NOT_PAID",
+                    "description": "Not Paid Yet",
+                    "bal_account_type": BalacingAccountType.GLAccount.value,
+                    "requires_amount_received": False,
+                },
+            ]
+        )
 
         created_count = 0
         for method_data in default_methods:

@@ -2367,6 +2367,8 @@ class ExcelUpload(View):
             os.chmod(file_path, 0o644)
 
             # Start processing task
+            from items.tasks import process_item_import
+
             task = process_item_import.delay(file_path)
 
             return JsonResponse({"task_id": task.id, "message": "File upload started"})

@@ -63,6 +63,11 @@ def test_filter_application_profiles_drops_restaurant_when_disabled():
 
         def __iter__(self):
             return iter(self._profiles)
+
+    profiles = [
+        FakeProfile(1, "BUSINESS-MGR", "BusinessManagerRC"),
+        FakeProfile(2, "REST-MGR", "RestaurantManagerRC"),
+    ]
     qs = FakeQS(profiles)
     filter_application_profiles_by_enabled_modules(qs, ["pos", "sales"])
     codes = [p.code for p in qs._profiles]

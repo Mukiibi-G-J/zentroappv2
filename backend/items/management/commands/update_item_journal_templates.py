@@ -2,7 +2,12 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.db.models import Q
 from django_tenants.utils import schema_context
-from items.models import ItemJournal, ItemJournalTemplate, ItemJournalBatch
+from items.models import (
+    ItemJournal,
+    ItemJournalTemplate,
+    ItemJournalBatch,
+    TrackingSpecification,
+)
 
 
 @transaction.atomic

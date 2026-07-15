@@ -531,7 +531,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
         open_payments = self.get_queryset().filter(status="Open").count()
         posted_payments = self.get_queryset().filter(status="Posted").count()
         total_amount = (
-            self.get_queryset().aggregate(total=models.Sum("amount"))["total"] or 0
+            self.get_queryset().aggregate(total=Sum("amount"))["total"] or 0
         )
 
         return Response(
