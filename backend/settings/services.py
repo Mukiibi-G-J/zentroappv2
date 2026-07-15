@@ -29,7 +29,7 @@ class MobileAppUserSettingsService:
                 )
             if is_naive(parsed):
                 parsed = make_aware(parsed)
-            if instance.updated_at.replace(microsecond=0) != parsed.replace(microsecond=0):
+            if instance.updated_at != parsed:
                 return None, error_response(
                     code="settings_conflict",
                     message="Settings were updated by another request.",

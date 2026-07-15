@@ -1,3 +1,4 @@
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -175,7 +176,7 @@ class AdjustmentImportAutoPickTests(SimpleTestCase):
             lot_entry=lot_entry,
             item=SimpleNamespace(unit_cost=1200, unit_price=1500),
         )
-        self.assertEqual(resolved, 1450.0)
+        self.assertEqual(resolved, Decimal("1450"))
 
     @patch("items.tasks.ValueEntry.objects.filter")
     def test_resolve_unit_amount_fallbacks_to_item_cost(self, mock_ve_filter):
@@ -189,7 +190,7 @@ class AdjustmentImportAutoPickTests(SimpleTestCase):
             lot_entry=lot_entry,
             item=SimpleNamespace(unit_cost=1000, unit_price=1200),
         )
-        self.assertEqual(resolved, 1000.0)
+        self.assertEqual(resolved, Decimal("1000"))
 
     def test_resolve_unit_amount_uses_unit_cost_when_amount_blank(self):
         resolved = _resolve_unit_amount_for_import(
@@ -198,7 +199,7 @@ class AdjustmentImportAutoPickTests(SimpleTestCase):
             lot_entry=None,
             item=SimpleNamespace(unit_cost=1000, unit_price=1200),
         )
-        self.assertEqual(resolved, 1791.67)
+        self.assertEqual(resolved, Decimal("1791.67"))
 
     def test_resolve_unit_amount_keeps_import_value_when_provided(self):
         resolved = _resolve_unit_amount_for_import(
@@ -206,4 +207,4 @@ class AdjustmentImportAutoPickTests(SimpleTestCase):
             lot_entry=None,
             item=SimpleNamespace(unit_cost=1000, unit_price=1200),
         )
-        self.assertEqual(resolved, 1750.0)
+        self.assertEqual(resolved, Decimal("1750"))

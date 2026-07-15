@@ -1,4 +1,5 @@
 from django.db import connection
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase, APIClient
@@ -7,7 +8,10 @@ from authentication.models import CustomUser
 from settings.models import MobileAppUserSettings
 
 
+@override_settings(PUBLIC_SCHEMA_URLCONF="core.urls")
 class MobileAppSettingsApiTests(APITestCase):
+    """settings.urls live on the tenant ROOT_URLCONF; tests run without a tenant Host."""
+
     def setUp(self):
         self.url = reverse("settings:mobile-settings")
         self.user = CustomUser.objects.create_user(

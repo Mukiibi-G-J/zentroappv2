@@ -20,6 +20,8 @@ class RestaurantPosInventoryFlowTests(SimpleTestCase):
         order = MagicMock()
         order.status = status
         order.sales_invoice = None
+        # MagicMock auto-creates truthy attrs; order_is_closed checks sales_invoice_id.
+        order.sales_invoice_id = None
         order.no = "REST-0001"
         order.table = MagicMock()
         order.customer = MagicMock()
@@ -126,6 +128,12 @@ class RestaurantPosInventoryFlowTests(SimpleTestCase):
                             "restaurant_management.views.models.RestaurantOrderItem.objects.create",
                             return_value=created,
                         ):
+                            view.request = request
+                            view.get_queryset = MagicMock(
+                                return_value=MagicMock(
+                                    get=MagicMock(return_value=order)
+                                )
+                            )
                             response = view.add_items(request, pk="1")
 
         self.assertEqual(response.status_code, 200)
@@ -177,6 +185,12 @@ class RestaurantPosInventoryFlowTests(SimpleTestCase):
                             "restaurant_management.views.models.RestaurantOrderItem.objects.create",
                             return_value=created,
                         ) as mock_create:
+                            view.request = request
+                            view.get_queryset = MagicMock(
+                                return_value=MagicMock(
+                                    get=MagicMock(return_value=order)
+                                )
+                            )
                             response = view.add_items(request, pk="1")
 
         self.assertEqual(response.status_code, 200)
@@ -240,6 +254,12 @@ class RestaurantPosInventoryFlowTests(SimpleTestCase):
                         with patch(
                             "restaurant_management.views.models.RestaurantOrderItem.objects.create",
                         ) as mock_create:
+                            view.request = request
+                            view.get_queryset = MagicMock(
+                                return_value=MagicMock(
+                                    get=MagicMock(return_value=order)
+                                )
+                            )
                             response = view.add_items(request, pk="1")
 
         self.assertEqual(response.status_code, 200)
@@ -259,24 +279,7 @@ class RestaurantPosInventoryFlowTests(SimpleTestCase):
 
         loc = MagicMock()
         loc.code = "BR1"
-
-        item = MagicMock()
-        item.item_name = "Coke"
-        item.unit_of_measure = None
-        item.sales_unit_of_measure = None
-        item.production_bom = None
-
-        order_item = MagicMock()
-        order_item.item = item
-        order_item.quantity = 2
-        order_item.unit_price = 5000
-        order.order_items.exclude.return_value = [order_item]
-
         invoice_obj = MagicMock()
-        invoice_obj.save = MagicMock()
-
-        line_obj = MagicMock()
-        line_obj.quantity = 2
 
         with patch(
             "restaurant_management.views._resolve_branch_location_for_request",
@@ -287,39 +290,26 @@ class RestaurantPosInventoryFlowTests(SimpleTestCase):
                 return_value=nullcontext(),
             ):
                 with patch(
-                    "items.models.ItemUnitOfMeasure.objects.get_or_create",
-                    return_value=(None, False),
-                ):
-                    with patch("sales.models.SalesInvoice", return_value=invoice_obj):
-                        with patch(
-                            "sales.models.SalesInvoiceLine.objects.create",
-                            return_value=line_obj,
-                        ) as create_line:
-                            with patch(
-                                "dimension.models.get_merged_line_dimensions",
-                                return_value={
-                                    "dimension_set": "DS",
-                                    "global_dimension_1": "GD1",
-                                },
-                            ):
-                                with patch(
-                                    "sales.serializers.SalesInvoiceSerializer",
-                                    return_value=MagicMock(
-                                        data={"invoice_no": "INV-1"}
-                                    ),
-                                ):
-                                    response = view.convert_to_invoice(
-                                        request, pk="1"
-                                    )
+                    "restaurant_management.views.create_open_sales_invoice_from_restaurant_orders",
+                    return_value=invoice_obj,
+                ) as mock_create:
+                    with patch(
+                        "sales.serializers.SalesInvoiceSerializer",
+                        return_value=MagicMock(data={"invoice_no": "INV-1"}),
+                    ):
+                        response = view.convert_to_invoice(request, pk="1")
 
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(create_line.called)
-        kwargs = create_line.call_args.kwargs
-        self.assertEqual(kwargs["location_code"], loc)
-        self.assertEqual(kwargs["dimension_set"], "DS")
-        self.assertEqual(kwargs["global_dimension_1"], "GD1")
+        mock_create.assert_called_once()
+        args, kwargs = mock_create.call_args
+        self.assertIs(args[0], request)
+        self.assertEqual(list(args[1]), [order])
+        self.assertIs(args[2], order.customer)
+        self.assertIs(args[3], loc)
+        self.assertFalse(kwargs.get("combine_orders"))
 
     def test_convert_to_invoice_bom_line_creates_and_finishes_production(self):
+        """convert_to_invoice delegates BOM/production work to order_invoice helper."""
         view = RestaurantOrderViewSet()
         order = self._make_order(status=OrderStatus.SERVED)
         view.get_object = MagicMock(return_value=order)
@@ -331,33 +321,7 @@ class RestaurantPosInventoryFlowTests(SimpleTestCase):
 
         loc = MagicMock()
         loc.code = "BR1"
-
-        item = MagicMock()
-        item.item_name = "Burger"
-        item.unit_of_measure = None
-        item.sales_unit_of_measure = None
-        item.production_bom = MagicMock()
-
-        order_item = MagicMock()
-        order_item.item = item
-        order_item.quantity = 2
-        order_item.unit_price = 15000
-        order.order_items.exclude.return_value = [order_item]
-
         invoice_obj = MagicMock()
-        invoice_obj.save = MagicMock()
-
-        line_obj = MagicMock()
-        line_obj.quantity = 2
-        line_obj.description = "Burger"
-        line_obj.save = MagicMock()
-
-        prod_order = MagicMock()
-        prod_order.no = "PROD-0001"
-        prod_order.refresh_production_details = MagicMock()
-        prod_order.save = MagicMock()
-        prod_order.lines.update = MagicMock()
-        prod_order.components.update = MagicMock()
 
         with patch(
             "restaurant_management.views._resolve_branch_location_for_request",
@@ -368,56 +332,23 @@ class RestaurantPosInventoryFlowTests(SimpleTestCase):
                 return_value=nullcontext(),
             ):
                 with patch(
-                    "items.models.ItemUnitOfMeasure.objects.get_or_create",
-                    return_value=(None, False),
-                ):
-                    with patch("sales.models.SalesInvoice", return_value=invoice_obj):
-                        with patch(
-                            "sales.models.SalesInvoiceLine.objects.create",
-                            return_value=line_obj,
-                        ):
-                            with patch(
-                                "dimension.models.get_merged_line_dimensions",
-                                return_value={
-                                    "dimension_set": None,
-                                    "global_dimension_1": None,
-                                },
-                            ):
-                                with patch(
-                                    "production.models.ProductionOrder.objects.create",
-                                    return_value=prod_order,
-                                ):
-                                    with patch(
-                                        "production.posting.build_production_posting_preview",
-                                        return_value=(
-                                            {
-                                                "document_no": "X",
-                                                "gl_entries": [],
-                                                "item_ledger_entries": [],
-                                                "value_entries": [],
-                                            },
-                                            [],
-                                        ),
-                                    ):
-                                        mock_service = MagicMock()
-                                        mock_service.post = MagicMock()
-                                        with patch(
-                                            "production.posting.ProductionOrderPostingFromPreviewService",
-                                            return_value=mock_service,
-                                        ):
-                                            with patch(
-                                                "sales.serializers.SalesInvoiceSerializer",
-                                                return_value=MagicMock(
-                                                    data={"invoice_no": "INV-1"}
-                                                ),
-                                            ):
-                                                response = view.convert_to_invoice(
-                                                    request, pk="1"
-                                                )
+                    "restaurant_management.views.create_open_sales_invoice_from_restaurant_orders",
+                    return_value=invoice_obj,
+                ) as mock_create:
+                    with patch(
+                        "sales.serializers.SalesInvoiceSerializer",
+                        return_value=MagicMock(data={"invoice_no": "INV-1"}),
+                    ):
+                        response = view.convert_to_invoice(request, pk="1")
 
         self.assertEqual(response.status_code, 200)
-        prod_order.refresh_production_details.assert_called()
-        self.assertIn("[Prod:PROD-0001]", line_obj.description)
+        mock_create.assert_called_once_with(
+            request,
+            [order],
+            order.customer,
+            loc,
+            combine_orders=False,
+        )
 
 
 class MenuItemPosPayloadTests(SimpleTestCase):

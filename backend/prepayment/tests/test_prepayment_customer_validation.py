@@ -82,6 +82,11 @@ class RecordFromPosViewTests(SimpleTestCase):
         mock_doc.customer.customer_type = "Individual"
 
         mock_pm = MagicMock()
+        mock_customer = MagicMock()
+        mock_customer.customer_type = "Individual"
+        mock_customer.customer_posting_group_id = 1
+        mock_customer.general_business_posting_group_id = 1
+
         with patch.object(
             PrepaymentViewSet,
             "_has_permission",
@@ -92,17 +97,21 @@ class RecordFromPosViewTests(SimpleTestCase):
                 return_value=mock_pm,
             ):
                 with patch(
-                    "prepayment.views.transaction.atomic",
-                    return_value=nullcontext(),
-                ):
+                    "sales.models.Customer.objects.select_related",
+                ) as mock_cust_sr:
+                    mock_cust_sr.return_value.get.return_value = mock_customer
                     with patch(
-                        "prepayment.views.PreaymentDetailSerializer"
-                    ) as mock_ser_cls:
-                        mock_ser = MagicMock()
-                        mock_ser.is_valid = MagicMock(return_value=True)
-                        mock_ser.save = MagicMock(return_value=mock_doc)
-                        mock_ser_cls.return_value = mock_ser
-                        response = view.record_from_pos(request)
+                        "prepayment.views.transaction.atomic",
+                        return_value=nullcontext(),
+                    ):
+                        with patch(
+                            "prepayment.views.PreaymentDetailSerializer"
+                        ) as mock_ser_cls:
+                            mock_ser = MagicMock()
+                            mock_ser.is_valid = MagicMock(return_value=True)
+                            mock_ser.save = MagicMock(return_value=mock_doc)
+                            mock_ser_cls.return_value = mock_ser
+                            response = view.record_from_pos(request)
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("exceeds", str(response.data).lower())

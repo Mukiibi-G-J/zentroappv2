@@ -139,6 +139,22 @@ TENANT_APPS = [
 # INSTALLED_APPS = SHARED_APPS + [app for app in TENANT_APPS if app not in SHARED_APPS]
 INSTALLED_APPS = list(set(SHARED_APPS + TENANT_APPS))
 
+# Django's test runner migrates only the public schema. TenantSyncRouter would
+# skip TENANT_APPS there, so ORM tests fail with missing relations (e.g.
+# items_location). Merge tenant apps into SHARED_APPS under manage.py test / CI
+# so migrate creates a flat public schema suitable for TestCase.
+import sys
+
+if "test" in sys.argv or os.getenv("DJANGO_TEST_FLAT_SCHEMA", "").lower() in (
+    "1",
+    "true",
+    "yes",
+):
+    SHARED_APPS = list(SHARED_APPS) + [
+        app for app in TENANT_APPS if app not in SHARED_APPS
+    ]
+    INSTALLED_APPS = list(dict.fromkeys(SHARED_APPS + TENANT_APPS))
+
 MIDDLEWARE = [
     "utils.tenant_middleware.TenantJWTMiddleware",  # Set tenant from JWT token for mobile apps
     "django_tenants.middleware.main.TenantMainMiddleware",  # ? Third party middleware for multi-tenancy

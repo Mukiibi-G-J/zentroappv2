@@ -58,6 +58,8 @@ jobs:
       DB_HOST: localhost
       REDIS_URL: redis://localhost:6379/0
       DJANGO_SETTINGS_MODULE: core.settings
+      # Flatten TENANT_APPS into SHARED_APPS so TestCase can use all tables on public
+      DJANGO_TEST_FLAT_SCHEMA: "1"
 
     steps:
       - uses: actions/checkout@v4

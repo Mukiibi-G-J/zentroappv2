@@ -11,7 +11,7 @@ from settings.services import MobileAppUserSettingsService
 
 class MobileAppSettingsView(APIView):
     permission_classes = [IsAuthenticated]
-    authentication_classes = [SessionAuthentication, JWTAuthentication]
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
