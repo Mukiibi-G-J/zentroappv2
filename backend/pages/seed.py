@@ -19,6 +19,15 @@ GENERAL_JOURNAL_ACCOUNT_TYPE_RELATIONS = (
     ('Bank Account', 'BankAccount'),
 )
 
+PURCHASE_INVOICE_LINE_TYPE_RELATIONS = (
+    ('item', 'Item'),
+    ('resource', 'Resource'),
+    ('gl_account', 'G_LAccount'),
+)
+
+# Replaced by unified virtual ``no`` column on purchase invoice line subforms.
+PURCHASE_LINE_LEGACY_NO_FIELD_NAMES = ('item', 'resource', 'gl_account')
+
 
 def seed():
     # ── Card pages first (list pages reference them) ───────────────────────────
@@ -708,12 +717,24 @@ def seed():
         posted_sales_invoice_list,
         cust_page,
     )
+    rc_pharmacist = _seed_pharmacist_rc(
+        posted_purchase_invoice_list,
+        purchase_invoice_list,
+        payment_method_list,
+    )
+    rc_operations = _seed_operations_manager_rc(
+        payment_method_list,
+        expense_list,
+        payment_list,
+    )
     _seed_application_profiles(
         business_rc=rc_business,
         sales_rc=rc_sales,
         accounting_rc=rc_accounting,
         warehouse_rc=rc_warehouse,
         cashier_rc=rc_cashier,
+        pharmacist_rc=rc_pharmacist,
+        operations_manager_rc=rc_operations,
     )
     _assign_default_application_profiles()
 
@@ -1304,29 +1325,35 @@ def _seed_purchase_invoice_pages():
         },
     )
     _seed_fields(sub_ctrl, subform, [
-        dict(name='item', caption='No.', field_type='Code', visible=True, editable=True,
-             primary_key=False, tab_index=0,
+        dict(name='type', caption='Type', field_type='Option', visible=True, editable=True,
+             primary_key=False, tab_index=0, enum_values='item,resource,gl_account'),
+        dict(name='no', caption='No.', field_type='Code', visible=True, editable=True,
+             primary_key=False, tab_index=1,
              has_table_relation=True, related_table='Item', related_field='no',
-             related_display_field='item_name'),
+             related_display_field='item_name',
+             relation_context_field='type', relation_context_default='item'),
         dict(name='description', caption='Description', field_type='Text', visible=True,
-             editable=True, primary_key=False, tab_index=1),
+             editable=True, primary_key=False, tab_index=2),
         dict(name='item_unit_of_measure', caption='Unit of Measure', field_type='Code',
-             visible=True, editable=True, primary_key=False, tab_index=2,
+             visible=True, editable=True, primary_key=False, tab_index=3,
              has_table_relation=True, related_table='ItemUnitOfMeasure', related_field='id',
-             related_display_field='unit_of_measure__code', relation_context_field='item'),
+             related_display_field='unit_of_measure__code', relation_context_field='no',
+             visible_when_field='type', visible_when_values='item'),
         dict(name='location_code', caption='Location', field_type='Code', visible=True,
-             editable=False, primary_key=False, tab_index=3,
+             editable=False, primary_key=False, tab_index=4,
              has_table_relation=True, related_table='Location', related_field='code',
-             related_display_field='description'),
+             related_display_field='description',
+             visible_when_field='type', visible_when_values='item'),
         dict(name='quantity', caption='Quantity', field_type='Integer', visible=True,
-             editable=True, primary_key=False, tab_index=4),
-        dict(name='unit_cost', caption='Unit Cost', field_type='Decimal', visible=True,
              editable=True, primary_key=False, tab_index=5),
+        dict(name='unit_cost', caption='Unit Cost', field_type='Decimal', visible=True,
+             editable=True, primary_key=False, tab_index=6),
         dict(name='total_amount', caption='Amount', field_type='Decimal', visible=True,
-             editable=False, primary_key=False, tab_index=6),
+             editable=False, primary_key=False, tab_index=7),
     ])
+    _wire_purchase_line_type_relations('PurchaseInvoiceLine')
     _ensure_table_relation('PurchaseInvoiceLine', 'location_code', 'Location', 'code', 'description')
-    _ensure_table_relation('PurchaseInvoiceLine', 'item', 'Item', 'no', 'item_name')
+    _hide_purchase_line_legacy_no_fields('PurchaseInvoiceSubformRepeater')
 
     PageAction.objects.update_or_create(
         page=subform,
@@ -1338,6 +1365,8 @@ def _seed_purchase_invoice_pages():
             'tooltip': 'Specify lot, serial, or expiry details for this line',
             'visible': True,
             'image_url': 'Barcode',
+            'visible_when_field': 'type',
+            'visible_when_values': 'item',
         },
     )
 
@@ -1467,7 +1496,7 @@ def _seed_purchase_invoice_pages():
     )
     _seed_fields(list_ctrl, list_page, [
         dict(name='invoice_no', caption='No.', field_type='Code', visible=True, editable=False,
-             primary_key=True, tab_index=0, freeze_column=True),
+             primary_key=True, tab_index=0, freeze_column=True, has_drill_down_page=True),
         dict(name='vendor', caption='Vendor', field_type='Code', visible=True, editable=False,
              primary_key=False, tab_index=1),
         dict(name='total_amount', caption='Amount', field_type='Decimal', visible=True, editable=False,
@@ -1482,6 +1511,12 @@ def _seed_purchase_invoice_pages():
         page_control=list_ctrl,
         name='vendor_invoice_no',
     ).update(visible=False)
+
+    _link_drill_down(
+        page_names=('PurchaseInvoiceList',),
+        field_name='invoice_no',
+        drill_down_page=doc,
+    )
 
     PageAction.objects.update_or_create(
         page=doc,
@@ -1755,27 +1790,26 @@ def _seed_posted_purchase_invoice_pages() -> Page:
         },
     )
     _seed_fields(sub_ctrl, subform, [
-        dict(name='item', caption='No.', field_type='Code', visible=True, editable=False,
-             primary_key=False, tab_index=0,
-             has_table_relation=True, related_table='Item', related_field='no',
-             related_display_field='item_name'),
+        dict(name='type', caption='Type', field_type='Option', visible=True, editable=False,
+             primary_key=False, tab_index=0, enum_values='item,resource,gl_account'),
+        dict(name='no', caption='No.', field_type='Code', visible=True, editable=False,
+             primary_key=False, tab_index=1),
         dict(name='description', caption='Description', field_type='Text', visible=True,
-             editable=False, primary_key=False, tab_index=1),
+             editable=False, primary_key=False, tab_index=2),
         dict(name='item_unit_of_measure', caption='Unit of Measure', field_type='Code',
-             visible=True, editable=False, primary_key=False, tab_index=2,
-             has_table_relation=True, related_table='ItemUnitOfMeasure', related_field='id',
-             related_display_field='unit_of_measure__code', relation_context_field='item'),
+             visible=True, editable=False, primary_key=False, tab_index=3,
+             visible_when_field='type', visible_when_values='item'),
         dict(name='location_code', caption='Location', field_type='Code', visible=True,
-             editable=False, primary_key=False, tab_index=3,
-             has_table_relation=True, related_table='Location', related_field='code',
-             related_display_field='description'),
+             editable=False, primary_key=False, tab_index=4,
+             visible_when_field='type', visible_when_values='item'),
         dict(name='quantity', caption='Quantity', field_type='Integer', visible=True,
-             editable=False, primary_key=False, tab_index=4),
+             editable=False, primary_key=False, tab_index=5),
         dict(name='unit_cost', caption='Direct Unit Cost Excl. VAT', field_type='Decimal',
-             visible=True, editable=False, primary_key=False, tab_index=5),
+             visible=True, editable=False, primary_key=False, tab_index=6),
         dict(name='amount', caption='Amount', field_type='Decimal', visible=True,
-             editable=False, primary_key=False, tab_index=6),
+             editable=False, primary_key=False, tab_index=7),
     ])
+    _hide_purchase_line_legacy_no_fields('PostedPurchaseInvoiceSubformRepeater')
 
     PageAction.objects.update_or_create(
         page=subform,
@@ -1787,6 +1821,8 @@ def _seed_posted_purchase_invoice_pages() -> Page:
             'tooltip': 'View lot, serial, or expiry posted for this line',
             'visible': True,
             'image_url': 'Barcode',
+            'visible_when_field': 'type',
+            'visible_when_values': 'item',
         },
     )
 
@@ -2062,6 +2098,18 @@ def _seed_fields(control: PageControl, page: Page, fields: list[dict]):
             footer_updates.append('relation_part_control_name')
         if footer_updates:
             obj.save(update_fields=footer_updates)
+        visibility_updates: list[str] = []
+        if 'visible_when_field' in f:
+            obj.visible_when_field = f['visible_when_field']
+            visibility_updates.append('visible_when_field')
+        if 'visible_when_values' in f:
+            obj.visible_when_values = f['visible_when_values']
+            visibility_updates.append('visible_when_values')
+        if visibility_updates:
+            obj.save(update_fields=visibility_updates)
+        if f.get('has_drill_down_page'):
+            obj.has_drill_down_page = True
+            obj.save(update_fields=['has_drill_down_page'])
         if obj.field_id != obj.tab_index:
             obj.field_id = obj.tab_index
             obj.save(update_fields=['field_id'])
@@ -2091,6 +2139,79 @@ def _wire_relation_lookup_fields(
                 'lookup_page',
             ],
         )
+
+
+PERMISSION_OBJECT_TYPE_RELATIONS = (
+    ('Page', 'Objects'),
+    ('Table', 'Objects'),
+)
+
+
+def _wire_permission_object_relations() -> None:
+    """Type → Object ID dropdowns on permission set lines (BC-style)."""
+    source_table = 'PermissionSetLine'
+    source_field = 'object_id'
+    TableRelation.objects.filter(
+        source_table=source_table,
+        source_field=source_field,
+    ).delete()
+    for context_value, related_table in PERMISSION_OBJECT_TYPE_RELATIONS:
+        TableRelation.objects.create(
+            source_table=source_table,
+            source_field=source_field,
+            related_table=related_table,
+            related_field='object_id',
+            display_field='object_name',
+            context_field='object_type',
+            context_value=context_value,
+        )
+    PageControlField.objects.filter(
+        page_control__source_table=source_table,
+        name=source_field,
+    ).update(
+        relation_context_field='object_type',
+        relation_context_default='Page',
+    )
+
+
+def _wire_purchase_line_type_relations(
+    source_table: str,
+    source_field: str = 'no',
+    context_field: str = 'type',
+    context_default: str = 'item',
+):
+    """Wire unified No. field: lookup table depends on line Type (BC-style)."""
+    TableRelation.objects.filter(
+        source_table=source_table,
+        source_field=source_field,
+    ).delete()
+    for context_value, related_table in PURCHASE_INVOICE_LINE_TYPE_RELATIONS:
+        related_field = 'code' if related_table == 'Resource' else 'no'
+        display_field = 'item_name' if related_table == 'Item' else 'name'
+        TableRelation.objects.create(
+            source_table=source_table,
+            source_field=source_field,
+            related_table=related_table,
+            related_field=related_field,
+            display_field=display_field,
+            context_field=context_field,
+            context_value=context_value,
+        )
+    PageControlField.objects.filter(
+        page_control__source_table=source_table,
+        name=source_field,
+    ).update(
+        relation_context_field=context_field,
+        relation_context_default=context_default,
+    )
+
+
+def _hide_purchase_line_legacy_no_fields(repeater_control_name: str) -> None:
+    """Hide item/resource/gl_account columns superseded by unified ``no`` on line subforms."""
+    PageControlField.objects.filter(
+        page_control__name=repeater_control_name,
+        name__in=PURCHASE_LINE_LEGACY_NO_FIELD_NAMES,
+    ).update(visible=False, editable=False)
 
 
 def _wire_context_account_relations(
@@ -2418,7 +2539,9 @@ def _ensure_user_setups() -> None:
 def _ensure_user_personalizations() -> None:
     from authentication.models import CustomUser, UserPersonalization
 
-    for user in CustomUser.objects.exclude(username='debug_admin'):
+    for user in CustomUser.objects.filter(is_active=True, terminated=False).exclude(
+        username='debug_admin',
+    ):
         UserPersonalization.get_or_create_for_user(user)
 
 
@@ -2434,10 +2557,10 @@ def _seed_user_settings_page() -> tuple[Page, Page]:
             'insert_allowed': False,
             'delete_allowed': False,
             'modify_allowed': True,
-            'title_field': 'user__full_name',
+            'title_field': 'user__username',
         },
     )
-    card.title_field = 'user__full_name'
+    card.title_field = 'user__username'
     card.save(update_fields=['title_field'])
 
     prefs_ctrl, _ = PageControl.objects.get_or_create(
@@ -2462,9 +2585,9 @@ def _seed_user_settings_page() -> tuple[Page, Page]:
     PageControlField.objects.filter(page=card).delete()
 
     _seed_fields(prefs_ctrl, card, [
-        dict(name='user__full_name', caption='User Name', field_type='Text',
+        dict(name='user__username', caption='User Name', field_type='Code',
              visible=True, editable=False, primary_key=False, tab_index=0),
-        dict(name='user__email', caption='User ID', field_type='Code',
+        dict(name='user_id', caption='User ID', field_type='Code',
              visible=True, editable=False, primary_key=False, tab_index=1),
         dict(name='role', caption='Role Centre', field_type='Code',
              visible=True, editable=True, primary_key=False, tab_index=2,
@@ -2511,11 +2634,11 @@ def _seed_user_settings_page() -> tuple[Page, Page]:
     PageControlField.objects.filter(page=list_page, page_control=list_ctrl).delete()
     _seed_fields(list_ctrl, list_page, [
         dict(
-            name='user__full_name', caption='User Name', field_type='Text',
+            name='user__username', caption='User Name', field_type='Code',
             visible=True, editable=False, primary_key=True, tab_index=0, freeze_column=True,
         ),
         dict(
-            name='user__email', caption='User ID', field_type='Code',
+            name='user_id', caption='User ID', field_type='Code',
             visible=True, editable=False, primary_key=False, tab_index=1,
         ),
         dict(
@@ -5281,6 +5404,119 @@ def _seed_cashier_rc(
     return rc
 
 
+def _seed_pharmacist_rc(
+    posted_purchase_invoice_list: Page | None = None,
+    purchase_invoice_list: Page | None = None,
+    payment_method_list: Page | None = None,
+) -> Page:
+    """Pharmacist Role Centre — inventory, purchases, suppliers, payments (no sales)."""
+    rc = _create_role_centre_shell('PharmacistRC', 'Pharmacist')
+    item_list = Page.objects.filter(name='ItemList').first()
+
+    inventory_group, _ = PageControl.objects.update_or_create(
+        page=rc,
+        name='RCInventory',
+        defaults={
+            'control_type': 'CueGroup',
+            'caption': 'Inventory & Purchases',
+            'source_table': '',
+            'show_caption': True,
+            'editable': False,
+            'visible': True,
+            'tab_index': 1,
+        },
+    )
+    inventory_group.tab_index = 1
+    inventory_group.save(update_fields=['tab_index'])
+
+    if item_list:
+        _seed_cue(
+            page=rc, cue_group=inventory_group, name='RCCueItemCount',
+            caption='Items', tab_index=0,
+            cue_source_table='Item', cue_aggregate='count',
+            cue_filter_field='', cue_filter_value='',
+            cue_style='Favorable', drill_down_page=item_list,
+            threshold_warning=None, threshold_danger=None,
+        )
+    if posted_purchase_invoice_list:
+        _seed_cue(
+            page=rc, cue_group=inventory_group, name='RCCuePostedPurchaseInvoices',
+            caption='Posted Purchases', tab_index=1,
+            cue_source_table='PostedPurchaseInvoice', cue_aggregate='count',
+            cue_filter_field='', cue_filter_value='',
+            cue_style='Subordinate', drill_down_page=posted_purchase_invoice_list,
+            threshold_warning=None, threshold_danger=None,
+        )
+
+    nav_specs = [
+        ('NavHome', 'Home', '', 'Home', 'General'),
+        ('NavItems', 'Items', 'ItemList', 'Package', 'Inventory'),
+        ('NavPurchaseInvoices', 'Purchases', 'PurchaseInvoiceList', 'ShoppingCart', 'Purchase'),
+        ('NavPostedPurchaseInvoices', 'Posted Purchase Invoices', 'PostedPurchaseInvoiceList', 'FileCheck', 'Purchase'),
+        ('NavVendors', 'Suppliers', 'VendorList', 'Truck', 'Purchase'),
+        ('NavUserSettings', 'User settings', 'UserSettingsList', 'Settings', 'Setup'),
+    ]
+    if payment_method_list:
+        nav_specs.insert(
+            -1,
+            ('NavPaymentMethods', 'Payment Methods', 'PaymentMethodList', 'Wallet', 'Payments'),
+        )
+
+    _seed_rc_nav_actions(rc, nav_specs)
+    return rc
+
+
+def _seed_operations_manager_rc(
+    payment_method_list: Page | None = None,
+    expense_list: Page | None = None,
+    payment_list: Page | None = None,
+) -> Page:
+    """Operations Manager Role Centre — nav-only home (no financial/sales dashboard cues)."""
+    rc = _create_role_centre_shell('OperationsManagerRC', 'Operations Manager')
+
+    # Remove dashboard widgets copied from Business Manager on earlier seeds.
+    PageControl.objects.filter(page=rc, name__in=(
+        'RCHeadlines',
+        'RCKeyTotals',
+        'RCSalesActivities',
+        'RCRecentSalesOrders',
+    )).delete()
+    PageControl.objects.filter(
+        page=rc,
+        name__startswith='RCHeadline',
+        parent_control__isnull=True,
+    ).delete()
+    PageControl.objects.filter(
+        page=rc,
+        name__startswith='RCCue',
+    ).delete()
+
+    nav_specs = [
+        ('NavHome', 'Home', '', 'Home', 'General'),
+        ('NavItems', 'Items', 'ItemList', 'Package', 'Inventory'),
+        ('NavCustomers', 'Customers', 'CustomerList', 'Users', 'Sales'),
+        ('NavVendors', 'Suppliers', 'VendorList', 'Truck', 'Purchase'),
+        ('NavSalesOrders', 'Sales Orders', 'SalesOrderList', 'Package', 'Sales'),
+        ('NavPOS', 'Point of Sale', 'SalesPOS', 'ShoppingCart', 'Sales'),
+        ('NavSalesInvoices', 'Sales Invoices', 'SalesInvoiceList', 'FileOutput', 'Sales'),
+        ('NavPostedSalesInvoices', 'Posted Sales Invoices', 'PostedSalesInvoiceList', 'FileCheck', 'Sales'),
+        ('NavPurchaseInvoices', 'Purchases', 'PurchaseInvoiceList', 'ShoppingCart', 'Purchase'),
+        ('NavPostedPurchaseInvoices', 'Posted Purchase Invoices', 'PostedPurchaseInvoiceList', 'FileCheck', 'Purchase'),
+        ('NavUserSettings', 'User settings', 'UserSettingsList', 'Settings', 'Setup'),
+        ('NavUserSetup', 'User Setup', 'UserSetupList', 'UserCog', 'Setup'),
+    ]
+    PageAction.objects.filter(page=rc, name__in=('NavUsers', 'NavUserGroups')).delete()
+    if payment_method_list:
+        nav_specs.insert(-2, ('NavPaymentMethods', 'Payment Methods', 'PaymentMethodList', 'Wallet', 'Payments'))
+    if expense_list:
+        nav_specs.insert(-2, ('NavExpenses', 'Expenses', 'ExpenseList', 'Receipt', 'Finance'))
+    if payment_list:
+        nav_specs.insert(-2, ('NavPayments', 'Payments', 'PaymentJournalList', 'CreditCard', 'Finance'))
+
+    _seed_rc_nav_actions(rc, nav_specs)
+    return rc
+
+
 def _seed_application_profiles(
     *,
     business_rc: Page,
@@ -5288,6 +5524,8 @@ def _seed_application_profiles(
     accounting_rc: Page,
     warehouse_rc: Page,
     cashier_rc: Page,
+    pharmacist_rc: Page | None = None,
+    operations_manager_rc: Page | None = None,
 ) -> None:
     from authentication.models import ApplicationProfile
 
@@ -5298,6 +5536,10 @@ def _seed_application_profiles(
         ('WAREHOUSE', 'Warehouse', warehouse_rc),
         ('CASHIER', 'Cashier', cashier_rc),
     )
+    if pharmacist_rc is not None:
+        specs = (*specs, ('PHARMACIST', 'Pharmacist', pharmacist_rc))
+    if operations_manager_rc is not None:
+        specs = (*specs, ('OPERATIONS-MGR', 'Operations Manager', operations_manager_rc))
     for code, description, rc_page in specs:
         ApplicationProfile.objects.update_or_create(
             code=code,
@@ -7333,14 +7575,16 @@ def _seed_permission_set_pages() -> Page:
         page=ps_lines_subform, page_control=ps_lines_ctrl,
     ).delete()
     _seed_fields(ps_lines_ctrl, ps_lines_subform, [
-        dict(name='object_type', caption='Type', field_type='Text',
-             visible=True, editable=False, primary_key=False, tab_index=0),
-        dict(name='object_id', caption='Object ID', field_type='Integer',
-             visible=True, editable=False, primary_key=False, tab_index=1),
-        dict(name='application_object', caption='Object Name', field_type='Lookup',
-             visible=True, editable=True, primary_key=False, tab_index=2, required=True,
+        dict(name='object_type', caption='Type', field_type='Enum',
+             visible=True, editable=True, primary_key=False, tab_index=0,
+             enum_values='Page,Table'),
+        dict(name='object_id', caption='Object ID', field_type='Code',
+             visible=True, editable=True, primary_key=False, tab_index=1, required=True,
              has_table_relation=True, related_table='Objects', related_field='object_id',
-             related_display_field='object_name'),
+             related_display_field='object_name',
+             relation_context_field='object_type', relation_context_default='Page'),
+        dict(name='object_name', caption='Object Name', field_type='Text',
+             visible=True, editable=False, primary_key=False, tab_index=2),
         dict(name='read_permission', caption='Read', field_type='Boolean',
              visible=True, editable=True, primary_key=False, tab_index=3),
         dict(name='insert_permission', caption='Insert', field_type='Boolean',
@@ -7352,16 +7596,7 @@ def _seed_permission_set_pages() -> Page:
         dict(name='execute_permission', caption='Execute', field_type='Boolean',
              visible=True, editable=True, primary_key=False, tab_index=7),
     ])
-    _ensure_table_relation(
-        'PermissionSetLine', 'application_object', 'Objects',
-        related_field='object_id', display_field='object_name',
-    )
-    _wire_relation_lookup_fields(
-        ps_lines_subform,
-        ('application_object',),
-        part_control_name='PermissionSetLinesControl',
-        lookup_page=app_objects_list,
-    )
+    _wire_permission_object_relations()
 
     ps_card, _ = Page.objects.update_or_create(
         name='PermissionSetsCard',

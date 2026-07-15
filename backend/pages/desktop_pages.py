@@ -9,14 +9,41 @@ from __future__ import annotations
 
 DESKTOP_ENABLED_PAGE_NAMES = frozenset(
     {
+        # Sales / inventory
         'SalesPOS',
-        'RestaurantPOS',
         'ItemList',
         'ItemCard',
         'CustomerList',
         'CustomerCard',
         'VendorList',
         'VendorCard',
+        'DesktopSyncQueue',
+        # Restaurant module — Manager RC nav + cards/docs for offline lists
+        'RestaurantPOS',
+        'RestaurantOrderList',
+        'RestaurantOrder',
+        'RestaurantOrderSubform',
+        'TableList',
+        'TableCard',
+        'FloorList',
+        'FloorCard',
+        'ReservationList',
+        'ReservationCard',
+        'MenuBuilder',
+        'MenuList',
+        'MenuCard',
+        'MenuItemList',
+        'MenuItemCard',
+        'MenuCategoryList',
+        'MenuCategoryCard',
+        'KitchenDisplay',
+        'KitchenDisplayList',
+    }
+)
+
+# Pages that must not appear in the web sidebar (Electron / desktop client only).
+DESKTOP_ONLY_PAGE_NAMES = frozenset(
+    {
         'DesktopSyncQueue',
     }
 )

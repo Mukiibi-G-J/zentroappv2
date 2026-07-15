@@ -901,6 +901,22 @@ def update_vendor_payment_method(request):
                 {"error": "Payment method not found"}, status=status.HTTP_404_NOT_FOUND
             )
 
+        vendor_no = (vendor.no or "").strip().lower()
+        vendor_name = (vendor.name or "").strip().lower()
+        is_general_vendor = (
+            vendor_no == "vendor-000001"
+            or "general" in vendor_no
+            or "general" in vendor_name
+        )
+        if is_general_vendor and payment_method.code == "NOT_PAID":
+            return Response(
+                {
+                    "error": "General vendor cannot have 'Not Paid Yet' as payment method. "
+                    "Please select a different payment method."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # Update vendor's payment method
         vendor.payment_method = payment_method
         vendor.save(update_fields=["payment_method", "updated_at"])

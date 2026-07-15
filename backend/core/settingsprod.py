@@ -43,18 +43,18 @@ ALLOWED_HOSTS = [
     "127.0.0.1",
     "[::1]",
     "*",
-    "zentroapp-backend.com",
-    "*.zentroapp-backend.com",
+    "zentroapp-api.uncodedsolutions.com",
+    "*.zentroapp-api.uncodedsolutions.com",
     # site_domain,
 ]
 
 CSRF_TRUSTED_ORIGINS = [
     # "https://backend-production-42041.up.railway.app",
-    "https://zentroapp.app",
-    "https://*.zentroapp.app",
+    "https://zentroapp.uncodedsolutions.com",
+    "https://*.zentroapp.uncodedsolutions.com",
     "http://localhost:8000",
-    "https://zentroapp-backend.com",
-    "https://*.zentroapp-backend.com",
+    "https://zentroapp-api.uncodedsolutions.com",
+    "https://*.zentroapp-api.uncodedsolutions.com",
     "http://localhost:8000",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -198,8 +198,8 @@ SHOW_PUBLIC_IF_NO_TENANT_FOUND = True
 ROOT_URLCONF = "core.urls"
 PUBLIC_SCHEMA_URLCONF = "core.urls-public"
 
-DOMAIN = "zentroapp.app"
-BACKEND_DOMAIN = "zentroapp-backend.com"
+DOMAIN = "zentroapp.uncodedsolutions.com"
+BACKEND_DOMAIN = "zentroapp-api.uncodedsolutions.com"
 # ------------------- End of Tenant Configuration -------------------
 
 
@@ -299,7 +299,7 @@ STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 MEDIA_URL = "/media/"
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 MULTITENANT_RELATIVE_MEDIA_ROOT = "tenants/%s"
-APP_LANDING_PAGE_URL = "https://zentroapp.app/landing"
+APP_LANDING_PAGE_URL = "https://zentroapp.uncodedsolutions.com/landing"
 
 # Make sure temp directory exists
 TEMP_UPLOAD_DIR = os.path.join(MEDIA_ROOT, "temp")
@@ -533,11 +533,10 @@ if ENVIRONMENT == "production":
 # Add these settings after your ALLOWED_HOSTS configuration
 
 CORS_ALLOWED_ORIGINS = [
-    "https://zentroapp.app",
-    "https://*.zentroapp.app",
-    "https://www.zentroapp.app",
-    "https://zentroapp-backend.com",
-    "https://*.zentroapp-backend.com",
+    "https://zentroapp.uncodedsolutions.com",
+    "https://www.zentroapp.uncodedsolutions.com",
+    "https://zentroapp-api.uncodedsolutions.com",
+    "https://*.zentroapp-api.uncodedsolutions.com",
     "http://localhost:5173",  # React development server
     "http://localhost:3000",
     "http://127.0.0.1:5173",
@@ -549,9 +548,9 @@ CORS_ALLOWED_ORIGINS = [
 ]
 
 CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^https://([a-zA-Z0-9-]+)\.zentroapp\.app$",
-    r"^https://zentroapp\.app$",
-    r"^https://www\.zentroapp\.app$",
+    r"^https://zentroapp\.uncodedsolutions\.com$",
+    r"^https://www\.zentroapp\.uncodedsolutions\.com$",
+    r"^https://([a-zA-Z0-9-]+)\.zentroapp\.uncodedsolutions\.com$",
 ]
 
 CORS_ALLOW_CREDENTIALS = True

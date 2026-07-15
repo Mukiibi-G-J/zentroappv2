@@ -118,6 +118,8 @@ BC_PERMISSION_SET_PAGES: list[tuple[str, str, str, list[tuple[str, str]]]] = [
         [
             ('PurchaseInvoice', 'RI'),
             ('PurchaseInvoiceList', 'R'),
+            ('PostedPurchaseInvoice', 'R'),
+            ('PostedPurchaseInvoiceList', 'R'),
         ],
     ),
     (

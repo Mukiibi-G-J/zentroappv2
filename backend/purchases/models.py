@@ -275,17 +275,54 @@ def delete_document_attachment_file(sender, instance, **kwargs):
 
 
 class PurchaseInvoiceLine(BaseModel):
+    LINE_ENTITY_TYPES = (
+        ("item", "Item"),
+        ("resource", "Resource"),
+        ("gl_account", "G/L Account"),
+    )
+
     purchase_invoice = models.ForeignKey(
         PurchaseInvoice, related_name="lines", on_delete=models.CASCADE
     )
+    type = models.CharField(
+        max_length=20,
+        choices=LINE_ENTITY_TYPES,
+        default="item",
+        verbose_name=_("Line Type"),
+        help_text=_("Whether this line purchases an Item, Resource, or G/L Account (BC-style)"),
+    )
     item = models.ForeignKey(
-        "items.Item", related_name="purchase_lines", on_delete=models.CASCADE
+        "items.Item",
+        related_name="purchase_lines",
+        on_delete=models.CASCADE,
+        blank=True,
+        null=True,
+    )
+    resource = models.ForeignKey(
+        "resources.Resource",
+        related_name="purchase_invoice_lines",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        verbose_name=_("Resource"),
+        help_text=_("Resource purchased on this line (when type=resource)"),
+    )
+    gl_account = models.ForeignKey(
+        "financials.G_LAccount",
+        related_name="purchase_invoice_lines",
+        on_delete=models.PROTECT,
+        blank=True,
+        null=True,
+        verbose_name=_("G/L Account"),
+        help_text=_("G/L account debited on this line (when type=gl_account)"),
     )
     description = models.TextField(blank=True)
     location_code = models.ForeignKey(
         "items.Location",
         related_name="location_purchase_lines",
         on_delete=models.CASCADE,
+        blank=True,
+        null=True,
     )
     quantity = models.IntegerField(default=0)
     item_unit_of_measure = models.ForeignKey(
@@ -350,9 +387,14 @@ class PurchaseInvoiceLine(BaseModel):
 
     @property
     def base_unit_price(self) -> Decimal:
-        """Base unit cost from item card (cost per base UOM)."""
+        """Base unit cost from item card or resource (cost per base UOM)."""
+        if self.type == "resource" and self.resource:
+            cost = getattr(self.resource, "direct_unit_cost", None) or getattr(
+                self.resource, "unit_cost", None
+            )
+            if cost:
+                return Decimal(str(cost))
         if self.item:
-            # For purchases, prefer unit_cost, fallback to unit_price
             cost = getattr(self.item, 'unit_cost', None) or getattr(self.item, 'unit_price', None)
             if cost:
                 return Decimal(str(cost))
@@ -373,15 +415,60 @@ class PurchaseInvoiceLine(BaseModel):
     #     return f"{self.item.item_name} - {self.description[:30]}"
 
     def save(self, *args, **kwargs):
+        if self.type == "resource":
+            self.item_id = None
+            self.gl_account_id = None
+            self.item_unit_of_measure_id = None
+            self.unit_of_measure_id = None
+            self.location_code_id = None
+            if self.resource and not self.unit_cost:
+                self.unit_cost = getattr(
+                    self.resource, "direct_unit_cost", self.resource.unit_cost or 0
+                ) or Decimal("0")
+        elif self.type == "gl_account":
+            self.item_id = None
+            self.resource_id = None
+            self.item_unit_of_measure_id = None
+            self.unit_of_measure_id = None
+            self.location_code_id = None
+        elif self.type == "item":
+            self.resource_id = None
+            self.gl_account_id = None
+
         super().save(*args, **kwargs)
         if self.purchase_invoice_id:
             self.purchase_invoice.recalculate_vat()
 
     def clean(self):
-        if not self.item_unit_of_measure and not self.unit_of_measure:
-            raise ValidationError("Unit of Measure is required")
+        if self.type == "item":
+            if not self.item_id:
+                raise ValidationError({"item": _("Item is required when line type is Item.")})
+            if self.resource_id:
+                raise ValidationError({"resource": _("Resource must be empty when line type is Item.")})
+            if self.gl_account_id:
+                raise ValidationError({"gl_account": _("G/L Account must be empty when line type is Item.")})
+            if not self.item_unit_of_measure and not self.unit_of_measure:
+                raise ValidationError("Unit of Measure is required for item lines.")
+        elif self.type == "resource":
+            if not self.resource_id:
+                raise ValidationError({"resource": _("Resource is required when line type is Resource.")})
+            if self.item_id:
+                raise ValidationError({"item": _("Item must be empty when line type is Resource.")})
+            if self.gl_account_id:
+                raise ValidationError({"gl_account": _("G/L Account must be empty when line type is Resource.")})
+        elif self.type == "gl_account":
+            if not self.gl_account_id:
+                raise ValidationError({"gl_account": _("G/L Account is required when line type is G/L Account.")})
+            if self.item_id:
+                raise ValidationError({"item": _("Item must be empty when line type is G/L Account.")})
+            if self.resource_id:
+                raise ValidationError({"resource": _("Resource must be empty when line type is G/L Account.")})
 
-        if self.tracking_specifications.exists():
+        if (
+            self.type == "item"
+            and self.item_id
+            and self.tracking_specifications.exists()
+        ):
 
             total_quantity = sum(
                 spec.quantity_base for spec in self.tracking_specifications
@@ -404,6 +491,8 @@ class PurchaseInvoiceLine(BaseModel):
 
     def validate_tracking_specifications(self):
         """Validate tracking specifications for this line"""
+        if self.type != "item" or not self.item_id:
+            return True, None
         if self.tracking_specifications.exists():
             total_quantity = sum(
                 spec.quantity_base for spec in self.tracking_specifications
@@ -495,23 +584,51 @@ class PostedPurchaseInvoice(BaseModel):
 
 
 class PostedPurchaseInvoiceLine(BaseModel):
+    LINE_ENTITY_TYPES = PurchaseInvoiceLine.LINE_ENTITY_TYPES
+
     posted_purchase_invoice = models.ForeignKey(
         PostedPurchaseInvoice,
         related_name="posted_purchase_invoice_lines",
         on_delete=models.CASCADE,
     )
     amount = models.IntegerField()
+    type = models.CharField(
+        max_length=20,
+        choices=LINE_ENTITY_TYPES,
+        default="item",
+        verbose_name=_("Line Type"),
+    )
 
     item = models.ForeignKey(
         "items.Item",
         related_name="posted_purchase_invoice_lines",
         on_delete=models.CASCADE,
+        blank=True,
+        null=True,
+    )
+    resource = models.ForeignKey(
+        "resources.Resource",
+        related_name="posted_purchase_invoice_lines",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        verbose_name=_("Resource"),
+    )
+    gl_account = models.ForeignKey(
+        "financials.G_LAccount",
+        related_name="posted_purchase_invoice_lines",
+        on_delete=models.PROTECT,
+        blank=True,
+        null=True,
+        verbose_name=_("G/L Account"),
     )
     description = models.TextField(blank=True)
     location_code = models.ForeignKey(
         "items.Location",
         related_name="location_posted_purchase_invoice_lines",
         on_delete=models.CASCADE,
+        blank=True,
+        null=True,
     )
     quantity = models.IntegerField()
     item_unit_of_measure = models.ForeignKey(

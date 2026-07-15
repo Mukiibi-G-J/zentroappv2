@@ -4,17 +4,23 @@
 def serialize_rc_nav_items(role_centre_page) -> list[dict]:
     if role_centre_page is None:
         return []
+    from pages.desktop_pages import DESKTOP_ONLY_PAGE_NAMES
+
     items = []
     for action in role_centre_page.page_actions.filter(
         action_type='NavItem',
         visible=True,
     ).order_by('action_id'):
+        target = action.action_relative_url or ''
+        ribbon_tab = action.ribbon_tab or 'Navigation'
         items.append({
             'name': action.name,
             'caption': action.caption,
             'imageUrl': action.image_url or '',
-            'targetPageName': action.action_relative_url or '',
-            'ribbonTab': action.ribbon_tab or 'Navigation',
+            'targetPageName': target,
+            'ribbonTab': ribbon_tab,
+            # Sync Queue and other Electron-only entries: hide in web UI.
+            'desktopOnly': target in DESKTOP_ONLY_PAGE_NAMES or ribbon_tab == 'Desktop',
         })
     return items
 
@@ -132,6 +138,7 @@ def _company_module_context(company) -> dict:
 
 def build_auth_session_payload(user, request=None) -> dict:
     from authentication.models import UserPersonalization
+    from utils.page_access import filter_nav_items_by_user_permissions
 
     company = _resolve_company_from_connection()
     module_ctx = _company_module_context(company)
@@ -172,9 +179,12 @@ def build_auth_session_payload(user, request=None) -> dict:
         ),
         'company': serialize_company(request),
         'roleCentrePageId': rc_page.page_id if rc_page else None,
-        'navItems': _filter_nav_by_modules(
-            serialize_rc_nav_items(rc_page),
-            module_ctx["enabledModules"],
+        'navItems': filter_nav_items_by_user_permissions(
+            _filter_nav_by_modules(
+                serialize_rc_nav_items(rc_page),
+                module_ctx["enabledModules"],
+            ),
+            user,
         ),
         'branch': _branch_config_for_user(user),
         **module_ctx,

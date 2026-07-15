@@ -10,9 +10,14 @@ class Command(BaseCommand):
             self.style.SUCCESS("\n🔐 Registering Sales Module Objects...\n")
         )
 
-        # Get or create Table object type
+        # Get or create Table object type (lookup by unique code, not name)
         table_obj_type, created = ObjectType.objects.get_or_create(
-            name="Table", defaults={"description": "Database tables"}
+            code="TABLE",
+            defaults={
+                "name": "Table",
+                "description": "Database tables",
+                "sort_order": 1,
+            },
         )
 
         if created:

@@ -1656,6 +1656,25 @@ class RestaurantOrderViewSet(viewsets.ModelViewSet):
 
         order = self.get_object()
         combine_orders = request.data.get("combine_orders", False)
+        raw_check_id = request.data.get("check_id", None)
+        check_id = None
+        if raw_check_id is not None and raw_check_id != "" and raw_check_id != "all":
+            if str(raw_check_id).lower() == "main":
+                check_id = "main"
+            else:
+                try:
+                    check_id = int(raw_check_id)
+                except (TypeError, ValueError):
+                    return Response(
+                        {"error": _("Invalid check_id.")},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+        if combine_orders and check_id is not None:
+            return Response(
+                {"error": _("Cannot combine table orders while settling a single split check.")},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         if combine_orders:
             table_orders = list(
@@ -1673,19 +1692,41 @@ class RestaurantOrderViewSet(viewsets.ModelViewSet):
         else:
             table_orders = [order]
 
+        from .order_invoice import _unpaid_order_items_qs
+
         for o in table_orders:
-            if o.status not in [OrderStatus.SERVED, OrderStatus.COMPLETED]:
-                return Response(
-                    {
-                        "error": f"Order {o.no} must be served or completed",
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if o.sales_invoice_id:
+            if o.sales_invoice_id and check_id is None:
                 return Response(
                     {"error": f"Order {o.no} is already invoiced"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            unpaid = _unpaid_order_items_qs(o, check_id=check_id)
+            if not unpaid.exists():
+                return Response(
+                    {"error": _("No unpaid items found for this check.")},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            # Full settle still requires the order (or remaining lines) to be served.
+            # Split-check settle only requires the selected segment's lines to be served.
+            if check_id is None:
+                if o.status not in [OrderStatus.SERVED, OrderStatus.COMPLETED]:
+                    return Response(
+                        {
+                            "error": f"Order {o.no} must be served or completed",
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            else:
+                unserved = unpaid.exclude(status=OrderItemStatus.SERVED)
+                if unserved.exists():
+                    return Response(
+                        {
+                            "error": _(
+                                "All items on this check must be served before payment."
+                            ),
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
 
         customer = None
         customer_id = request.data.get("customer_id")
@@ -1767,6 +1808,7 @@ class RestaurantOrderViewSet(viewsets.ModelViewSet):
                     customer,
                     location_to_use,
                     combine_orders=combine_orders,
+                    check_id=check_id,
                 )
                 invoice.payment_method = pm
                 if amount_received is not None:
@@ -1796,11 +1838,16 @@ class RestaurantOrderViewSet(viewsets.ModelViewSet):
                     raise ValueError(result.get("message", _("Posting failed")))
 
                 invoice.refresh_from_db()
+                for o in table_orders:
+                    o.refresh_from_db()
                 return Response(
                     {
                         "message": _("Payment completed."),
                         "invoice": SalesInvoiceSerializer(invoice).data,
                         "receipt_no": receipt_no,
+                        "order_completed": all(
+                            o.status == OrderStatus.COMPLETED for o in table_orders
+                        ),
                     },
                     status=status.HTTP_200_OK,
                 )
@@ -2501,7 +2548,16 @@ class MenuLayoutTileViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsTenantSchema]
     authentication_classes = [JWTAuthentication, SessionAuthentication]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ["page", "display_group", "menu_item"]
+    # Never expose ``page`` as a filter query param — it collides with DRF
+    # PageNumberPagination (``?page=2`` → HTTP 404 when layout page id is 2).
+    filterset_fields = ["display_group", "menu_item"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        layout_page = self.request.query_params.get("layout_page")
+        if layout_page not in (None, ""):
+            qs = qs.filter(page_id=layout_page)
+        return qs
 
 
 class RestaurantCheckViewSet(viewsets.ModelViewSet):

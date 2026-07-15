@@ -202,3 +202,25 @@ def filter_nav_items_by_enabled_modules(
         if _module_enabled(module_id, enabled):
             filtered.append(item)
     return filtered
+
+
+def filter_application_profiles_by_enabled_modules(qs, enabled_modules: list[str] | None):
+    """
+    Restrict ApplicationProfile choices to profiles whose Role Centre page
+    belongs to an enabled subscription module (e.g. hide REST-* when restaurant
+    is disabled).
+    """
+    enabled = set(enabled_modules or [])
+    if not enabled:
+        return qs
+
+    allowed_ids: list[int] = []
+    for profile in qs.select_related("role_centre_page"):
+        rc_name = getattr(profile.role_centre_page, "name", "") or ""
+        module_id = resolve_module_for_page_name(rc_name)
+        if _module_enabled(module_id, enabled):
+            allowed_ids.append(profile.pk)
+
+    if not allowed_ids:
+        return qs.none()
+    return qs.filter(pk__in=allowed_ids)

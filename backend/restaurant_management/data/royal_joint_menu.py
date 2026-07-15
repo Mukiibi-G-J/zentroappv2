@@ -252,12 +252,13 @@ CATEGORIES: list[dict] = [
                 12000,
                 description="3 eggs + grilled halal chicken",
             ),
-            _item("Pancakes 3pcs + Honey", 12000),
-            _item("Banana", 12000),
-            _item("Waffles 2pcs + Syrup", 12000),
-            _item("Waffles 2pcs + Syrup + Fruit", 15000),
-            _item("Fruit Bowl", 8000),
-            _item("Oats + Milk + Honey", 8000),
+            _item("Pancakes 3pcs + Honey Banana", 12000),
+            *_price_range_item(
+                "Waffles 2pcs + Syrup + Fruit",
+                12000,
+                15000,
+            ),
+            _item("Fruit Bowl", 8000, description="Oats + milk + honey"),
             _item(
                 "Beef Burger Breakfast",
                 15000,
@@ -392,7 +393,7 @@ CATEGORIES: list[dict] = [
         "display_group": "Snacks",
         "items": [
             _item("Mandazi 1pc", 3000),
-            _item("Mandazi 4pcs", 8000),
+            _item("Mandazi 4pcs", 3000),
             _item("Chapati 1pc (Snack)", 3000),
             _item("Pancakes 1pc (Snack)", 5000),
             _item("Waffle 1pc", 5000, description="With honey drizzle"),

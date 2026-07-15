@@ -133,15 +133,14 @@ def _serialize_relation_row(model, obj, related_field, display_field):
             'QuantityPerUnit': str(qty) if qty is not None else '',
         }
     if model.__name__ == 'Objects':
-        name = getattr(obj, display_field, None) if display_field else None
-        name = name or getattr(obj, 'object_name', '')
-        obj_type = getattr(obj, 'object_type', '') or ''
-        caption = f'{obj_type} · {name}' if obj_type and name else str(name or value)
+        object_name = getattr(obj, 'object_name', '') or ''
+        object_caption = getattr(obj, 'object_caption', '') or ''
+        display_name = object_name or object_caption
         return {
             'Value': str(value),
-            'Caption': caption,
-            'Code': obj_type,
-            'Name': str(name) if name else None,
+            'Caption': display_name,
+            'Code': str(value),
+            'Name': display_name,
         }
     caption = getattr(obj, display_field, None) if display_field else None
     return {
@@ -150,33 +149,65 @@ def _serialize_relation_row(model, obj, related_field, display_field):
     }
 
 
+def _scoped_relation_lookup_qs(model, record_values):
+    select_related = ['unit_of_measure'] if model.__name__ == 'ItemUnitOfMeasure' else []
+    qs = model.objects.select_related(*select_related)
+    if model.__name__ == 'ItemUnitOfMeasure':
+        item_no = record_values.get('no') or record_values.get('item')
+        if item_no:
+            qs = qs.filter(item__no=item_no)
+    return qs
+
+
+def _lookup_relation_object(model, related_field, display_field, current_val, record_values):
+    """Resolve a relation row when the stored value may be a PK or a display key."""
+    qs = _scoped_relation_lookup_qs(model, record_values)
+    if related_field in ('id', 'pk') and str(current_val).isdigit():
+        obj = qs.filter(pk=current_val).first()
+        if obj is not None:
+            return obj
+    if related_field in ('id', 'pk') and display_field:
+        obj = qs.filter(**{display_field: current_val}).first()
+        if obj is not None:
+            return obj
+    lookup_field = related_field if related_field in {f.name for f in model._meta.get_fields()} else 'pk'
+    return qs.filter(**{lookup_field: current_val}).first()
+
+
+def _relation_row_matches_current(row, current_str, related_field, display_field):
+    """True when current_str is already represented in relation results."""
+    if row.get('Value') == current_str:
+        return True
+    if row.get('Code') == current_str:
+        return True
+    if row.get('Caption') == current_str:
+        return True
+    if display_field and related_field in ('id', 'pk'):
+        caption = row.get('Caption') or ''
+        if caption.startswith(f'{current_str} —') or caption == current_str:
+            return True
+    return False
+
+
 def _append_current_relation_value(results, model, field, related_field, display_field, record_values):
     current_val = record_values.get(field.name)
     if current_val is None or current_val == '':
         return results
     current_str = str(current_val)
-    if any(r['Value'] == current_str for r in results):
+    if any(
+        _relation_row_matches_current(r, current_str, related_field, display_field)
+        for r in results
+    ):
         return results
-    lookup_field = related_field if related_field in {f.name for f in model._meta.get_fields()} else 'pk'
-    select_related = ['unit_of_measure'] if model.__name__ == 'ItemUnitOfMeasure' else []
-    obj = None
-    try:
-        obj = model.objects.select_related(*select_related).get(**{lookup_field: current_val})
-    except model.DoesNotExist:
-        if related_field in ('id', 'pk') and display_field:
-            scoped_qs = model.objects.select_related(*select_related)
-            if model.__name__ == 'ItemUnitOfMeasure':
-                item_no = record_values.get('no') or record_values.get('item')
-                if item_no:
-                    scoped_qs = scoped_qs.filter(item__no=item_no)
-            try:
-                obj = scoped_qs.get(**{display_field: current_val})
-            except model.DoesNotExist:
-                return results
-        else:
-            return results
+    obj = _lookup_relation_object(model, related_field, display_field, current_val, record_values)
+    if obj is None:
+        return results
     row = _serialize_relation_row(model, obj, related_field, display_field)
-    return [row, *results] if row else results
+    if not row:
+        return results
+    if any(r.get('Value') == row.get('Value') for r in results):
+        return results
+    return [row, *results]
 
 
 class TableRelationsView(APIView):
@@ -242,12 +273,63 @@ class TableRelationsView(APIView):
                     requires_permission=True,
                     is_active=True,
                 )
+                if field.relation_context_field == 'object_type':
+                    ctx_val = context_value_for_field(field, record_values)
+                    if ctx_val:
+                        qs = qs.filter(object_type=ctx_val)
             if model.__name__ == 'ItemUnitOfMeasure':
                 item_no = record_values.get('no') or record_values.get('item')
                 if item_no:
                     qs = qs.filter(item__no=item_no)
                 else:
                     return Response([])
+
+            if model.__name__ == 'ApplicationProfile':
+                from utils.page_access import filter_application_profiles_for_user
+                from utils.page_modules import filter_application_profiles_by_enabled_modules
+
+                qs = filter_application_profiles_by_enabled_modules(
+                    qs, _get_request_enabled_modules(request, schema),
+                )
+
+                target_user = request.user
+                if source_table == 'UserPersonalization':
+                    target_user_id = record_values.get('user_id')
+                    if target_user_id:
+                        from authentication.models import CustomUser
+
+                        target_user = (
+                            CustomUser.objects.filter(pk=target_user_id).first()
+                            or request.user
+                        )
+
+                current_profile_id = None
+                role_code = record_values.get('role')
+                if role_code:
+                    from authentication.models import ApplicationProfile
+
+                    current = ApplicationProfile.objects.filter(code=role_code).first()
+                    if current:
+                        current_profile_id = current.pk
+                elif source_table == 'UserPersonalization' and target_user:
+                    from authentication.models import UserPersonalization
+
+                    pers = UserPersonalization.objects.filter(user=target_user).first()
+                    if pers and pers.role_id:
+                        current_profile_id = pers.role_id
+
+                qs = filter_application_profiles_for_user(
+                    qs,
+                    target_user,
+                    current_profile_id=current_profile_id,
+                )
+
+            qs = _filter_payment_method_relation_qs(
+                qs,
+                source_table=source_table,
+                field_name=field.name,
+                record_values=record_values,
+            )
 
             results = []
             select_related = ['unit_of_measure'] if model.__name__ == 'ItemUnitOfMeasure' else []
@@ -259,6 +341,13 @@ class TableRelationsView(APIView):
             results = _append_current_relation_value(
                 results, model, field, related_field, display_field, record_values,
             )
+            if (
+                model.__name__ == 'PaymentMethod'
+                and source_table == 'PurchaseInvoice'
+                and field.name == 'payment_method'
+                and _is_general_vendor(vendor_no=record_values.get('vendor'))
+            ):
+                results = [row for row in results if row.get('Value') != 'NOT_PAID']
 
         return Response(results)
 
@@ -358,6 +447,8 @@ USER_PERSONALIZATION_SOURCE_TABLE = 'UserPersonalization'
 _LIST_QUERY_PARAMS = frozenset({
     'PageId', 'ControlId', 'search', 'limit', 'offset', 'parent_system_id',
     'sort', 'order',
+    # BC-style card record navigator
+    'neighbors', 'SystemId',
 })
 
 # Query params passed to list API but not ORM fields on every model.
@@ -460,6 +551,8 @@ def _resolve_payload_fk_writes(page: Page, control: PageControl, payload: dict, 
     )
     for field in relation_fields:
         if field.name not in payload:
+            continue
+        if field.name == 'no' and model and model.__name__ == 'PurchaseInvoiceLine':
             continue
         resolved_name, resolved_value = _resolve_fk_write(
             page, field.name, payload[field.name], record_values=payload, model=model,
@@ -634,6 +727,9 @@ def _purchase_unit_cost_from_item(item) -> Decimal | None:
 
 def _apply_purchase_invoice_line_item_defaults(payload: dict) -> dict:
     """Description, UOM, qty=1, and unit cost when an item is on a purchase line."""
+    line_type = payload.get('type') or 'item'
+    if line_type != 'item':
+        return payload
     payload = _apply_item_line_defaults_to_payload(payload)
     item = payload.get('item')
     if not item:
@@ -773,6 +869,155 @@ def _sync_purchase_invoice_line_from_item(obj) -> list[str]:
         obj.unit_cost = Decimal('0')
         extra.append('unit_cost')
     return extra
+
+
+def _sync_purchase_line_type_switch(obj) -> list[str]:
+    """Clear wrong FKs when purchase line type changes."""
+    if type(obj).__name__ != 'PurchaseInvoiceLine':
+        return []
+    extra: list[str] = []
+    line_type = getattr(obj, 'type', 'item') or 'item'
+    if line_type == 'resource':
+        if obj.item_id is not None:
+            obj.item_id = None
+            extra.append('item')
+        if obj.gl_account_id is not None:
+            obj.gl_account_id = None
+            extra.append('gl_account')
+        for field in ('item_unit_of_measure', 'unit_of_measure', 'location_code'):
+            if getattr(obj, f'{field}_id', None) is not None:
+                setattr(obj, field, None)
+                extra.append(field)
+    elif line_type == 'gl_account':
+        if obj.item_id is not None:
+            obj.item_id = None
+            extra.append('item')
+        if obj.resource_id is not None:
+            obj.resource_id = None
+            extra.append('resource')
+        for field in ('item_unit_of_measure', 'unit_of_measure', 'location_code'):
+            if getattr(obj, f'{field}_id', None) is not None:
+                setattr(obj, field, None)
+                extra.append(field)
+    elif line_type == 'item':
+        if obj.resource_id is not None:
+            obj.resource_id = None
+            extra.append('resource')
+        if obj.gl_account_id is not None:
+            obj.gl_account_id = None
+            extra.append('gl_account')
+    return extra
+
+
+def _sync_resource_driven_purchase_line_fields(obj) -> list[str]:
+    if type(obj).__name__ != 'PurchaseInvoiceLine':
+        return []
+    if getattr(obj, 'type', 'item') != 'resource' or not obj.resource_id:
+        return []
+    extra: list[str] = []
+    if not obj.description and obj.resource:
+        obj.description = obj.resource.name
+        extra.append('description')
+    cost = getattr(obj.resource, 'direct_unit_cost', None) or getattr(obj.resource, 'unit_cost', None)
+    if cost is not None and not obj.unit_cost:
+        obj.unit_cost = cost
+        extra.append('unit_cost')
+    return extra
+
+
+def _serialize_purchase_line_no(obj) -> str | None:
+    """BC-style unified No. from item / resource / G/L account FK."""
+    line_type = getattr(obj, 'type', 'item') or 'item'
+    if line_type == 'resource':
+        resource = getattr(obj, 'resource', None)
+        return getattr(resource, 'code', None) if resource else None
+    if line_type == 'gl_account':
+        gl_account = getattr(obj, 'gl_account', None)
+        return getattr(gl_account, 'no', None) if gl_account else None
+    item = getattr(obj, 'item', None)
+    return getattr(item, 'no', None) if item else None
+
+
+def _lookup_purchase_line_no_target(line_type: str, code_value):
+    """Resolve No. code to (fk_attr, model_instance) for purchase lines."""
+    if code_value is None or code_value == '':
+        return None, None
+    code_value = str(code_value).strip()
+    if line_type == 'resource':
+        model = _get_model('Resource')
+        if model is None:
+            raise ValueError('Resource model is not available.')
+        obj = model.objects.filter(code=code_value).first()
+        if obj is None:
+            raise ValueError(f'Resource "{code_value}" was not found.')
+        return 'resource', obj
+    if line_type == 'gl_account':
+        model = _get_model('G_LAccount')
+        if model is None:
+            raise ValueError('G/L Account model is not available.')
+        obj = model.objects.filter(no=code_value).first()
+        if obj is None:
+            raise ValueError(f'G/L Account "{code_value}" was not found.')
+        return 'gl_account', obj
+    model = _get_model('Item')
+    if model is None:
+        raise ValueError('Item model is not available.')
+    obj = model.objects.filter(no=code_value).first()
+    if obj is None:
+        raise ValueError(f'Item "{code_value}" was not found.')
+    return 'item', obj
+
+
+def _assign_purchase_line_no(obj, value, record_values=None) -> list[str]:
+    """Map unified No. write to item / resource / gl_account FK columns."""
+    record_values = record_values or {}
+    line_type = record_values.get('type')
+    if line_type is None or line_type == '':
+        line_type = getattr(obj, 'type', 'item') or 'item'
+    if line_type != getattr(obj, 'type', 'item'):
+        obj.type = line_type
+    extra: list[str] = ['type']
+    extra.extend(_sync_purchase_line_type_switch(obj))
+
+    if value is None or value == '':
+        for attr in ('item', 'resource', 'gl_account'):
+            if getattr(obj, f'{attr}_id', None) is not None:
+                setattr(obj, attr, None)
+                extra.append(attr)
+        return list(dict.fromkeys(extra))
+
+    fk_attr, related = _lookup_purchase_line_no_target(line_type, value)
+    for attr in ('item', 'resource', 'gl_account'):
+        if attr == fk_attr:
+            setattr(obj, attr, related)
+            extra.append(attr)
+        elif getattr(obj, f'{attr}_id', None) is not None:
+            setattr(obj, attr, None)
+            extra.append(attr)
+    return list(dict.fromkeys(extra))
+
+
+def _apply_purchase_line_no_field_update(obj, value, record_values=None) -> list[str]:
+    if type(obj).__name__ != 'PurchaseInvoiceLine':
+        return []
+    extra = _assign_purchase_line_no(obj, value, record_values)
+    line_type = getattr(obj, 'type', 'item') or 'item'
+    if line_type == 'item':
+        extra.extend(_sync_item_driven_line_fields(obj))
+    elif line_type == 'resource':
+        extra.extend(_sync_resource_driven_purchase_line_fields(obj))
+    return list(dict.fromkeys(extra))
+
+
+def _purchase_line_no_create_defaults(value, record_values: dict) -> dict:
+    """Build model defaults when the first persisted field on a new line is No."""
+    line_type = record_values.get('type') or 'item'
+    fk_attr, related = _lookup_purchase_line_no_target(line_type, value)
+    defaults = {'type': line_type, fk_attr: related}
+    for attr in ('item', 'resource', 'gl_account'):
+        if attr != fk_attr:
+            defaults[attr] = None
+    return defaults
 
 
 def _sync_item_driven_line_fields(obj) -> list[str]:
@@ -1043,6 +1288,9 @@ def _uses_general_journal_computed(obj, field_name: str) -> bool:
 
 def _serialize_field_value(obj, field: PageControlField, request=None):
     """Serialize one page field; FK table-relation fields return the related key (no/code)."""
+    if obj.__class__.__name__ == 'UserPersonalization' and field.name == 'user_id':
+        user = getattr(obj, 'user', None)
+        return _normalize_serialized_value(getattr(user, 'username', None) if user else None)
     if obj.__class__.__name__ == 'PaymentMethod':
         if field.name == 'bal_account_no':
             return _normalize_serialized_value(_serialize_payment_method_bal_account_no(obj))
@@ -1080,6 +1328,8 @@ def _serialize_field_value(obj, field: PageControlField, request=None):
         return _normalize_serialized_value(serialize_user_field(obj, field.name))
     if obj.__class__.__name__ == 'PermissionSet' and field.name == 'via_user_groups':
         return _normalize_serialized_value(getattr(obj, '_via_user_groups', '') or '')
+    if obj.__class__.__name__ in ('PurchaseInvoiceLine', 'PostedPurchaseInvoiceLine') and field.name == 'no':
+        return _normalize_serialized_value(_serialize_purchase_line_no(obj))
     return _normalize_serialized_value(_resolve_field_value(obj, field.name))
 
 
@@ -1112,6 +1362,11 @@ def _serialize_record(obj, fields: list[PageControlField], request=None) -> dict
         if app_obj is not None:
             row['object_type'] = app_obj.object_type
             row['object_id'] = app_obj.object_id
+            row['object_name'] = app_obj.object_name
+        else:
+            row.setdefault('object_type', '')
+            row.setdefault('object_id', None)
+            row.setdefault('object_name', '')
     if obj.__class__.__name__ == 'FinancialReport':
         for extra in ('start_date', 'end_date', 'period_type'):
             if extra not in row:
@@ -1295,28 +1550,7 @@ def _apply_posted_sales_invoice_virtual_filters(qs, filters: dict[str, str]):
     except (TypeError, ValueError):
         return qs
 
-    from django.db.models import IntegerField, OuterRef, Subquery
-    from sales.models import CustomerLedgerEntry, SalesInvoice
-
-    sales_invoice_no = (
-        SalesInvoice.objects.filter(
-            customer_invoice_no=OuterRef('customer_invoice_no'),
-            customer_id=OuterRef('customer_id'),
-        )
-        .order_by('-id')
-        .values('invoice_no')[:1]
-    )
-    ledger_user_subquery = (
-        CustomerLedgerEntry.objects.filter(
-            document_no=Subquery(sales_invoice_no),
-            customer_id=OuterRef('customer_id'),
-        )
-        .order_by('-id')
-        .values('user_id')[:1]
-    )
-    return qs.annotate(
-        ledger_user_id=Subquery(ledger_user_subquery, output_field=IntegerField()),
-    ).filter(ledger_user_id=user_id)
+    return qs.filter(ledger_user_id=user_id)
 
 
 def _apply_applied_entries_filter(qs, source_table: str, entry_id: str):
@@ -1686,18 +1920,20 @@ def _normalize_payment_method_payload(payload: dict) -> dict:
     return payload
 
 
-def _apply_payment_method_field_update(obj, field_name: str, value):
+def _apply_payment_method_field_update(obj, field_name: str, value, record_values=None):
     """
     BC-style Payment Method field writes.
     Returns list of model fields to persist, or None if not handled.
     """
+    record_values = record_values or {}
     if field_name == 'bal_account_type':
         obj.bal_account_type = _coerce_payment_method_bal_type_write(value)
         obj.bal_account_no = None
         obj.bal_bank_account_no = None
         return ['bal_account_type', 'bal_account_no', 'bal_bank_account_no']
     if field_name == 'bal_account_no':
-        _assign_payment_method_unified_bal_account(obj, obj.bal_account_type, value)
+        bal_type = record_values.get('bal_account_type') or obj.bal_account_type
+        _assign_payment_method_unified_bal_account(obj, bal_type, value)
         return ['bal_account_no', 'bal_bank_account_no']
     return None
 
@@ -1819,8 +2055,69 @@ def _apply_sales_order_line_defaults(payload: dict, request) -> dict:
     return _apply_item_line_defaults_to_payload(payload)
 
 
+GENERAL_VENDOR_NO = 'VENDOR-000001'
+
+
+def _is_general_vendor(vendor=None, vendor_no: str | None = None) -> bool:
+    """True for the system general vendor or any vendor whose no/name contains 'general'."""
+    if vendor is not None:
+        no = (getattr(vendor, 'no', None) or '').strip().lower()
+        name = (getattr(vendor, 'name', None) or '').strip().lower()
+        if no == GENERAL_VENDOR_NO.lower():
+            return True
+        return 'general' in no or 'general' in name
+    if vendor_no:
+        normalized = str(vendor_no).strip().lower()
+        if normalized == GENERAL_VENDOR_NO.lower():
+            return True
+        return 'general' in normalized
+    return False
+
+
+def _payment_method_prefers_cash_default():
+    from financials.models import PaymentMethod
+
+    cash = (
+        PaymentMethod.objects.exclude(code='NOT_PAID')
+        .filter(bal_account_no__isnull=False)
+        .order_by('code')
+        .first()
+    )
+    if cash:
+        return cash
+    return PaymentMethod.objects.exclude(code='NOT_PAID').order_by('code').first()
+
+
+def _filter_payment_method_relation_qs(qs, *, source_table: str | None, field_name: str | None, record_values: dict):
+    if source_table != 'PurchaseInvoice' or field_name != 'payment_method':
+        return qs
+    vendor_no = record_values.get('vendor')
+    if not _is_general_vendor(vendor_no=vendor_no):
+        return qs
+    return qs.exclude(code='NOT_PAID')
+
+
+def _validate_purchase_invoice_payment_method(vendor, payment_method) -> None:
+    if payment_method is None:
+        return
+    from financials.models import PaymentMethod
+
+    pm = payment_method
+    if isinstance(payment_method, (str, int)):
+        lookup = {'code': payment_method} if isinstance(payment_method, str) else {'pk': payment_method}
+        pm = PaymentMethod.objects.filter(**lookup).first()
+    if pm and getattr(pm, 'code', None) == 'NOT_PAID' and _is_general_vendor(vendor):
+        raise ValueError(
+            "General vendor cannot have 'Not Paid Yet' as payment method. "
+            'Please select a different payment method.',
+        )
+
+
 def _default_purchase_invoice_payment_method(vendor=None):
     from financials.models import PaymentMethod
+
+    if _is_general_vendor(vendor):
+        return _payment_method_prefers_cash_default()
 
     if vendor is not None and getattr(vendor, 'payment_method', None):
         return vendor.payment_method
@@ -1841,6 +2138,13 @@ def _sync_purchase_invoice_payment_method_from_vendor(obj, user) -> None:
     if obj.__class__.__name__ != 'PurchaseInvoice':
         return
     vendor = getattr(obj, 'vendor', None)
+    if _is_general_vendor(vendor):
+        if obj.payment_method and obj.payment_method.code == 'NOT_PAID':
+            replacement = _payment_method_prefers_cash_default()
+            if replacement and obj.payment_method_id != replacement.pk:
+                obj.payment_method = replacement
+                _save_page_field_update(obj, user, 'payment_method')
+        return
     vendor_pm = getattr(vendor, 'payment_method', None) if vendor else None
     if vendor_pm is None:
         return
@@ -1931,38 +2235,53 @@ def _apply_sales_invoice_line_defaults(payload: dict, request) -> dict:
 
 
 def _apply_purchase_invoice_line_defaults(payload: dict, request) -> dict:
+    line_type = payload.get('type') or 'item'
+    payload.setdefault('type', line_type)
+
     if payload.get('global_dimension_1') and payload.get('dimension_set'):
-        if not payload.get('location_code'):
+        if line_type == 'item' and not payload.get('location_code'):
             loc = _resolve_branch_location_for_request(request)
             if loc:
                 payload['location_code'] = loc
-        return _apply_purchase_invoice_line_item_defaults(payload)
+        if line_type == 'item':
+            return _apply_purchase_invoice_line_item_defaults(payload)
+        if line_type == 'resource' and payload.get('resource') and not payload.get('description'):
+            from resources.models import Resource
+            resource = payload['resource']
+            if not isinstance(resource, Resource):
+                resource = Resource.objects.filter(pk=resource).first() if str(resource).isdigit() else Resource.objects.filter(code=resource).first()
+            if resource:
+                payload['description'] = resource.name
+        return payload
+
     from dimension.models import get_merged_line_dimensions
-    from items.models import Item
 
     purchase_invoice = payload.get('purchase_invoice')
     if purchase_invoice is None and payload.get('purchase_invoice_id'):
         from purchases.models import PurchaseInvoice
         purchase_invoice = PurchaseInvoice.objects.filter(pk=payload['purchase_invoice_id']).first()
 
-    if not payload.get('item'):
-        placeholder = Item.objects.filter(blocked=False).order_by('no').first()
-        if placeholder:
-            payload['item'] = placeholder
-
-    if not payload.get('location_code'):
-        loc = _resolve_branch_location_for_request(request)
-        if loc:
-            payload['location_code'] = loc
+    if line_type == 'item':
+        from items.models import Item
+        if not payload.get('item'):
+            placeholder = Item.objects.filter(blocked=False).order_by('no').first()
+            if placeholder:
+                payload['item'] = placeholder
+        if not payload.get('location_code'):
+            loc = _resolve_branch_location_for_request(request)
+            if loc:
+                payload['location_code'] = loc
 
     vendor_no = None
     if purchase_invoice and getattr(purchase_invoice, 'vendor', None):
         vendor_no = getattr(purchase_invoice.vendor, 'no', None)
 
-    item = payload.get('item')
+    item = payload.get('item') if line_type == 'item' else None
+    resource = payload.get('resource') if line_type == 'resource' else None
     dims = get_merged_line_dimensions(
         vendor_no=vendor_no,
         item=item,
+        resource=resource,
         request_user=getattr(request, 'user', None),
         line_data=payload,
         header_dimensions=purchase_invoice,
@@ -1971,7 +2290,11 @@ def _apply_purchase_invoice_line_defaults(payload: dict, request) -> dict:
         payload['global_dimension_1'] = dims['global_dimension_1']
     if dims.get('dimension_set') and not payload.get('dimension_set'):
         payload['dimension_set'] = dims['dimension_set']
-    return _apply_purchase_invoice_line_item_defaults(payload)
+    if line_type == 'item':
+        return _apply_purchase_invoice_line_item_defaults(payload)
+    if not payload.get('quantity'):
+        payload['quantity'] = 1
+    return payload
 
 
 def _apply_tracking_specification_defaults(payload: dict, request) -> dict:
@@ -2097,6 +2420,27 @@ def _get_schema(request) -> str | None:
         return auth.get('schema_name') or auth['schema_name']
     except (KeyError, AttributeError, TypeError):
         return None
+
+
+def _get_request_enabled_modules(request, schema: str | None = None) -> list[str]:
+    """Resolve tenant enabled_modules from middleware, request.tenant, or schema."""
+    enabled = getattr(request, 'enabled_modules', None)
+    if enabled:
+        return list(enabled)
+
+    tenant = getattr(request, 'tenant', None)
+    if tenant is not None and hasattr(tenant, 'enabled_modules'):
+        return list(tenant.enabled_modules or [])
+
+    if schema:
+        try:
+            from company.models import Company
+
+            company = Company.objects.get(schema_name=schema)
+            return list(company.enabled_modules or [])
+        except Exception:
+            pass
+    return []
 
 
 def _resolve_card_control(page: Page, control_id=None):
@@ -2601,6 +2945,54 @@ class PageDetailView(APIView):
         return Response(data)
 
 
+def _resolve_permission_set_line_object(record_values: dict, object_id_value=None):
+    """Resolve Objects row from page-engine Type + Object ID virtual fields."""
+    from base.models import Objects
+
+    object_type = record_values.get('object_type') or 'Page'
+    raw_id = object_id_value if object_id_value is not None else record_values.get('object_id')
+    if raw_id is None or raw_id == '':
+        return None
+    try:
+        object_id = int(raw_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError('Object ID must be a number.') from exc
+
+    app_obj = Objects.objects.filter(
+        object_type=object_type,
+        object_id=object_id,
+        requires_permission=True,
+        is_active=True,
+    ).first()
+    if app_obj is None:
+        raise ValueError(
+            f'No {object_type} object found with ID {object_id}.',
+        )
+    return app_obj
+
+
+def _apply_permission_set_line_create_payload(payload: dict) -> dict:
+    """Map virtual object_type/object_id fields to application_object FK."""
+    if payload.get('application_object') or payload.get('application_object_id'):
+        payload.pop('object_type', None)
+        payload.pop('object_id', None)
+        payload.pop('object_name', None)
+        return payload
+
+    record_values = {
+        'object_type': payload.pop('object_type', None) or 'Page',
+        'object_id': payload.pop('object_id', None),
+    }
+    payload.pop('object_name', None)
+    app_obj = _resolve_permission_set_line_object(record_values)
+    if app_obj is None:
+        raise ValueError(
+            'Select Type and Object ID before saving this permission line.',
+        )
+    payload['application_object'] = app_obj
+    return payload
+
+
 # ── Page data endpoints ────────────────────────────────────────────────────────
 
 class PageDataView(APIView):
@@ -2708,7 +3100,12 @@ class PageDataView(APIView):
             if source_table == 'UserSetup':
                 qs = qs.select_related('user').order_by('user__full_name', 'user__username')
             elif source_table == USER_PERSONALIZATION_SOURCE_TABLE:
-                qs = qs.select_related('user', 'role').order_by('user__full_name', 'user__username')
+                qs = (
+                    qs.select_related('user', 'role')
+                    .filter(user__is_active=True, user__terminated=False)
+                    .exclude(user__username='debug_admin')
+                    .order_by('user__username')
+                )
             elif source_table == 'BankAccount':
                 qs = qs.order_by('no')
             elif source_table == 'G_LAccount':
@@ -2752,44 +3149,13 @@ class PageDataView(APIView):
                     user_name=Subquery(ledger_user_name, output_field=CharField()),
                 )
             elif source_table == 'PostedSalesInvoice':
-                from django.db.models import CharField, OuterRef, Subquery
-                from sales.models import CustomerLedgerEntry, SalesInvoice
                 from sales.views import SalesViewSet
 
                 qs = qs.select_related('customer', 'payment_method').order_by(
                     '-posting_date', '-id',
                 )
                 qs = SalesViewSet._with_posted_sales_invoice_totals(qs)
-                sales_invoice_no = (
-                    SalesInvoice.objects.filter(
-                        customer_invoice_no=OuterRef('customer_invoice_no'),
-                        customer_id=OuterRef('customer_id'),
-                    )
-                    .order_by('-id')
-                    .values('invoice_no')[:1]
-                )
-                sales_invoice_system_id = (
-                    SalesInvoice.objects.filter(
-                        customer_invoice_no=OuterRef('customer_invoice_no'),
-                        customer_id=OuterRef('customer_id'),
-                    )
-                    .order_by('-id')
-                    .values('system_id')[:1]
-                )
-                ledger_user_name = (
-                    CustomerLedgerEntry.objects.filter(
-                        customer_id=OuterRef('customer_id'),
-                        document_no=Subquery(sales_invoice_no),
-                    )
-                    .order_by('-id')
-                    .values('user__full_name')[:1]
-                )
-                qs = qs.annotate(
-                    user_name=Subquery(ledger_user_name, output_field=CharField()),
-                    sales_invoice_system_id=Subquery(
-                        sales_invoice_system_id, output_field=CharField(),
-                    ),
-                )
+                qs = SalesViewSet._annotate_posted_sales_invoice_ledger_links(qs)
             elif source_table == 'PostedSalesInvoiceLine':
                 qs = qs.select_related(
                     'item', 'posted_sales_invoice', 'resource',
@@ -2797,6 +3163,8 @@ class PageDataView(APIView):
             elif source_table == 'PurchaseInvoiceLine':
                 qs = qs.select_related(
                     'item',
+                    'resource',
+                    'gl_account',
                     'purchase_invoice',
                     'item_unit_of_measure__unit_of_measure',
                     'location_code',
@@ -2804,6 +3172,8 @@ class PageDataView(APIView):
             elif source_table == 'PostedPurchaseInvoiceLine':
                 qs = qs.select_related(
                     'item',
+                    'resource',
+                    'gl_account',
                     'posted_purchase_invoice',
                     'item_unit_of_measure__unit_of_measure',
                     'location_code',
@@ -2950,6 +3320,37 @@ class PageDataView(APIView):
             sort_order = (request.query_params.get('order') or 'asc').strip()
             qs = _apply_user_list_sort(qs, model, control, sort_field, sort_order)
 
+            # BC-style prev/next: return neighboring SystemIds without serializing rows.
+            neighbors_for = (request.query_params.get('SystemId') or '').strip()
+            if request.query_params.get('neighbors') == '1' and neighbors_for:
+                if hasattr(model, 'system_id'):
+                    ordered_ids = [
+                        str(sid)
+                        for sid in qs.values_list('system_id', flat=True)[:5000]
+                    ]
+                else:
+                    ordered_ids = [
+                        str(pk) for pk in qs.values_list('pk', flat=True)[:5000]
+                    ]
+                try:
+                    idx = ordered_ids.index(neighbors_for)
+                except ValueError:
+                    return Response(
+                        {'previousSystemId': None, 'nextSystemId': None}
+                    )
+                return Response(
+                    {
+                        'previousSystemId': (
+                            ordered_ids[idx - 1] if idx > 0 else None
+                        ),
+                        'nextSystemId': (
+                            ordered_ids[idx + 1]
+                            if idx < len(ordered_ids) - 1
+                            else None
+                        ),
+                    }
+                )
+
             qs = qs[offset:offset + limit]
             data = [_serialize_record(obj, fields, request) for obj in qs]
 
@@ -2999,6 +3400,11 @@ class PageDataView(APIView):
             }
             payload = _inject_part_parent_link(payload, page, parent_system_id)
             payload = _apply_drill_down_context(payload, page, model)
+            if model.__name__ == 'PermissionSetLine':
+                try:
+                    payload = _apply_permission_set_line_create_payload(payload)
+                except ValueError as e:
+                    return _page_data_error_response(e, source_table=source_table)
             payload = _resolve_payload_fk_writes(page, control, payload)
             if model.__name__ == 'PaymentMethod':
                 payload = _normalize_payment_method_payload(payload)
@@ -3079,6 +3485,11 @@ class PageDataRecordView(APIView):
             if page.source_table == USER_PERSONALIZATION_SOURCE_TABLE and not _can_access_personalization(request, obj, 'read'):
                 return Response({'error': 'Record not found'}, status=status.HTTP_404_NOT_FOUND)
 
+            if model.__name__ == 'PurchaseInvoice' and not _record_is_read_only(obj):
+                _sync_purchase_invoice_payment_method_from_vendor(obj, request.user)
+                if hasattr(obj, 'refresh_from_db'):
+                    obj.refresh_from_db()
+
             fields = _record_fields_for_page(page, control)
             data = _serialize_record(obj, fields, request)
 
@@ -3145,6 +3556,8 @@ class PageDataRecordView(APIView):
                     if not hasattr(model, field_name) and not (
                         model.__name__ == 'Item' and field_name == 'unit_cost'
                     ) and not (
+                        model.__name__ == 'PurchaseInvoiceLine' and field_name == 'no'
+                    ) and not (
                         '__' in field_name and _model_has_direct_field(
                             model, field_name.split('__')[0],
                         )
@@ -3153,11 +3566,15 @@ class PageDataRecordView(APIView):
                             {'error': f'Invalid field: {field_name}'},
                             status=status.HTTP_400_BAD_REQUEST,
                         )
-                    field_name, value = _resolve_fk_write(
-                        page, field_name, value, obj=obj,
-                        record_values=fk_record_values, model=model,
-                    )
-                    defaults = {field_name: value}
+                    if model.__name__ == 'PurchaseInvoiceLine' and field_name == 'no':
+                        defaults = _purchase_line_no_create_defaults(value, fk_record_values)
+                        defaults = _apply_purchase_invoice_line_defaults(defaults, request)
+                    else:
+                        field_name, value = _resolve_fk_write(
+                            page, field_name, value, obj=obj,
+                            record_values=fk_record_values, model=model,
+                        )
+                        defaults = {field_name: value}
                     if field_name == 'item' and _model_has_item_and_description(model):
                         defaults = _apply_item_line_defaults_to_payload(defaults)
                     if model.__name__ in (
@@ -3202,7 +3619,9 @@ class PageDataRecordView(APIView):
                     if _record_is_read_only(obj):
                         return _posted_read_only_response()
                     if model.__name__ == 'PaymentMethod':
-                        pm_fields = _apply_payment_method_field_update(obj, field_name, value)
+                        pm_fields = _apply_payment_method_field_update(
+                            obj, field_name, value, fk_record_values,
+                        )
                         if pm_fields is not None:
                             _save_payment_method_fields(obj, request.user, pm_fields)
                         else:
@@ -3214,6 +3633,24 @@ class PageDataRecordView(APIView):
                             _save_page_field_update(
                                 obj, request.user, field_name, previous_pk=None,
                             )
+                    elif model.__name__ == 'PermissionSetLine' and field_name in (
+                        'object_type', 'object_id', 'object_name',
+                    ):
+                        if field_name == 'object_name':
+                            pass
+                        elif field_name == 'object_type':
+                            if obj.application_object_id:
+                                current_type = obj.application_object.object_type
+                                if str(value) != str(current_type):
+                                    obj.application_object = None
+                                    obj.save(update_fields=['application_object'])
+                        else:
+                            merged = {**fk_record_values, 'object_id': value}
+                            app_obj = _resolve_permission_set_line_object(
+                                merged, object_id_value=value,
+                            )
+                            obj.application_object = app_obj
+                            obj.save(update_fields=['application_object'])
                     elif model.__name__ == 'Item':
                         item_fields = _apply_item_field_update(
                             obj, field_name, value, system_id=system_id,
@@ -3237,6 +3674,14 @@ class PageDataRecordView(APIView):
                             _save_page_field_update(
                                 obj, request.user, field_name, previous_pk=previous_pk,
                             )
+                    elif model.__name__ == 'PurchaseInvoiceLine' and field_name == 'no':
+                        extra_fields = _apply_purchase_line_no_field_update(
+                            obj, value, fk_record_values,
+                        )
+                        _save_page_field_update(
+                            obj, request.user, extra_fields[0] if extra_fields else 'type',
+                            extra_fields=extra_fields[1:] if len(extra_fields) > 1 else None,
+                        )
                     else:
                         field_name, value = _resolve_fk_write(
                             page, field_name, value, obj=obj,
@@ -3250,10 +3695,21 @@ class PageDataRecordView(APIView):
                                 if field_name == obj._meta.pk.name
                                 else None
                             )
+                            if (
+                                model.__name__ == 'PurchaseInvoice'
+                                and field_name == 'payment_method'
+                            ):
+                                _validate_purchase_invoice_payment_method(
+                                    getattr(obj, 'vendor', None), value,
+                                )
                             setattr(obj, field_name, value)
                             extra_fields = None
                             if field_name == 'item':
                                 extra_fields = _sync_item_driven_line_fields(obj)
+                            elif field_name == 'type':
+                                extra_fields = _sync_purchase_line_type_switch(obj)
+                            elif field_name == 'resource':
+                                extra_fields = _sync_resource_driven_purchase_line_fields(obj)
                             elif field_name in ('account_no', 'account_type'):
                                 extra_fields = _sync_account_driven_line_fields(obj)
                             _save_page_field_update(

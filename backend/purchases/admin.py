@@ -391,6 +391,440 @@ class PurchaseInvoiceProcessor:
         self.value_entries = []
         self.bank_account_entries = []  # For bank account ledger entries (preview only)
 
+    @staticmethod
+    def _line_type(line):
+        return getattr(line, "type", "item") or "item"
+
+    def _vat_product_posting_group_for_line(self, line):
+        line_type = self._line_type(line)
+        if line_type == "item" and line.item:
+            return getattr(line.item, "vat_product_posting_group", None)
+        if line_type == "resource" and line.resource:
+            return getattr(line.resource, "vat_product_posting_group", None)
+        if line_type == "gl_account" and line.gl_account:
+            return getattr(line.gl_account, "vat_product_posting_group", None)
+        return None
+
+    def _append_gl_account_line_entries(self, line, transaction_no, use_net_for_cost):
+        """Debit a G/L Account line directly; payables handled separately for the full invoice."""
+        if self._line_type(line) != "gl_account" or not line.gl_account:
+            raise Exception("G/L Account is required on G/L Account purchase lines.")
+        line_amt = line.line_amount
+        cost_amt = (
+            line_amt - (getattr(line, "vat_amount", 0) or 0)
+            if use_net_for_cost
+            else line_amt
+        )
+        self.gl_entries.append(
+            {
+                "posting_date": self.invoice.posting_date,
+                "document_type": "Invoice",
+                "document_no": self.invoice.invoice_no,
+                "gl_account": line.gl_account,
+                "description": f"Invoice {self.invoice.invoice_no}",
+                "department_code": (
+                    self.global_dimension_1_value.code
+                    if self.global_dimension_1_value
+                    else None
+                ),
+                "amount": cost_amt,
+                "gen_posting_type": "Purchase",
+                "global_dimension_1": self.global_dimension_1_value,
+                "gen_bus_posting_group": self.genBusinessPostingGroup,
+                "gen_prod_posting_group": None,
+                "balance_account_type": BalacingAccountType.GLAccount.value,
+                "user": self.user,
+                "transaction_no": transaction_no,
+            }
+        )
+
+    def _append_resource_line_entries(self, line, transaction_no, use_net_for_cost):
+        """Debit purchase account for a resource line via posting setup."""
+        if self._line_type(line) != "resource" or not line.resource:
+            raise Exception("Resource is required on Resource purchase lines.")
+        from postings.models import GeneralPostingSetup
+
+        line_amt = line.line_amount
+        cost_amt = (
+            line_amt - (getattr(line, "vat_amount", 0) or 0)
+            if use_net_for_cost
+            else line_amt
+        )
+        gen_prod = line.resource.general_product_posting_group
+        general_posting_setup = GeneralPostingSetup.objects.filter(
+            general_product_posting_group=gen_prod,
+            general_business_posting_group=self.genBusinessPostingGroup,
+        ).first()
+        if not general_posting_setup or not general_posting_setup.purchase_account:
+            resource_code = getattr(line.resource, "code", "Unknown")
+            raise Exception(
+                f"Purchase account is not configured for resource '{resource_code}'."
+            )
+        purchase_account = general_posting_setup.purchase_account
+        self.gl_entries.append(
+            {
+                "posting_date": self.invoice.posting_date,
+                "document_type": "Invoice",
+                "document_no": self.invoice.invoice_no,
+                "gl_account": purchase_account,
+                "description": f"Invoice {self.invoice.invoice_no}",
+                "department_code": (
+                    self.global_dimension_1_value.code
+                    if self.global_dimension_1_value
+                    else None
+                ),
+                "amount": cost_amt,
+                "gen_posting_type": "Purchase",
+                "global_dimension_1": self.global_dimension_1_value,
+                "gen_bus_posting_group": self.genBusinessPostingGroup,
+                "gen_prod_posting_group": gen_prod,
+                "balance_account_type": BalacingAccountType.GLAccount.value,
+                "user": self.user,
+                "transaction_no": transaction_no,
+            }
+        )
+
+    def _append_non_item_only_payables(self, line, transaction_no, use_net_for_cost):
+        """Credit payables for a non-item line when the invoice has no item lines."""
+        line_amt = line.line_amount
+        cost_amt = (
+            line_amt - (getattr(line, "vat_amount", 0) or 0)
+            if use_net_for_cost
+            else line_amt
+        )
+        self.gl_entries.append(
+            {
+                "posting_date": self.invoice.posting_date,
+                "document_type": "Invoice",
+                "document_no": self.invoice.invoice_no,
+                "gl_account": self.payables_account,
+                "description": f"Invoice {self.invoice.invoice_no}",
+                "department_code": (
+                    self.global_dimension_1_value.code
+                    if self.global_dimension_1_value
+                    else None
+                ),
+                "amount": -cost_amt,
+                "gen_posting_type": "Purchase",
+                "global_dimension_1": self.global_dimension_1_value,
+                "gen_bus_posting_group": self.genBusinessPostingGroup,
+                "gen_prod_posting_group": None,
+                "balance_account_type": BalacingAccountType.GLAccount.value,
+                "user": self.user,
+                "transaction_no": transaction_no,
+            }
+        )
+
+    def _append_invoice_settlement_entries(
+        self,
+        total_amount,
+        transaction_no,
+        payables_account,
+        bal_account,
+        gen_prod_posting_group,
+    ):
+        """Vendor ledger, payables credit, VAT and cash payment GL (once per invoice)."""
+        self.detailed_vendor_entries.extend(
+            [
+                {
+                    "posting_date": self.invoice.posting_date,
+                    "entry_type": "Initial Entry",
+                    "document_type": "Invoice",
+                    "document_no": self.invoice.invoice_no,
+                    "vendor_no": self.vendor.no,
+                    "vendor": self.vendor,
+                    "amount": -total_amount,
+                    "initial_entry_due_date": self.invoice.due_date,
+                    "credit_amount": total_amount,
+                    "debit_amount": 0,
+                    "transaction_no": transaction_no,
+                    "initial_document_type": "Invoice",
+                    "vendor_ledger_entry": "10001",
+                    "applied_vendor_ledger_entry": "0",
+                }
+            ]
+        )
+        if self.payment_method and self.payment_method.is_cash_payment():
+            self.detailed_vendor_entries.extend(
+                [
+                    {
+                        "posting_date": self.invoice.posting_date,
+                        "entry_type": "Initial Entry",
+                        "document_type": "Payment",
+                        "document_no": self.invoice.invoice_no,
+                        "vendor_no": self.vendor.no,
+                        "vendor": self.vendor,
+                        "amount": total_amount,
+                        "initial_entry_due_date": self.invoice.due_date,
+                        "transaction_no": transaction_no,
+                        "debit_amount": total_amount,
+                        "credit_amount": 0,
+                        "initial_document_type": "Payment",
+                        "vendor_ledger_entry": "10002",
+                        "applied_vendor_ledger_entry": "0",
+                    },
+                    {
+                        "posting_date": self.invoice.posting_date,
+                        "entry_type": "Application",
+                        "document_type": "Payment",
+                        "document_no": self.invoice.invoice_no,
+                        "vendor_no": self.vendor.no,
+                        "vendor": self.vendor,
+                        "amount": total_amount,
+                        "initial_entry_due_date": self.invoice.due_date,
+                        "debit_amount": total_amount,
+                        "credit_amount": 0,
+                        "initial_document_type": "Invoice",
+                        "vendor_ledger_entry": "10001",
+                        "applied_vendor_ledger_entry": "10002",
+                        "transaction_no": transaction_no,
+                    },
+                    {
+                        "posting_date": self.invoice.posting_date,
+                        "entry_type": "Application",
+                        "document_type": "Payment",
+                        "document_no": self.invoice.invoice_no,
+                        "vendor_no": self.vendor.no,
+                        "vendor": self.vendor,
+                        "initial_document_type": "Payment",
+                        "debit_amount": 0,
+                        "credit_amount": total_amount,
+                        "vendor_ledger_entry": "10002",
+                        "applied_vendor_ledger_entry": "10002",
+                        "amount": -total_amount,
+                        "initial_entry_due_date": self.invoice.due_date,
+                        "transaction_no": transaction_no,
+                    },
+                ]
+            )
+
+        self.vendor_entries.append(
+            {
+                "posting_date": self.invoice.posting_date,
+                "document_date": self.invoice.document_date,
+                "document_type": DocumentType.Invoice.value,
+                "document_no": self.invoice.invoice_no,
+                "external_document_no": self.invoice.vendor_invoice_no,
+                "vendor_no": self.vendor.no,
+                "vendor": self.vendor,
+                "description": f"Invoice {self.invoice.invoice_no}",
+                "payment_method": self.payment_method,
+                "original_amount": -total_amount,
+                "amount": -total_amount,
+                "remaining_amount": -total_amount,
+                "open": True,
+                "due_date": self.invoice.due_date,
+                "global_dimension_1": self.global_dimension_1_value,
+                "dimension_set": self.dimension_set_value,
+                "user": self.user,
+                "transaction_no": transaction_no,
+            }
+        )
+        if self.payment_method and self.payment_method.is_cash_payment():
+            self.vendor_entries.append(
+                {
+                    "posting_date": self.invoice.posting_date,
+                    "document_date": self.invoice.document_date,
+                    "document_type": DocumentType.Payment.value,
+                    "document_no": self.invoice.invoice_no,
+                    "external_document_no": self.invoice.invoice_no,
+                    "vendor_no": self.vendor.no,
+                    "vendor": self.vendor,
+                    "description": f"Invoice {self.invoice.invoice_no}",
+                    "payment_method": self.payment_method,
+                    "original_amount": total_amount,
+                    "amount": total_amount,
+                    "remaining_amount": total_amount,
+                    "open": False,
+                    "due_date": self.invoice.due_date,
+                    "global_dimension_1": self.global_dimension_1_value,
+                    "dimension_set": self.dimension_set_value,
+                    "user": self.user,
+                    "transaction_no": transaction_no,
+                }
+            )
+
+        vat_gl_entries = []
+        try:
+            from decimal import Decimal
+            from financials.models import GeneralLedgerSetup
+            from financials.vat import get_vat_posting_setup
+
+            gl_setup = GeneralLedgerSetup.objects.first()
+            total_vat = getattr(self.invoice, "total_vat_amount", None) or Decimal("0")
+            if (
+                gl_setup
+                and getattr(gl_setup, "vat_enabled", False)
+                and total_vat
+                and Decimal(str(total_vat)) > 0
+            ):
+                vat_bus = getattr(self.vendor, "vat_business_posting_group", None)
+                purchase_vat_account = None
+                for line in self.lines:
+                    vat_prod = self._vat_product_posting_group_for_line(line)
+                    setup = get_vat_posting_setup(vat_bus, vat_prod)
+                    if setup and setup.purchase_vat_account and getattr(line, "vat_amount", 0):
+                        purchase_vat_account = setup.purchase_vat_account
+                        break
+                if purchase_vat_account:
+                    vat_gl_entries.extend(
+                        [
+                            {
+                                "posting_date": self.invoice.posting_date,
+                                "document_type": "Invoice",
+                                "document_no": self.invoice.invoice_no,
+                                "gl_account": purchase_vat_account,
+                                "description": f"VAT Input {self.invoice.invoice_no}",
+                                "department_code": (
+                                    self.global_dimension_1_value.code
+                                    if self.global_dimension_1_value
+                                    else None
+                                ),
+                                "amount": int(Decimal(str(total_vat))),
+                                "gen_posting_type": "Purchase",
+                                "global_dimension_1": self.global_dimension_1_value,
+                                "gen_bus_posting_group": self.genBusinessPostingGroup,
+                                "gen_prod_posting_group": gen_prod_posting_group,
+                                "balance_account_type": BalacingAccountType.GLAccount.value,
+                                "user": self.user,
+                                "transaction_no": transaction_no,
+                            },
+                            {
+                                "posting_date": self.invoice.posting_date,
+                                "document_type": "Invoice",
+                                "document_no": self.invoice.invoice_no,
+                                "gl_account": payables_account,
+                                "description": f"VAT Input {self.invoice.invoice_no}",
+                                "department_code": (
+                                    self.global_dimension_1_value.code
+                                    if self.global_dimension_1_value
+                                    else None
+                                ),
+                                "amount": -int(Decimal(str(total_vat))),
+                                "gen_posting_type": "Purchase",
+                                "global_dimension_1": self.global_dimension_1_value,
+                                "gen_bus_posting_group": self.genBusinessPostingGroup,
+                                "gen_prod_posting_group": gen_prod_posting_group,
+                                "balance_account_type": BalacingAccountType.GLAccount.value,
+                                "user": self.user,
+                                "transaction_no": transaction_no,
+                            },
+                        ]
+                    )
+                    if not self.vat_entries:
+                        prices_incl = True
+                        for pline in self.lines:
+                            line_vat = Decimal(str(getattr(pline, "vat_amount", 0) or 0))
+                            if line_vat <= 0:
+                                continue
+                            vat_prod = self._vat_product_posting_group_for_line(pline)
+                            setup = get_vat_posting_setup(vat_bus, vat_prod)
+                            if not setup or not setup.purchase_vat_account:
+                                continue
+                            line_total = Decimal(str(pline.total_amount or 0))
+                            base = line_total - line_vat if prices_incl else line_total
+                            line_dim1 = getattr(pline, "global_dimension_1", None)
+                            vat_dim1 = line_dim1 or self.global_dimension_1_value
+                            gen_prod = None
+                            if pline.item:
+                                gen_prod = pline.item.general_product_posting_group
+                            elif pline.resource:
+                                gen_prod = pline.resource.general_product_posting_group
+                            self.vat_entries.append(
+                                {
+                                    "posting_date": self.invoice.posting_date,
+                                    "document_type": "Invoice",
+                                    "document_no": self.invoice.invoice_no,
+                                    "type": "Purchase",
+                                    "vat_business_posting_group": vat_bus,
+                                    "vat_product_posting_group": vat_prod,
+                                    "base": int(base),
+                                    "amount": int(line_vat),
+                                    "vat_percent": setup.vat_percent,
+                                    "vat_calculation_type": setup.vat_calculation_type or "Normal",
+                                    "vat_account": setup.purchase_vat_account,
+                                    "gen_bus_posting_group": self.genBusinessPostingGroup,
+                                    "gen_prod_posting_group": gen_prod,
+                                    "global_dimension_1": vat_dim1,
+                                    "transaction_no": transaction_no,
+                                    "user": self.user,
+                                }
+                            )
+        except Exception:
+            pass
+
+        self.gl_entries.extend(
+            [
+                {
+                    "posting_date": self.invoice.posting_date,
+                    "document_type": "Invoice",
+                    "document_no": self.invoice.invoice_no,
+                    "gl_account": payables_account,
+                    "description": f"Invoice {self.invoice.invoice_no}",
+                    "department_code": (
+                        self.global_dimension_1_value.code
+                        if self.global_dimension_1_value
+                        else None
+                    ),
+                    "amount": -total_amount,
+                    "gen_posting_type": "Purchase",
+                    "global_dimension_1": self.global_dimension_1_value,
+                    "gen_bus_posting_group": self.genBusinessPostingGroup,
+                    "gen_prod_posting_group": gen_prod_posting_group,
+                    "balance_account_type": BalacingAccountType.GLAccount.value,
+                    "user": self.user,
+                    "transaction_no": transaction_no,
+                }
+            ]
+        )
+        self.gl_entries.extend(vat_gl_entries)
+
+        if self.payment_method and self.payment_method.is_cash_payment() and bal_account:
+            self.gl_entries.extend(
+                [
+                    {
+                        "posting_date": self.invoice.posting_date,
+                        "document_type": "Payment",
+                        "document_no": self.invoice.invoice_no,
+                        "gl_account": bal_account,
+                        "description": f"Invoice {self.invoice.invoice_no}",
+                        "department_code": (
+                            self.global_dimension_1_value.code
+                            if self.global_dimension_1_value
+                            else None
+                        ),
+                        "amount": -total_amount,
+                        "gen_posting_type": "Purchase",
+                        "global_dimension_1": self.global_dimension_1_value,
+                        "gen_bus_posting_group": self.genBusinessPostingGroup,
+                        "gen_prod_posting_group": gen_prod_posting_group,
+                        "balance_account_type": BalacingAccountType.Vendor.value,
+                        "user": self.user,
+                        "transaction_no": transaction_no,
+                    },
+                    {
+                        "posting_date": self.invoice.posting_date,
+                        "document_type": "Payment",
+                        "document_no": self.invoice.invoice_no,
+                        "gl_account": payables_account,
+                        "description": f"Invoice {self.invoice.invoice_no}",
+                        "department_code": (
+                            self.global_dimension_1_value.code
+                            if self.global_dimension_1_value
+                            else None
+                        ),
+                        "amount": total_amount,
+                        "gen_posting_type": "Purchase",
+                        "global_dimension_1": self.global_dimension_1_value,
+                        "gen_bus_posting_group": self.genBusinessPostingGroup,
+                        "gen_prod_posting_group": gen_prod_posting_group,
+                        "balance_account_type": BalacingAccountType.GLAccount.value,
+                        "user": self.user,
+                        "transaction_no": transaction_no,
+                    },
+                ]
+            )
+
     def _validate_invoice(self):
         #  check if invoice has lines
         if not self.lines.exists():
@@ -448,8 +882,10 @@ class PurchaseInvoiceProcessor:
                     f"a cash or bank account on payment method '{payment_method_code}'."
                 )
 
-        # check if item requires tracking line
+        # check if item requires tracking line (item lines only)
         for line in self.lines:
+            if self._line_type(line) != "item" or not line.item:
+                continue
             tracking_requirements = line.item.requires_tracking_line
             # Skip validation if tracking is not required (when False is returned)
             if tracking_requirements is False:
@@ -549,6 +985,8 @@ class PurchaseInvoiceProcessor:
 
             items_lines = []
             for line in self.lines:
+                if self._line_type(line) != "item" or not line.item:
+                    continue
                 genProductPostingGroup = line.item.general_product_posting_group
                 quantity_per_iuom = line.item_unit_of_measure.quantity_per_unit
                 line_amt = line.line_amount
@@ -567,11 +1005,20 @@ class PurchaseInvoiceProcessor:
                     }
                 )
 
-            if len(items_lines) > 0:
+            has_item_lines = len(items_lines) > 0
+            has_any_lines = self.lines.exists()
+
+            if has_any_lines:
                 # Payables = gross (sum of line_amounts); inventory uses net via items_lines["amount"]
                 total_amount = sum(l.line_amount for l in self.lines)
+                gl_line_total = sum(
+                    l.line_amount
+                    for l in self.lines
+                    if self._line_type(l) == "gl_account"
+                )
+                purchase_account_total = total_amount - gl_line_total
                 print(
-                    f"Processing {len(items_lines)} items with total amount: {total_amount}"
+                    f"Processing {len(items_lines)} item lines with total amount: {total_amount}"
                 )
 
                 # Determine cash payment balancing account (applies to all items)
@@ -659,8 +1106,8 @@ class PurchaseInvoiceProcessor:
                         # Use existing G/L Account logic
                         bal_account = self.payment_method.bal_account_no
 
-                for item_line in items_lines:
-                    print(f"Processing item: {item_line['item'].item_name}")
+                for item_idx, item_line in enumerate(items_lines):
+                    is_last_item_line = item_idx == len(items_lines) - 1
                     general_posting_setup = GeneralPostingSetup.objects.filter(
                         general_product_posting_group=item_line[
                             "genProductPostingGroup"
@@ -1024,270 +1471,8 @@ class PurchaseInvoiceProcessor:
                         #     ]
                         # )
 
-                self.detailed_vendor_entries.extend(
-                    [
-                        {
-                            "posting_date": self.invoice.posting_date,
-                            "entry_type": "Initial Entry",
-                            "document_type": "Invoice",  # Match with vendor entry
-                            "document_no": self.invoice.invoice_no,
-                            "vendor_no": self.vendor.no,
-                            "vendor": self.vendor,
-                            "amount": -total_amount,
-                            "initial_entry_due_date": self.invoice.due_date,
-                            "credit_amount": total_amount,
-                            "debit_amount": 0,
-                            "transaction_no": transaction_no,
-                            "initial_document_type": "Invoice",
-                            "vendor_ledger_entry": "10001",
-                            "applied_vendor_ledger_entry": "0",
-                            "transaction_no": transaction_no,
-                        }
-                    ]
-                )
-                if self.payment_method and self.payment_method.is_cash_payment():
-                    # generate transcation no
-                    # transaction_no = f"P{self.invoice.invoice_no}-{self.invoice.posting_date.strftime('%Y%m%d')}-{self.invoice.id}"
-                    self.detailed_vendor_entries.extend(
-                        [
-                            # payment
-                            {
-                                "posting_date": self.invoice.posting_date,
-                                "entry_type": "Initial Entry",
-                                "document_type": "Payment",  # Match with vendor entry
-                                "document_no": self.invoice.invoice_no,
-                                "vendor_no": self.vendor.no,
-                                "vendor": self.vendor,
-                                "amount": total_amount,
-                                "initial_entry_due_date": self.invoice.due_date,
-                                "transaction_no": transaction_no,
-                                "debit_amount": total_amount,
-                                "credit_amount": 0,
-                                "initial_document_type": "Payment",
-                                "vendor_ledger_entry": "10002",
-                                "applied_vendor_ledger_entry": "0",
-                                "transaction_no": transaction_no,
-                            },
-                            #    application
-                            {
-                                "posting_date": self.invoice.posting_date,
-                                "entry_type": "Application",
-                                "document_type": "Payment",  # Match with vendor entry
-                                "document_no": self.invoice.invoice_no,
-                                "vendor_no": self.vendor.no,
-                                "vendor": self.vendor,
-                                "amount": total_amount,
-                                "initial_entry_due_date": self.invoice.due_date,
-                                "debit_amount": total_amount,
-                                "credit_amount": 0,
-                                "initial_document_type": "Invoice",
-                                "vendor_ledger_entry": "10001",
-                                "applied_vendor_ledger_entry": "10002",
-                                "transaction_no": transaction_no,
-                            },
-                            # application
-                            {
-                                "posting_date": self.invoice.posting_date,
-                                "entry_type": "Application",
-                                "document_type": "Payment",  # Match with vendor entry
-                                "document_no": self.invoice.invoice_no,
-                                "vendor_no": self.vendor.no,
-                                "vendor": self.vendor,
-                                "initial_document_type": "Payment",
-                                "debit_amount": 0,
-                                "credit_amount": total_amount,
-                                "vendor_ledger_entry": "10002",
-                                "applied_vendor_ledger_entry": "10002",
-                                "amount": -total_amount,
-                                "initial_entry_due_date": self.invoice.due_date,
-                                "transaction_no": transaction_no,
-                            },
-                        ]
-                    )
-
-                self.vendor_entries.append(
-                    {
-                        "posting_date": self.invoice.posting_date,
-                        "document_date": self.invoice.document_date,
-                        "document_type": DocumentType.Invoice.value,
-                        "document_no": self.invoice.invoice_no,
-                        "external_document_no": self.invoice.vendor_invoice_no,
-                        "vendor_no": self.vendor.no,
-                        "vendor": self.vendor,
-                        "description": f"Invoice {self.invoice.invoice_no}",
-                        "payment_method": self.payment_method,
-                        "original_amount": -total_amount,
-                        "amount": -total_amount,
-                        "remaining_amount": -total_amount,
-                        "open": True,
-                        "due_date": self.invoice.due_date,
-                        "global_dimension_1": self.global_dimension_1_value,
-                        "dimension_set": self.dimension_set_value,
-                        "user": self.user,
-                        "transaction_no": transaction_no,
-                    }
-                )
-
-                # Only add payment entry if payment method is cash
-                if self.payment_method and self.payment_method.is_cash_payment():
-                    self.vendor_entries.append(
-                        {
-                            "posting_date": self.invoice.posting_date,
-                            "document_date": self.invoice.document_date,
-                            "document_type": DocumentType.Payment.value,
-                            "document_no": self.invoice.invoice_no,
-                            "external_document_no": self.invoice.invoice_no,
-                            "vendor_no": self.vendor.no,
-                            "vendor": self.vendor,
-                            "description": f"Invoice {self.invoice.invoice_no}",
-                            "payment_method": self.payment_method,
-                            "original_amount": total_amount,
-                            "amount": total_amount,
-                            "remaining_amount": total_amount,  # Initially equal to amount
-                            "open": False,
-                            "due_date": self.invoice.due_date,
-                            "global_dimension_1": self.global_dimension_1_value,
-                            "dimension_set": self.dimension_set_value,
-                            "user": self.user,
-                            "transaction_no": transaction_no,
-                        }
-                    )
-
-                # VAT entries (when vat_enabled and total_vat_amount > 0)
-                vat_gl_entries = []
-                try:
-                    from decimal import Decimal
-                    from financials.models import GeneralLedgerSetup
-                    from financials.vat import get_vat_posting_setup
-
-                    gl_setup = GeneralLedgerSetup.objects.first()
-                    total_vat = getattr(self.invoice, "total_vat_amount", None) or Decimal("0")
-                    if (
-                        gl_setup
-                        and getattr(gl_setup, "vat_enabled", False)
-                        and total_vat
-                        and Decimal(str(total_vat)) > 0
-                    ):
-                        vat_bus = getattr(self.vendor, "vat_business_posting_group", None)
-                        purchase_vat_account = None
-                        for line in self.lines:
-                            vat_prod = getattr(line.item, "vat_product_posting_group", None) if line.item else None
-                            setup = get_vat_posting_setup(vat_bus, vat_prod)
-                            if setup and setup.purchase_vat_account and getattr(line, "vat_amount", 0):
-                                purchase_vat_account = setup.purchase_vat_account
-                                break
-                        if purchase_vat_account:
-                            vat_gl_entries.extend([
-                                {
-                                    "posting_date": self.invoice.posting_date,
-                                    "document_type": "Invoice",
-                                    "document_no": self.invoice.invoice_no,
-                                    "gl_account": purchase_vat_account,
-                                    "description": f"VAT Input {self.invoice.invoice_no}",
-                                    "department_code": (
-                                        self.global_dimension_1_value.code
-                                        if self.global_dimension_1_value
-                                        else None
-                                    ),
-                                    "amount": int(Decimal(str(total_vat))),
-                                    "gen_posting_type": "Purchase",
-                                    "global_dimension_1": self.global_dimension_1_value,
-                                    "gen_bus_posting_group": self.genBusinessPostingGroup,
-                                    "gen_prod_posting_group": item_line["genProductPostingGroup"],
-                                    "balance_account_type": BalacingAccountType.GLAccount.value,
-                                    "user": self.user,
-                                    "transaction_no": transaction_no,
-                                },
-                                {
-                                    "posting_date": self.invoice.posting_date,
-                                    "document_type": "Invoice",
-                                    "document_no": self.invoice.invoice_no,
-                                    "gl_account": payables_account,
-                                    "description": f"VAT Input {self.invoice.invoice_no}",
-                                    "department_code": (
-                                        self.global_dimension_1_value.code
-                                        if self.global_dimension_1_value
-                                        else None
-                                    ),
-                                    "amount": -int(Decimal(str(total_vat))),
-                                    "gen_posting_type": "Purchase",
-                                    "global_dimension_1": self.global_dimension_1_value,
-                                    "gen_bus_posting_group": self.genBusinessPostingGroup,
-                                    "gen_prod_posting_group": item_line["genProductPostingGroup"],
-                                    "balance_account_type": BalacingAccountType.GLAccount.value,
-                                    "user": self.user,
-                                    "transaction_no": transaction_no,
-                                },
-                            ])
-                            # Populate vat_entries subledger (BC-style, per-line) - only once
-                            if not self.vat_entries:
-                                # Amounts column is always inclusive of VAT when VAT is enabled
-                                prices_incl = True
-                                for pline in self.lines:
-                                    line_vat = Decimal(
-                                        str(getattr(pline, "vat_amount", 0) or 0)
-                                    )
-                                    if line_vat <= 0:
-                                        continue
-                                    vat_prod = (
-                                        getattr(
-                                            pline.item,
-                                            "vat_product_posting_group",
-                                            None,
-                                        )
-                                        if pline.item
-                                        else None
-                                    )
-                                    setup = get_vat_posting_setup(
-                                        vat_bus, vat_prod
-                                    )
-                                    if (
-                                        not setup
-                                        or not setup.purchase_vat_account
-                                    ):
-                                        continue
-                                    line_total = Decimal(
-                                        str(pline.total_amount or 0)
-                                    )
-                                    base = (
-                                        line_total - line_vat
-                                        if prices_incl
-                                        else line_total
-                                    )
-                                    # Use line dimension, then invoice, then user (ensure VAT entries get dimension)
-                                    line_dim1 = getattr(pline, "global_dimension_1", None)
-                                    vat_dim1 = line_dim1 or self.global_dimension_1_value
-                                    self.vat_entries.append(
-                                        {
-                                            "posting_date": self.invoice.posting_date,
-                                            "document_type": "Invoice",
-                                            "document_no": self.invoice.invoice_no,
-                                            "type": "Purchase",
-                                            "vat_business_posting_group": vat_bus,
-                                            "vat_product_posting_group": vat_prod,
-                                            "base": int(base),
-                                            "amount": int(line_vat),
-                                            "vat_percent": setup.vat_percent,
-                                            "vat_calculation_type": (
-                                                setup.vat_calculation_type
-                                                or "Normal"
-                                            ),
-                                            "vat_account": setup.purchase_vat_account,
-                                            "gen_bus_posting_group": self.genBusinessPostingGroup,
-                                            "gen_prod_posting_group": pline.item.general_product_posting_group
-                                            if pline.item
-                                            else item_line["genProductPostingGroup"],
-                                            "global_dimension_1": vat_dim1,
-                                            "transaction_no": transaction_no,
-                                            "user": self.user,
-                                        }
-                                    )
-                except Exception:
-                    pass
-
-                self.gl_entries.extend(
-                    [
-                        # debit purchase account
+                    # Debit purchase account for this item line (payables/vendor settled once on last line)
+                    self.gl_entries.append(
                         {
                             "posting_date": self.invoice.posting_date,
                             "document_type": "Invoice",
@@ -1299,95 +1484,65 @@ class PurchaseInvoiceProcessor:
                                 if self.global_dimension_1_value
                                 else None
                             ),
-                            "amount": total_amount,
+                            "amount": item_line["amount"],
                             "gen_posting_type": "Purchase",
                             "global_dimension_1": self.global_dimension_1_value,
                             "gen_bus_posting_group": self.genBusinessPostingGroup,
-                            "gen_prod_posting_group": item_line[
-                                "genProductPostingGroup"
-                            ],
+                            "gen_prod_posting_group": item_line["genProductPostingGroup"],
                             "balance_account_type": BalacingAccountType.GLAccount.value,
                             "user": self.user,
                             "transaction_no": transaction_no,
-                        },
-                        # credit payable account
-                        {
-                            "posting_date": self.invoice.posting_date,
-                            "document_type": "Invoice",
-                            "document_no": self.invoice.invoice_no,
-                            "gl_account": payables_account,
-                            "description": f"Invoice {self.invoice.invoice_no}",
-                            "department_code": (
-                                self.global_dimension_1_value.code
-                                if self.global_dimension_1_value
-                                else None
-                            ),
-                            "amount": -total_amount,
-                            "gen_posting_type": "Purchase",
-                            "global_dimension_1": self.global_dimension_1_value,
-                            "gen_bus_posting_group": self.genBusinessPostingGroup,
-                            "gen_prod_posting_group": item_line[
-                                "genProductPostingGroup"
-                            ],
-                            "balance_account_type": BalacingAccountType.GLAccount.value,
-                            "user": self.user,
-                            "transaction_no": transaction_no,
-                        },
-                    ]
-                )
-                self.gl_entries.extend(vat_gl_entries)
+                        }
+                    )
 
-                # Add payment entries in a separate extend if payment method is cash
-                if self.payment_method and self.payment_method.is_cash_payment():
-                    self.gl_entries.extend(
-                        [
-                            # payment credit payment account
-                            {
-                                "posting_date": self.invoice.posting_date,
-                                "document_type": "Payment",
-                                "document_no": self.invoice.invoice_no,
-                                "gl_account": bal_account,
-                                "description": f"Invoice {self.invoice.invoice_no}",
-                                "department_code": (
-                                    self.global_dimension_1_value.code
-                                    if self.global_dimension_1_value
-                                    else None
-                                ),
-                                "amount": -total_amount,
-                                "gen_posting_type": "Purchase",
-                                "global_dimension_1": self.global_dimension_1_value,
-                                "gen_bus_posting_group": self.genBusinessPostingGroup,
-                                "gen_prod_posting_group": item_line[
-                                    "genProductPostingGroup"
-                                ],
-                                "balance_account_type": BalacingAccountType.Vendor.value,
-                                "user": self.user,
-                                "transaction_no": transaction_no,
-                            },
-                            # payment debit payable account
-                            {
-                                "posting_date": self.invoice.posting_date,
-                                "document_type": "Payment",
-                                "document_no": self.invoice.invoice_no,
-                                "gl_account": payables_account,
-                                "description": f"Invoice {self.invoice.invoice_no}",
-                                "department_code": (
-                                    self.global_dimension_1_value.code
-                                    if self.global_dimension_1_value
-                                    else None
-                                ),
-                                "amount": total_amount,
-                                "gen_posting_type": "Purchase",
-                                "global_dimension_1": self.global_dimension_1_value,
-                                "gen_bus_posting_group": self.genBusinessPostingGroup,
-                                "gen_prod_posting_group": item_line[
-                                    "genProductPostingGroup"
-                                ],
-                                "balance_account_type": BalacingAccountType.GLAccount.value,
-                                "user": self.user,
-                                "transaction_no": transaction_no,
-                            },
-                        ]
+                    if is_last_item_line:
+                        self._append_invoice_settlement_entries(
+                            total_amount,
+                            transaction_no,
+                            payables_account,
+                            bal_account,
+                            item_line["genProductPostingGroup"],
+                        )
+
+                if has_item_lines:
+                    for line in self.lines:
+                        line_type = self._line_type(line)
+                        if line_type == "gl_account":
+                            self._append_gl_account_line_entries(
+                                line, transaction_no, use_net_for_cost
+                            )
+                        elif line_type == "resource":
+                            self._append_resource_line_entries(
+                                line, transaction_no, use_net_for_cost
+                            )
+
+                if not has_item_lines:
+                    payables_account = self.payables_account
+                    if not payables_account:
+                        raise Exception(
+                            f"Payables account is not set for vendor posting group "
+                            f"'{self.vendor.vendor_posting_group.code}'"
+                        )
+                    for line in self.lines:
+                        line_type = self._line_type(line)
+                        if line_type == "gl_account":
+                            self._append_gl_account_line_entries(
+                                line, transaction_no, use_net_for_cost
+                            )
+                        elif line_type == "resource":
+                            self._append_resource_line_entries(
+                                line, transaction_no, use_net_for_cost
+                            )
+                    gen_prod = None
+                    first_line = self.lines.first()
+                    if first_line:
+                        gen_prod = self._vat_product_posting_group_for_line(first_line)
+                    self._append_invoice_settlement_entries(
+                        total_amount,
+                        transaction_no,
+                        payables_account,
+                        bal_account,
+                        gen_prod,
                     )
 
             # Debug: Print what entries were generated
@@ -1830,7 +1985,10 @@ class PurchaseInvoicePostingProcessor:
                         line_gd2 = self.invoice.global_dimension_2
                     PostedPurchaseInvoiceLine.objects.create(
                         posted_purchase_invoice=posted_purchase_invoice,
+                        type=line.type,
                         item=line.item,
+                        resource=line.resource,
+                        gl_account=line.gl_account,
                         description=line.description,
                         location_code=line.location_code,
                         quantity=line.quantity,

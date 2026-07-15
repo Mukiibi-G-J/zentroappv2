@@ -18,11 +18,13 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("POPULATING PAGE OBJECTS"))
         self.stdout.write("=" * 80 + "\n")
 
-        # Get or create Page object type
+        # Get or create Page object type (lookup by unique code, not name)
         page_type, created = ObjectType.objects.get_or_create(
-            name="Page",
+            code="PAGE",
             defaults={
-                "description": "Application pages and routes that users can access"
+                "name": "Page",
+                "description": "Application pages and routes that users can access",
+                "sort_order": 2,
             },
         )
 

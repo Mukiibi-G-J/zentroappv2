@@ -133,6 +133,8 @@ ZENTRO_CUSTOM_PAGE_REGISTRY: dict[str, tuple[int, str]] = {
     'WarehouseRC': (50_303, 'inventory'),
     'CashierRC': (50_304, 'sales'),
     'RestaurantManagerRC': (50_305, 'restaurant'),
+    'OperationsManagerRC': (50_306, 'general'),
+    'PharmacistRC': (50_307, 'inventory'),
 }
 
 

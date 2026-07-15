@@ -217,3 +217,9 @@ curl -X PATCH "http://localhost:8000/api/settings/mobile/" \
       "copies": 1
     }
   }'
+
+
+
+python manage.py tenant_command seed_restaurant_module --schema=primewise
+python manage.py tenant_command seed_royal_joint_menu --schema=primewise
+python manage.py tenant_command seed_storms_cafe_menu --schema=primewise

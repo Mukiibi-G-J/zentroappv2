@@ -62,6 +62,34 @@ def _resolve_invoice_header_branch(request, table_orders: list):
     return branch
 
 
+def _unpaid_order_items_qs(restaurant_order, *, check_id=None):
+    """
+    Active (non-cancelled) lines that still need settlement.
+
+    Lines on a COMPLETED / CANCELLED check are treated as already paid.
+    ``check_id``:
+      - None → all unpaid lines
+      - "main" → unpaid lines with no restaurant_check
+      - int → unpaid lines on that RestaurantCheck
+    """
+    from restaurant_management.models import RestaurantCheck
+
+    qs = restaurant_order.order_items.exclude(status=OrderItemStatus.CANCELLED).exclude(
+        restaurant_check__status__in=[OrderStatus.COMPLETED, OrderStatus.CANCELLED]
+    )
+    if check_id is None:
+        return qs
+    if check_id == "main":
+        return qs.filter(restaurant_check__isnull=True)
+    try:
+        cid = int(check_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid check_id") from exc
+    if not RestaurantCheck.objects.filter(order=restaurant_order, id=cid).exists():
+        raise ValueError("Check not found on this order")
+    return qs.filter(restaurant_check_id=cid)
+
+
 def create_open_sales_invoice_from_restaurant_orders(
     request,
     table_orders: list,
@@ -69,10 +97,14 @@ def create_open_sales_invoice_from_restaurant_orders(
     location_to_use,
     *,
     combine_orders: bool = False,
+    check_id=None,
 ):
     """
     Build invoice lines from restaurant order items, link orders to the invoice,
-    and mark restaurant orders completed. Caller must resolve location and customer.
+    and mark restaurant orders completed when fully settled.
+
+    Optional ``check_id`` settles one split segment only (``"main"`` or a check pk).
+    Caller must resolve location and customer.
     """
     from dimension.models import get_merged_line_dimensions, get_posting_dimension_payload
     from items.models import ItemUnitOfMeasure
@@ -82,6 +114,7 @@ def create_open_sales_invoice_from_restaurant_orders(
         ProductionOrderPostingFromPreviewService,
         build_production_posting_preview,
     )
+    from restaurant_management.models import RestaurantCheck
     from sales.models import SalesInvoice, SalesInvoiceLine
 
     if not table_orders:
@@ -117,9 +150,11 @@ def create_open_sales_invoice_from_restaurant_orders(
     invoice.save()
 
     for restaurant_order in table_orders:
-        active_items = restaurant_order.order_items.exclude(
-            status=OrderItemStatus.CANCELLED
-        )
+        active_items = list(_unpaid_order_items_qs(restaurant_order, check_id=check_id))
+        if not active_items:
+            raise ValueError("No unpaid items found for this check")
+
+        settled_check_ids: set[int] = set()
         for order_item in active_items:
             item_uom = None
             if order_item.item.sales_unit_of_measure:
@@ -204,6 +239,51 @@ def create_open_sales_invoice_from_restaurant_orders(
                     raise
                 except Exception as e:
                     raise ProductionOrderPostingError(str(e)) from e
+
+            if order_item.restaurant_check_id:
+                settled_check_ids.add(order_item.restaurant_check_id)
+
+        # Mark settled split checks complete so they are not billed again.
+        main_items = [i for i in active_items if i.restaurant_check_id is None]
+        if check_id == "main" or (check_id is None and main_items):
+            main_check = RestaurantCheck.objects.create(
+                order=restaurant_order,
+                name="Main",
+                status=OrderStatus.COMPLETED,
+            )
+            for order_item in main_items:
+                order_item.restaurant_check = main_check
+                order_item.save(update_fields=["restaurant_check", "updated_at"])
+            main_check.subtotal_amount = sum(
+                (i.total_price for i in main_items), Decimal("0")
+            )
+            main_check.total_amount = main_check.subtotal_amount
+            main_check.save(
+                update_fields=["subtotal_amount", "total_amount", "updated_at"]
+            )
+        elif check_id is not None:
+            try:
+                cid = int(check_id)
+            except (TypeError, ValueError):
+                cid = None
+            if cid:
+                settled_check_ids.add(cid)
+
+        if settled_check_ids:
+            RestaurantCheck.objects.filter(
+                order=restaurant_order, id__in=settled_check_ids
+            ).update(status=OrderStatus.COMPLETED)
+
+        remaining = _unpaid_order_items_qs(restaurant_order, check_id=None)
+        if remaining.exists():
+            # Partial settle — keep order open for remaining sub-checks.
+            from django.db.models import Sum
+
+            restaurant_order.total_amount = (
+                remaining.aggregate(total=Sum("total_price")).get("total") or 0
+            )
+            restaurant_order.save(update_fields=["total_amount", "updated_at"])
+            continue
 
         restaurant_order.sales_invoice = invoice
         restaurant_order.status = OrderStatus.COMPLETED

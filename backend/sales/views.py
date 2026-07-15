@@ -136,7 +136,7 @@ def sales_history_detail(request):
       - start_date (YYYY-MM-DD, optional)
       - end_date (YYYY-MM-DD, optional)
     """
-    has_permission, source = request.user.check_object_permission(10004, "read")
+    has_permission, source = _check_sales_history_read_permission(request.user)
     if not has_permission:
         return Response(
             {"error": "Insufficient permissions", "reason": source},
@@ -198,6 +198,23 @@ def sales_history_detail(request):
 
 
 MIN_SALES_FAVORITES_GRID_SLOTS = 4
+
+
+def _check_sales_history_read_permission(user):
+    """
+    Sales History read access — align with page engine (PostedSalesInvoiceList / BC 9302).
+    Legacy populate_page_objects id 10004 is kept as fallback for older tenants.
+    """
+    from utils.page_access import user_has_any_page_access
+
+    if user_has_any_page_access(user, 'PostedSalesInvoiceList'):
+        return True, 'PostedSalesInvoiceList access'
+
+    for page_id in (10004,):
+        has_permission, source = user.check_object_permission(page_id, 'read')
+        if has_permission:
+            return True, source
+    return False, 'No matching permission found'
 
 
 def _parse_item_system_id(value):
@@ -691,26 +708,8 @@ class SalesViewSet(viewsets.ModelViewSet):
         if user_filter not in (None, ""):
             try:
                 user_filter_id = int(user_filter)
-                sales_invoice_no = (
-                    SalesInvoice.objects.filter(
-                        customer_invoice_no=OuterRef("customer_invoice_no"),
-                        customer_id=OuterRef("customer_id"),
-                    )
-                    .order_by("-id")
-                    .values("invoice_no")[:1]
-                )
-                invoice_user_id_subquery = (
-                    CustomerLedgerEntry.objects.filter(
-                        document_no=Subquery(sales_invoice_no),
-                        customer_id=OuterRef("customer_id"),
-                    )
-                    .order_by("-id")
-                    .values("user_id")[:1]
-                )
-                queryset = queryset.annotate(
-                    ledger_user_id=Subquery(
-                        invoice_user_id_subquery, output_field=models.IntegerField()
-                    )
+                queryset = SalesViewSet._annotate_posted_sales_invoice_ledger_links(
+                    queryset
                 ).filter(ledger_user_id=user_filter_id)
             except (TypeError, ValueError):
                 pass
@@ -729,6 +728,56 @@ class SalesViewSet(viewsets.ModelViewSet):
             queryset, request.user, request=request
         )
         return SalesViewSet._with_posted_sales_invoice_totals(queryset)
+
+    @staticmethod
+    def _annotate_posted_sales_invoice_ledger_links(queryset):
+        """Link PostedSalesInvoice → SalesInvoice → CustomerLedgerEntry (salesperson)."""
+        sales_invoice_no = (
+            SalesInvoice.objects.filter(
+                customer_invoice_no=OuterRef("customer_invoice_no"),
+                customer_id=OuterRef("customer_id"),
+            )
+            .order_by("-id")
+            .values("invoice_no")[:1]
+        )
+        sales_invoice_system_id = (
+            SalesInvoice.objects.filter(
+                customer_invoice_no=OuterRef("customer_invoice_no"),
+                customer_id=OuterRef("customer_id"),
+            )
+            .order_by("-id")
+            .values("system_id")[:1]
+        )
+        queryset = queryset.annotate(
+            linked_sales_invoice_no=Subquery(
+                sales_invoice_no, output_field=CharField()
+            ),
+            sales_invoice_system_id=Subquery(
+                sales_invoice_system_id, output_field=CharField()
+            ),
+        )
+        ledger_user_name = (
+            CustomerLedgerEntry.objects.filter(
+                customer_id=OuterRef("customer_id"),
+                document_no=OuterRef("linked_sales_invoice_no"),
+            )
+            .order_by("-id")
+            .values("user__full_name")[:1]
+        )
+        ledger_user_id = (
+            CustomerLedgerEntry.objects.filter(
+                customer_id=OuterRef("customer_id"),
+                document_no=OuterRef("linked_sales_invoice_no"),
+            )
+            .order_by("-id")
+            .values("user_id")[:1]
+        )
+        return queryset.annotate(
+            user_name=Subquery(ledger_user_name, output_field=CharField()),
+            ledger_user_id=Subquery(
+                ledger_user_id, output_field=models.IntegerField()
+            ),
+        )
 
     @staticmethod
     def _with_reverse_metadata(queryset):
@@ -853,7 +902,7 @@ class SalesViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="summary")
     def summary(self, request, *args, **kwargs):
         """Return aggregated totals for Sales History (PostedSalesInvoice archive)."""
-        has_permission, source = request.user.check_object_permission(10004, "read")
+        has_permission, source = _check_sales_history_read_permission(request.user)
         if not has_permission:
             return Response(
                 {
@@ -992,8 +1041,13 @@ class SalesViewSet(viewsets.ModelViewSet):
         )
 
     def _check_home_snapshot_permission(self, request):
-        """Sales Dashboard (10001) or Sales History (10004) read access."""
-        source = "permission_denied"
+        """Sales Dashboard or Posted Sales History read access."""
+        from utils.page_access import user_has_any_page_access
+
+        if user_has_any_page_access(request.user, 'PostedSalesInvoiceList'):
+            return True, 'PostedSalesInvoiceList access'
+
+        source = 'permission_denied'
         for page_id in (10001, 10004):
             has_permission, source = request.user.check_object_permission(
                 page_id, "read"

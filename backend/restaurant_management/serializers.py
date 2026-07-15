@@ -1,7 +1,7 @@
 from django.db.models import Max
 from rest_framework import serializers
 from . import models
-from .enums import OrderItemStatus
+from .enums import OrderItemStatus, OrderStatus
 from .order_guards import CLOSED_ORDER_ERROR, order_is_closed
 from items.models import ItemImages, Item
 from items.serializers import ImageSerializers
@@ -246,6 +246,7 @@ class MenuItemSerializer(serializers.ModelSerializer):
         model = models.MenuItem
         fields = [
             "id",
+            "system_id",
             "item",
             "item_no",
             "item_name",
@@ -271,7 +272,7 @@ class MenuItemSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["created_at", "updated_at"]
+        read_only_fields = ["system_id", "created_at", "updated_at"]
 
     def create(self, validated_data):
         instance = models.MenuItem(**validated_data)
@@ -389,7 +390,9 @@ class RestaurantOrderSerializer(serializers.ModelSerializer):
 
     def get_active_checks(self, obj):
         return list(
-            obj.checks.filter(is_voided=False).values(
+            obj.checks.filter(is_voided=False)
+            .exclude(status__in=[OrderStatus.COMPLETED, OrderStatus.CANCELLED])
+            .values(
                 "id",
                 "name",
                 "status",
