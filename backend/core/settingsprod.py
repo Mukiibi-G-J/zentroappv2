@@ -67,7 +67,9 @@ CSRF_TRUSTED_ORIGINS = [
 SHARED_APPS = [
     "anymail",
     "django_tenants",  #! Third Party app mandatory
-    "django.contrib.admin",
+    # auth + authentication + permissions must be shared because company
+    # (SHARED) FKs to CustomUser, and UserGroup M2M needs permissions.
+    # django.contrib.admin stays TENANT-only (avoids public admin LogEntry FKs).
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -88,9 +90,11 @@ SHARED_APPS = [
     "django_celery_beat",
     #! Custom apps
     "dimension",
+    "permissions",
+    "pages",  # authentication.ApplicationProfile FKs to pages.Page
+    "authentication",
     "company",
     "home",
-    # "authentication",  # Moved to TENANT_APPS only due to UserGroup referencing permissions
     "setup",
     "common",
     "base",  # Objects and ObjectTypes (shared registry)
