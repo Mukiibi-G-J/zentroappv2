@@ -135,3 +135,18 @@ class DownloadLatestAndroidView(APIView):
         )
         download_url = _resolve_download_url(request, version)
         return redirect(download_url)
+
+
+class DownloadLatestWindowsView(APIView):
+    """Public redirect to the latest active Windows desktop installer."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        version = (
+            AppVersion.objects.filter(is_active=True, platform="windows")
+            .order_by("-build_number")
+            .first()
+        )
+        download_url = _resolve_download_url(request, version)
+        return redirect(download_url)

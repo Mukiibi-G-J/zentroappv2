@@ -7,6 +7,9 @@ from .storage import AppVersionAPKStorage
 PLATFORM_CHOICES = [
     ("android", "Android"),
     ("ios", "iOS"),
+    ("windows", "Windows"),
+    ("macos", "macOS"),
+    ("linux", "Linux"),
     ("all", "All platforms"),
 ]
 
@@ -54,15 +57,16 @@ class AppVersion(models.Model):
         blank=True,
         null=True,
         help_text=(
-            "Upload the APK directly to AWS S3. "
+            "Upload the installer/APK to AWS S3 (Android APK or Windows .exe). "
             "Leave blank if using an external download_url."
         ),
     )
     download_url = models.URLField(
         blank=True,
         help_text=(
-            "External download or landing page URL. "
-            "If apk_file is set, the APK file URL is used first. "
+            "External download or landing page URL "
+            "(GitHub release, CDN, etc.). "
+            "If apk_file is set, the uploaded file URL is used first. "
             "If both blank, falls back to settings.APP_LANDING_PAGE_URL."
         ),
     )
