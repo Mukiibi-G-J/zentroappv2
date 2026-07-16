@@ -1,0 +1,170 @@
+ 
+ -------------- celery@ubuntu-s-1vcpu-2gb-fra1-01 v5.4.0 (opalescent)
+--- ***** ----- 
+-- ******* ---- Linux-5.15.0-161-generic-x86_64-with-glibc2.35 2026-07-15 17:13:41
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         core:0x7f999937fdd0
+- ** ---------- .> transport:   redis://127.0.0.1:6379/4
+- ** ---------- .> results:     
+- *** --- * --- .> concurrency: 1 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> celery           exchange=celery(direct) key=celery
+                
+
+[tasks]
+  . authentication.tasks.send_low_stock_push_alerts
+  . authentication.tasks.send_push_notification_task
+  . base.tasks.database_backup_task
+  . company.tasks.create_company_task
+  . company.tasks.generate_pending_receipts
+  . company.tasks.import_initial_data_task
+  . company.tasks.send_billing_expiry_10day_reminders
+  . company.tasks.send_billing_expiry_reminders_custom
+  . company.tasks.send_company_creation_admin_sms_task
+  . company.tasks.send_company_creation_completion_email_task
+  . company.tasks.send_grace_period_payment_reminders
+  . company.tasks.send_installment_reminders
+  . company.tasks.send_newsletter_task
+  . company.tasks.send_overdue_notices
+  . company.tasks.send_trial_end_reminders
+  . config_packages.tasks.import_tables_background
+  . items.tasks.calculate_inventory_task
+  . items.tasks.export_items_task
+  . items.tasks.export_stock_taking_task
+  . items.tasks.import_stock_taking_task
+  . items.tasks.post_item_journals_async
+  . items.tasks.process_item_import
+  . items.tasks.process_journal_import
+
+
+worker: Warm shutdown (MainProcess)
+ 
+ -------------- celery@ubuntu-s-1vcpu-2gb-fra1-01 v5.4.0 (opalescent)
+--- ***** ----- 
+-- ******* ---- Linux-5.15.0-161-generic-x86_64-with-glibc2.35 2026-07-16 06:27:41
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         core:0x7f62727f9130
+- ** ---------- .> transport:   redis://127.0.0.1:6379/4
+- ** ---------- .> results:     
+- *** --- * --- .> concurrency: 1 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> celery           exchange=celery(direct) key=celery
+                
+
+[tasks]
+  . authentication.tasks.send_low_stock_push_alerts
+  . authentication.tasks.send_push_notification_task
+  . base.tasks.database_backup_task
+  . company.tasks.create_company_task
+  . company.tasks.generate_pending_receipts
+  . company.tasks.import_initial_data_task
+  . company.tasks.send_billing_expiry_10day_reminders
+  . company.tasks.send_billing_expiry_reminders_custom
+  . company.tasks.send_company_creation_admin_sms_task
+  . company.tasks.send_company_creation_completion_email_task
+  . company.tasks.send_grace_period_payment_reminders
+  . company.tasks.send_installment_reminders
+  . company.tasks.send_newsletter_task
+  . company.tasks.send_overdue_notices
+  . company.tasks.send_trial_end_reminders
+  . config_packages.tasks.import_tables_background
+  . items.tasks.calculate_inventory_task
+  . items.tasks.export_items_task
+  . items.tasks.export_stock_taking_task
+  . items.tasks.import_stock_taking_task
+  . items.tasks.post_item_journals_async
+  . items.tasks.process_item_import
+  . items.tasks.process_journal_import
+
+
+worker: Warm shutdown (MainProcess)
+ 
+ -------------- celery@ubuntu-s-1vcpu-2gb-fra1-01 v5.4.0 (opalescent)
+--- ***** ----- 
+-- ******* ---- Linux-5.15.0-161-generic-x86_64-with-glibc2.35 2026-07-16 08:10:32
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         core:0x7fd7a4a44f50
+- ** ---------- .> transport:   redis://127.0.0.1:6379/4
+- ** ---------- .> results:     
+- *** --- * --- .> concurrency: 1 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> celery           exchange=celery(direct) key=celery
+                
+
+[tasks]
+  . authentication.tasks.send_low_stock_push_alerts
+  . authentication.tasks.send_push_notification_task
+  . base.tasks.database_backup_task
+  . company.tasks.create_company_task
+  . company.tasks.generate_pending_receipts
+  . company.tasks.import_initial_data_task
+  . company.tasks.send_billing_expiry_10day_reminders
+  . company.tasks.send_billing_expiry_reminders_custom
+  . company.tasks.send_company_creation_admin_sms_task
+  . company.tasks.send_company_creation_completion_email_task
+  . company.tasks.send_grace_period_payment_reminders
+  . company.tasks.send_installment_reminders
+  . company.tasks.send_newsletter_task
+  . company.tasks.send_overdue_notices
+  . company.tasks.send_trial_end_reminders
+  . config_packages.tasks.import_tables_background
+  . items.tasks.calculate_inventory_task
+  . items.tasks.export_items_task
+  . items.tasks.export_stock_taking_task
+  . items.tasks.import_stock_taking_task
+  . items.tasks.post_item_journals_async
+  . items.tasks.process_item_import
+  . items.tasks.process_journal_import
+
+
+worker: Warm shutdown (MainProcess)
+ 
+ -------------- celery@ubuntu-s-1vcpu-2gb-fra1-01 v5.4.0 (opalescent)
+--- ***** ----- 
+-- ******* ---- Linux-5.15.0-161-generic-x86_64-with-glibc2.35 2026-07-16 09:20:15
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         core:0x7f00f6a15220
+- ** ---------- .> transport:   redis://127.0.0.1:6379/4
+- ** ---------- .> results:     
+- *** --- * --- .> concurrency: 1 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> celery           exchange=celery(direct) key=celery
+                
+
+[tasks]
+  . authentication.tasks.send_low_stock_push_alerts
+  . authentication.tasks.send_push_notification_task
+  . base.tasks.database_backup_task
+  . company.tasks.create_company_task
+  . company.tasks.generate_pending_receipts
+  . company.tasks.import_initial_data_task
+  . company.tasks.send_billing_expiry_10day_reminders
+  . company.tasks.send_billing_expiry_reminders_custom
+  . company.tasks.send_company_creation_admin_sms_task
+  . company.tasks.send_company_creation_completion_email_task
+  . company.tasks.send_grace_period_payment_reminders
+  . company.tasks.send_installment_reminders
+  . company.tasks.send_newsletter_task
+  . company.tasks.send_overdue_notices
+  . company.tasks.send_trial_end_reminders
+  . config_packages.tasks.import_tables_background
+  . items.tasks.calculate_inventory_task
+  . items.tasks.export_items_task
+  . items.tasks.export_stock_taking_task
+  . items.tasks.import_stock_taking_task
+  . items.tasks.post_item_journals_async
+  . items.tasks.process_item_import
+  . items.tasks.process_journal_import
+

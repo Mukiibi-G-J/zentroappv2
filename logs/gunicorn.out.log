@@ -1,0 +1,64 @@
+Error loading user groups: relation "authentication_usergroup" does not exist
+LINE 1: ..._id", "authentication_usergroup"."is_active" FROM "authentic...
+                                                             ^
+
+Error loading permission sets: relation "authentication_usergroup" does not exist
+LINE 1: ..._id", "authentication_usergroup"."is_active" FROM "authentic...
+                                                             ^
+
+Error loading roles and role center modules: relation "authentication_usergroup" does not exist
+LINE 1: ..._id", "authentication_usergroup"."is_active" FROM "authentic...
+                                                             ^
+
+Error loading user setup: relation "authentication_usersetup" does not exist
+LINE 1: ...r_sales", "authentication_usersetup"."notes" FROM "authentic...
+                                                             ^
+
+Error loading user groups: relation "authentication_usergroup" does not exist
+LINE 1: ..._id", "authentication_usergroup"."is_active" FROM "authentic...
+                                                             ^
+
+Error loading permission sets: relation "authentication_usergroup" does not exist
+LINE 1: ..._id", "authentication_usergroup"."is_active" FROM "authentic...
+                                                             ^
+
+Error loading roles and role center modules: relation "authentication_usergroup" does not exist
+LINE 1: ..._id", "authentication_usergroup"."is_active" FROM "authentic...
+                                                             ^
+
+Error loading user setup: relation "authentication_usersetup" does not exist
+LINE 1: ...r_sales", "authentication_usersetup"."notes" FROM "authentic...
+                                                             ^
+
+Error loading user groups: relation "authentication_usergroup" does not exist
+LINE 1: ..._id", "authentication_usergroup"."is_active" FROM "authentic...
+                                                             ^
+
+Error loading permission sets: relation "authentication_usergroup" does not exist
+LINE 1: ..._id", "authentication_usergroup"."is_active" FROM "authentic...
+                                                             ^
+
+Error loading roles and role center modules: relation "authentication_usergroup" does not exist
+LINE 1: ..._id", "authentication_usergroup"."is_active" FROM "authentic...
+                                                             ^
+
+Error loading user setup: relation "authentication_usersetup" does not exist
+LINE 1: ...r_sales", "authentication_usersetup"."notes" FROM "authentic...
+                                                             ^
+
+Error loading user groups: relation "authentication_usergroup" does not exist
+LINE 1: ..._id", "authentication_usergroup"."is_active" FROM "authentic...
+                                                             ^
+
+Error loading permission sets: relation "authentication_usergroup" does not exist
+LINE 1: ..._id", "authentication_usergroup"."is_active" FROM "authentic...
+                                                             ^
+
+Error loading roles and role center modules: relation "authentication_usergroup" does not exist
+LINE 1: ..._id", "authentication_usergroup"."is_active" FROM "authentic...
+                                                             ^
+
+Error loading user setup: relation "authentication_usersetup" does not exist
+LINE 1: ...r_sales", "authentication_usersetup"."notes" FROM "authentic...
+                                                             ^
+

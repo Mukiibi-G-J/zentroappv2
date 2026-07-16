@@ -18,7 +18,11 @@ Tick items per environment: **staging first**, then **production**.
 
 
 
-**[00-restore-production-db-playbook.md](./00-restore-production-db-playbook.md)** — full replay checklist and copy-paste commands. Run this **every time** you restore a dump from production into local/dev (or before go-live).
+**[00-restore-production-db-playbook.md](./00-restore-production-db-playbook.md)** — migrate / sequences / repairs. Run this **every time** you restore a dump.
+
+
+
+**[11-restore-to-v2-ui-checklist.md](./11-restore-to-v2-ui-checklist.md)** — Role Centre, domains, Origin login, nginx JWT, subscription. **Required** if the Next.js frontend should work after restore (empty sidebar / wrong user without this).
 
 
 
@@ -55,9 +59,11 @@ Tick items per environment: **staging first**, then **production**.
 
 | 10 | Safe `authentication.0020` DevicePushToken index rename (restore blocker) | ✅ Code · ✅ local | [10-auth-0020-safe-index-rename.md](./10-auth-0020-safe-index-rename.md) |
 
+| 11 | **After restore → V2 web UI** (Role Centre, Origin tenant, nginx JWT, subscription) | 📋 Use every restore | [11-restore-to-v2-ui-checklist.md](./11-restore-to-v2-ui-checklist.md) |
 
 
-Add new todos as `11-….md` in **this folder** and link them in the table above.
+
+Add new todos as `12-….md` in **this folder** and link them in the table above.
 
 
 
@@ -75,11 +81,13 @@ Add new todos as `11-….md` in **this folder** and link them in the table above
 
 3. **Pilot tenant** (e.g. `primewise`): [08-primewise-v2-readiness.md](./08-primewise-v2-readiness.md) — includes `seed_pages` + BC permissions (required for V2 UI).
 
-4. Complete data todos (01, ledger cleanup) + remaining tenants the same way as 08.
+4. **V2 web UI after restore** (Role Centre, domains, Origin login, nginx JWT, subscription): [11-restore-to-v2-ui-checklist.md](./11-restore-to-v2-ui-checklist.md) — **required** whenever you restore into another DB and expect the frontend to work.
 
-5. **New company signup speed:** rebuild pre-seeded template per [09-preseeded-zentro-template.md](./09-preseeded-zentro-template.md).
+5. Complete data todos (01, ledger cleanup) + remaining tenants the same way as 08 + 11.
 
-6. Smoke test per tenant (payments, posting, permissions, admin login, Role Centre).
+6. **New company signup speed:** rebuild pre-seeded template per [09-preseeded-zentro-template.md](./09-preseeded-zentro-template.md).
+
+7. Smoke test per tenant (payments, posting, permissions, admin login, Role Centre).
 
 
 

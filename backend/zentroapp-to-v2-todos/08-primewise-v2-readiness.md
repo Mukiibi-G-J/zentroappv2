@@ -38,6 +38,47 @@ Take one real production schema (`primewise`) through every V2 gap. When this is
 - [ ] Optional: `populate_page_objects` (legacy module IDs) — not required if navigating via page engine; Windows console may need `PYTHONIOENCODING=utf-8`
 - [ ] Smoke: login `primewise.localhost`, Role Centre, Item/Customer/Vendor lists, Apply Entries
 
+### D. Role Centre (sidebar nav + dashboard)
+
+Required for V2 web UI (`/api/auth/me/` → `navItems`, `/api/pages/` → resolve nav targets).
+
+- [x] `seed_pages` creates Role Centre pages (`BusinessManagerRC`, etc.) + `NavItem` actions
+- [x] `authentication_applicationprofile.role_centre_page_id` points at **tenant** `page_engine_page` (not `public`)
+  - After restore: drop/re-add FK if it references `public.page_engine_page`
+- [x] Backfill `UserPersonalization` for every user (default profile `BUSINESS-MGR`)
+- [x] `setup_page_permissions` (nav is filtered by page access for non-superusers)
+- [x] Tenant subscription **active** (`SubscriptionCheckMiddleware` blocks `/api/pages/` with **402** when expired — sidebar shows *“No navigation for your role”* even when `auth/me` returns nav)
+- [x] Nginx `large_client_header_buffers` ≥ **64k** — Admin JWTs with embedded `page_permissions` were ~19KB and nginx returned **400 Request Header Or Cookie Too Large** (empty sidebar / “User”)
+- [x] Slim JWT for super users: omit full `page_permissions` map from token claims (`authentication/serializers.py`)
+- [x] Apex API tenant from frontend **Origin** (`TenantJWTMiddleware`) — login to `zentroapp-api...` without this authenticated the **public** user (same email), so Role Centre/nav were empty
+- [x] Login response includes `build_auth_session_payload` (navItems + roleCentrePageId)
+- [ ] Smoke: **Sign out + sign in** on `primewise.zentroapp.uncodedsolutions.com` as `mukiibijoseph19@gmail.com` → sidebar nav + Business Manager Role Centre (not public-schema “User”)
+
+**Backfill personalization (bash, from `backend/`):**
+
+```bash
+python manage.py shell --settings=core.settingsprod <<'PY'
+from django_tenants.utils import schema_context
+from authentication.models import CustomUser, UserPersonalization, ApplicationProfile
+
+with schema_context('primewise'):
+    default = ApplicationProfile.objects.filter(code='BUSINESS-MGR').first()
+    for u in CustomUser.objects.all():
+        p, created = UserPersonalization.objects.get_or_create(
+            user=u,
+            defaults={
+                'role': default,
+                'created_by': u.full_name or u.username or u.email,
+                'modified_by': u.full_name or u.username or u.email,
+            },
+        )
+        if not created and not p.role_id and default:
+            p.role = default
+            p.save(update_fields=['role'])
+    print('personalizations', UserPersonalization.objects.count())
+PY
+```
+
 ---
 
 ## Copy-paste (PowerShell, from `backend/`)
@@ -64,7 +105,24 @@ python manage.py tenant_command setup_page_permissions --schema=primewise
 python manage.py clear_invalid_ledger_applies_to_ids --schema=primewise
 python manage.py tenant_command backfill_entry_dimensions --schema=primewise --first-branch
 
-# 5) Verify
+# 5) Role Centre — personalization + verify subscription active for /api/pages/
+python manage.py shell --settings=core.settingsprod <<'PY'
+from django_tenants.utils import schema_context
+from authentication.models import CustomUser, UserPersonalization, ApplicationProfile
+with schema_context('primewise'):
+    default = ApplicationProfile.objects.filter(code='BUSINESS-MGR').first()
+    for u in CustomUser.objects.all():
+        p, _ = UserPersonalization.objects.get_or_create(
+            user=u,
+            defaults={'role': default, 'created_by': u.email, 'modified_by': u.email},
+        )
+        if not p.role_id and default:
+            p.role, p.modified_by = default, u.email
+            p.save(update_fields=['role', 'modified_by'])
+    print('personalizations', UserPersonalization.objects.count())
+PY
+
+# 6) Verify
 python scripts/_assess_primewise_v2.py
 ```
 
@@ -81,6 +139,10 @@ python scripts/_assess_primewise_v2.py
 | `sales_customerledgerentry.applies_to_id` | column exists |
 | Payment rows with `applies_to_id` set | **0** |
 | BC permission sets | updated via `setup_page_permissions` |
+| `ApplicationProfile` → RC page | all profiles have `role_centre_page_id` on tenant `page_engine_page` |
+| `UserPersonalization` rows | **one per user** (default `BUSINESS-MGR`) |
+| `GET /api/auth/me/` (authenticated) | `roleCentrePageId` set, `navItems` non-empty for Admin/Business Manager |
+| `GET /api/pages/` (authenticated) | **200** — subscription must be active (not 402) |
 
 Helper: `scripts/_assess_primewise_v2.py`
 
@@ -91,14 +153,21 @@ Helper: `scripts/_assess_primewise_v2.py`
 | Gap | Why it matters |
 |-----|----------------|
 | **`seed_pages`** | V2 dynamic UI / Role Centre; empty `page_engine_*` after migrate alone |
+| **Role Centre FK + personalization** | `ApplicationProfile.role_centre_page` must reference tenant pages; users need `UserPersonalization.role` |
+| **Active subscription** | Expired sub blocks `/api/pages/` (402) → empty sidebar despite `auth/me` nav |
+| **Nginx 64k + slim JWT** | Admin `page_permissions` in JWT → 400 Header Too Large |
+| **Origin → tenant** | Apex API login without Origin used **public** user (same email) |
 | **BC `setup_page_permissions`** | Permission lines use page-engine object IDs (1000 + BC page id) |
 | **Primewise-only migrate** | Faster iteration than migrating all 30+ tenants first |
 | **`authentication.0020` safe RenameIndex** | Shared migrate failed on restored public when old `auth_devpush_*` indexes missing |
+
+Full replay for another DB: **[11-restore-to-v2-ui-checklist.md](./11-restore-to-v2-ui-checklist.md)**
 
 ---
 
 ## Related
 
+- **Replay on another DB / tenant:** [11-restore-to-v2-ui-checklist.md](./11-restore-to-v2-ui-checklist.md) (full UI checklist)
 - Playbook: [00-restore-production-db-playbook.md](./00-restore-production-db-playbook.md)
 - Sequences: [03-pg-sequence-reset-after-restore.md](./03-pg-sequence-reset-after-restore.md)
 - Payment applies-to: [01-payment-ledger-applies-to-id.md](./01-payment-ledger-applies-to-id.md)
@@ -118,4 +187,10 @@ Helper: `scripts/_assess_primewise_v2.py`
 | Pages after seed | **130** rows (`102` with BC `object_id`) |
 | Permission sets | **42** after BC setup |
 | Dimension `--first-branch` | **No row updates** (existing branches intact) |
+| Role Centre | **10** profiles → RC pages; **14/14** users have personalization |
+| Subscription (pilot) | Extended to **2026-09-14** so `/api/pages/` is not 402 |
+| Domains | Remapped to `*.zentroapp-api.uncodedsolutions.com` |
+| Nginx | `large_client_header_buffers 4 64k` on live + deploy template |
+| Origin tenant | Apex API login uses frontend Origin → tenant schema |
+| Same-email gotcha | `mukiibijoseph19@gmail.com` exists in **public** and **primewise** — must login via tenant Origin |
 | Other tenants | Still need migrate / `system_id` repair (not in pilot scope) |

@@ -378,8 +378,15 @@ class AuthTokenViewSerializer(TokenObtainPairSerializer):
             from permissions.services.super_permission_set import user_has_super_permission
 
             page_permissions = page_permissions_from_user_groups(user)
-            token["page_permissions"] = page_permissions
-            token["has_super_permission"] = user_has_super_permission(user)
+            has_super = user_has_super_permission(user)
+            token["has_super_permission"] = has_super
+            # Full page_permissions maps make JWTs ~15–20KB and nginx rejects
+            # Authorization headers (400 Request Header Or Cookie Too Large).
+            # Super / SUPER users already bypass page checks via has_super_permission.
+            if has_super or getattr(user, "is_superuser", False):
+                token["page_permissions"] = {}
+            else:
+                token["page_permissions"] = page_permissions
             token["role_center_modules"] = (
                 merge_role_center_modules_with_page_derived_visible_modules(
                     token.get("role_center_modules") or [],

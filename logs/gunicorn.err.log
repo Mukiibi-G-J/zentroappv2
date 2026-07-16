@@ -1,0 +1,109 @@
+[2026-07-15 14:13:07 +0000] [129050] [INFO] Starting gunicorn 23.0.0
+[2026-07-15 14:13:07 +0000] [129050] [INFO] Listening at: http://127.0.0.1:8002 (129050)
+[2026-07-15 14:13:07 +0000] [129050] [INFO] Using worker: sync
+[2026-07-15 14:13:07 +0000] [129051] [INFO] Booting worker with pid: 129051
+[2026-07-15 14:13:07 +0000] [129052] [INFO] Booting worker with pid: 129052
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+[2026-07-15 16:30:09 +0000] [129050] [CRITICAL] WORKER TIMEOUT (pid:129051)
+[2026-07-15 19:30:09 +0300] [129051] [ERROR] Error handling request (no URI read)
+Traceback (most recent call last):
+  File "/root/projects/zentro-appv2/env/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 133, in handle
+    req = next(parser)
+          ^^^^^^^^^^^^
+  File "/root/projects/zentro-appv2/env/lib/python3.12/site-packages/gunicorn/http/parser.py", line 41, in __next__
+    self.mesg = self.mesg_class(self.cfg, self.unreader, self.source_addr, self.req_count)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/projects/zentro-appv2/env/lib/python3.12/site-packages/gunicorn/http/message.py", line 259, in __init__
+    super().__init__(cfg, unreader, peer_addr)
+  File "/root/projects/zentro-appv2/env/lib/python3.12/site-packages/gunicorn/http/message.py", line 60, in __init__
+    unused = self.parse(self.unreader)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/projects/zentro-appv2/env/lib/python3.12/site-packages/gunicorn/http/message.py", line 274, in parse
+    line, rbuf = self.read_line(unreader, buf, self.limit_request_line)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/projects/zentro-appv2/env/lib/python3.12/site-packages/gunicorn/http/message.py", line 326, in read_line
+    self.get_data(unreader, buf)
+  File "/root/projects/zentro-appv2/env/lib/python3.12/site-packages/gunicorn/http/message.py", line 262, in get_data
+    data = unreader.read()
+           ^^^^^^^^^^^^^^^
+  File "/root/projects/zentro-appv2/env/lib/python3.12/site-packages/gunicorn/http/unreader.py", line 36, in read
+    d = self.chunk()
+        ^^^^^^^^^^^^
+  File "/root/projects/zentro-appv2/env/lib/python3.12/site-packages/gunicorn/http/unreader.py", line 63, in chunk
+    return self.sock.recv(self.mxchunk)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/projects/zentro-appv2/env/lib/python3.12/site-packages/gunicorn/workers/base.py", line 204, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-07-15 19:30:09 +0300] [129051] [INFO] Worker exiting (pid: 129051)
+[2026-07-15 16:30:10 +0000] [129050] [ERROR] Worker (pid:129051) was sent SIGKILL! Perhaps out of memory?
+[2026-07-15 16:30:10 +0000] [136136] [INFO] Booting worker with pid: 136136
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+[2026-07-15 19:34:06 +0300] [129052] [WARNING] Invalid request from ip=127.0.0.1: Invalid HTTP method: '\x16\x03\x01\x07\x18\x01\x00\x07\x14\x03\x03\x93¯\x95BÝ³\x81\x89j±\x90p\x85\x9b\x88\x04\x0ekÍ\x0ca\x11Ð?Fâ°uL5\x9f^'
+[2026-07-16 03:26:58 +0000] [129050] [INFO] Handling signal: term
+[2026-07-16 06:26:58 +0300] [136136] [INFO] Worker exiting (pid: 136136)
+[2026-07-16 06:26:58 +0300] [129052] [INFO] Worker exiting (pid: 129052)
+[2026-07-16 03:27:04 +0000] [129050] [INFO] Shutting down: Master
+[2026-07-16 03:27:19 +0000] [157291] [INFO] Starting gunicorn 23.0.0
+[2026-07-16 03:27:19 +0000] [157291] [INFO] Listening at: http://127.0.0.1:8002 (157291)
+[2026-07-16 03:27:19 +0000] [157291] [INFO] Using worker: sync
+[2026-07-16 03:27:19 +0000] [157292] [INFO] Booting worker with pid: 157292
+[2026-07-16 03:27:19 +0000] [157293] [INFO] Booting worker with pid: 157293
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+[2026-07-16 05:09:51 +0000] [157291] [INFO] Handling signal: term
+[2026-07-16 08:09:51 +0300] [157293] [INFO] Worker exiting (pid: 157293)
+[2026-07-16 08:09:51 +0300] [157292] [INFO] Worker exiting (pid: 157292)
+[2026-07-16 05:09:57 +0000] [157291] [INFO] Shutting down: Master
+[2026-07-16 05:10:07 +0000] [159399] [INFO] Starting gunicorn 23.0.0
+[2026-07-16 05:10:07 +0000] [159399] [INFO] Listening at: http://127.0.0.1:8002 (159399)
+[2026-07-16 05:10:07 +0000] [159399] [INFO] Using worker: sync
+[2026-07-16 05:10:07 +0000] [159400] [INFO] Booting worker with pid: 159400
+[2026-07-16 05:10:07 +0000] [159401] [INFO] Booting worker with pid: 159401
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+[2026-07-16 05:58:55 +0000] [159399] [INFO] Handling signal: term
+[2026-07-16 08:58:55 +0300] [159401] [INFO] Worker exiting (pid: 159401)
+[2026-07-16 08:58:55 +0300] [159400] [INFO] Worker exiting (pid: 159400)
+[2026-07-16 06:19:38 +0000] [162475] [INFO] Starting gunicorn 23.0.0
+[2026-07-16 06:19:38 +0000] [162475] [INFO] Listening at: http://127.0.0.1:8002 (162475)
+[2026-07-16 06:19:38 +0000] [162475] [INFO] Using worker: sync
+[2026-07-16 06:19:38 +0000] [162476] [INFO] Booting worker with pid: 162476
+[2026-07-16 06:19:38 +0000] [162477] [INFO] Booting worker with pid: 162477
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+[2026-07-16 14:43:49 +0000] [162475] [INFO] Handling signal: term
+[2026-07-16 17:43:49 +0300] [162477] [INFO] Worker exiting (pid: 162477)
+[2026-07-16 17:43:49 +0300] [162476] [INFO] Worker exiting (pid: 162476)
+[2026-07-16 14:44:00 +0000] [186615] [INFO] Starting gunicorn 23.0.0
+[2026-07-16 14:44:00 +0000] [186615] [INFO] Listening at: http://127.0.0.1:8002 (186615)
+[2026-07-16 14:44:00 +0000] [186615] [INFO] Using worker: sync
+[2026-07-16 14:44:00 +0000] [186619] [INFO] Booting worker with pid: 186619
+[2026-07-16 14:44:01 +0000] [186620] [INFO] Booting worker with pid: 186620
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+[2026-07-16 15:52:11 +0000] [186615] [INFO] Handling signal: term
+[2026-07-16 18:52:11 +0300] [186619] [INFO] Worker exiting (pid: 186619)
+[2026-07-16 18:52:11 +0300] [186620] [INFO] Worker exiting (pid: 186620)
+[2026-07-16 15:52:17 +0000] [186615] [INFO] Shutting down: Master
+[2026-07-16 15:52:17 +0000] [192125] [INFO] Starting gunicorn 23.0.0
+[2026-07-16 15:52:17 +0000] [192125] [INFO] Listening at: http://127.0.0.1:8002 (192125)
+[2026-07-16 15:52:17 +0000] [192125] [INFO] Using worker: sync
+[2026-07-16 15:52:17 +0000] [192128] [INFO] Booting worker with pid: 192128
+[2026-07-16 15:52:17 +0000] [192129] [INFO] Booting worker with pid: 192129
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(

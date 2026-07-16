@@ -1,0 +1,30 @@
+celery beat v5.4.0 (opalescent) is starting.
+__    -    ... __   -        _
+LocalTime -> 2026-07-15 17:13:41
+Configuration ->
+    . broker -> redis://127.0.0.1:6379/4
+    . loader -> celery.loaders.app.AppLoader
+    . scheduler -> celery.beat.PersistentScheduler
+    . db -> celerybeat-schedule
+    . logfile -> [stderr]@%INFO
+    . maxinterval -> 5.00 minutes (300s)
+celery beat v5.4.0 (opalescent) is starting.
+__    -    ... __   -        _
+LocalTime -> 2026-07-16 06:27:41
+Configuration ->
+    . broker -> redis://127.0.0.1:6379/4
+    . loader -> celery.loaders.app.AppLoader
+    . scheduler -> celery.beat.PersistentScheduler
+    . db -> celerybeat-schedule
+    . logfile -> [stderr]@%INFO
+    . maxinterval -> 5.00 minutes (300s)
+celery beat v5.4.0 (opalescent) is starting.
+__    -    ... __   -        _
+LocalTime -> 2026-07-16 08:10:32
+Configuration ->
+    . broker -> redis://127.0.0.1:6379/4
+    . loader -> celery.loaders.app.AppLoader
+    . scheduler -> celery.beat.PersistentScheduler
+    . db -> celerybeat-schedule
+    . logfile -> [stderr]@%INFO
+    . maxinterval -> 5.00 minutes (300s)

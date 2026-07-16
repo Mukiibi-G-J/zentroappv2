@@ -47,6 +47,12 @@ python scripts/final_migration_audit.py
 # python manage.py seed_pages --schema=primewise
 # python manage.py tenant_command setup_page_permissions --schema=primewise
 # See: 08-primewise-v2-readiness.md
+
+# --- 9. V2 web UI post-restore (Role Centre / login / nginx / subscription) ---
+# Follow EVERY time you restore into a new DB and need the frontend:
+#   11-restore-to-v2-ui-checklist.md
+# Includes: domain remap, ApplicationProfile FK fix, UserPersonalization,
+#           active subscription, Origin-based tenant login, nginx 64k headers.
 ```
 
 ---
@@ -186,6 +192,7 @@ python manage.py clear_invalid_ledger_applies_to_ids
 - [ ] `compare_schema_checks.py` — all OK
 - [ ] Public admin login works (`localhost:8002/admin/`)
 - [ ] One tenant subdomain login works
+- [ ] V2 UI post-restore for pilot tenant — [11-restore-to-v2-ui-checklist.md](./11-restore-to-v2-ui-checklist.md)
 - [ ] (Go-live) `makemigrations --check` passes
 - [ ] (Go-live) payment ledger cleanup + seeds per runbook
 
@@ -211,5 +218,6 @@ What we hit on first prod dump → V2 migrate:
 | `auth_devpush_user_active_idx` missing on shared migrate | Safe rename in `authentication.0020` — [10](./10-auth-0020-safe-index-rename.md) |
 | Empty `page_engine_page` after migrate | `seed_pages` + BC permissions — [08](./08-primewise-v2-readiness.md) |
 | Slow new-company signup | Pre-seed `_zentro_template` — [09](./09-preseeded-zentro-template.md) |
+| Empty sidebar / wrong user after restore (Jul 2026 DO) | Domains, RC FK, personalization, subscription, nginx 64k, Origin tenant — [11](./11-restore-to-v2-ui-checklist.md) |
 
-All documented in todos `02`–`10` in this folder.
+All documented in todos `02`–`11` in this folder.

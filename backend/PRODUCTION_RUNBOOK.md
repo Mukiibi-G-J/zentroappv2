@@ -172,6 +172,12 @@ python manage.py tenant_command debug_branch_filter --schema=<tenant_schema>
 
 Payment ledger cleanup and other post-restore tasks: **[zentroapp-to-v2-todos/README.md](zentroapp-to-v2-todos/README.md)**
 
+After any restore into a **new DB** where the V2 frontend must work (Role Centre / sidebar / tenant login):
+
+→ **[zentroapp-to-v2-todos/11-restore-to-v2-ui-checklist.md](zentroapp-to-v2-todos/11-restore-to-v2-ui-checklist.md)**
+
+Pilot tenant steps: **[zentroapp-to-v2-todos/08-primewise-v2-readiness.md](zentroapp-to-v2-todos/08-primewise-v2-readiness.md)**
+
 ---
 
 ## Quick Reference: Minimal Production Deploy (One Tenant)

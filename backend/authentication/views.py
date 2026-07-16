@@ -643,6 +643,13 @@ class AuthTokenView(TokenObtainPairView):
                     delivery,
                 )
 
+        # Attach Role Centre session so the SPA has nav even before /api/auth/me/
+        try:
+            session = build_auth_session_payload(user, request)
+            response_data.update(session)
+        except Exception as e:
+            logger.warning("Login session payload failed: %s", e)
+
         return Response(response_data, status=status.HTTP_200_OK)
 
 

@@ -1,0 +1,93 @@
+[I 260715 14:13:14 environ:913] /root/projects/zentro-appv2/backend/core/.env not found - if you're not configuring your environment separately, check this.
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+[I 260715 17:13:40 command:168] Visit me at http://127.0.0.1:5557
+[I 260715 17:13:41 command:176] Broker: redis://127.0.0.1:6379/4
+[I 260715 17:13:41 command:177] Registered tasks: 
+    ['authentication.tasks.send_low_stock_push_alerts',
+     'authentication.tasks.send_push_notification_task',
+     'base.tasks.database_backup_task',
+     'celery.accumulate',
+     'celery.backend_cleanup',
+     'celery.chain',
+     'celery.chord',
+     'celery.chord_unlock',
+     'celery.chunks',
+     'celery.group',
+     'celery.map',
+     'celery.starmap',
+     'company.tasks.create_company_task',
+     'company.tasks.generate_pending_receipts',
+     'company.tasks.import_initial_data_task',
+     'company.tasks.send_billing_expiry_10day_reminders',
+     'company.tasks.send_billing_expiry_reminders_custom',
+     'company.tasks.send_company_creation_admin_sms_task',
+     'company.tasks.send_company_creation_completion_email_task',
+     'company.tasks.send_grace_period_payment_reminders',
+     'company.tasks.send_installment_reminders',
+     'company.tasks.send_newsletter_task',
+     'company.tasks.send_overdue_notices',
+     'company.tasks.send_trial_end_reminders',
+     'config_packages.tasks.import_tables_background',
+     'items.tasks.calculate_inventory_task',
+     'items.tasks.export_items_task',
+     'items.tasks.export_stock_taking_task',
+     'items.tasks.import_stock_taking_task',
+     'items.tasks.post_item_journals_async',
+     'items.tasks.process_item_import',
+     'items.tasks.process_journal_import']
+[I 260715 17:13:41 mixins:228] Connected to redis://127.0.0.1:6379/4
+[W 260715 17:13:42 inspector:44] Inspect method active_queues failed
+[W 260715 17:13:42 inspector:44] Inspect method stats failed
+[W 260715 17:13:42 inspector:44] Inspect method scheduled failed
+[W 260715 17:13:42 inspector:44] Inspect method active failed
+[W 260715 17:13:42 inspector:44] Inspect method registered failed
+[W 260715 17:13:43 inspector:44] Inspect method revoked failed
+[W 260715 17:13:43 inspector:44] Inspect method reserved failed
+[W 260715 17:13:43 inspector:44] Inspect method conf failed
+[W 260715 18:07:45 state:109] Substantial drift from celery@ubuntu-s-1vcpu-2gb-fra1-01 may mean clocks are out of sync.  Current drift is 306 seconds.  [orig: 2026-07-15 18:02:39.006585 recv: 2026-07-15 18:07:45.207437]
+[I 260716 08:59:25 command:28] 15 detected, shutting down
+[I 260716 06:19:47 environ:913] /root/projects/zentro-appv2/backend/core/.env not found - if you're not configuring your environment separately, check this.
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+[I 260716 09:20:16 command:168] Visit me at http://127.0.0.1:5557
+[I 260716 09:20:16 command:176] Broker: redis://127.0.0.1:6379/4
+[I 260716 09:20:16 command:177] Registered tasks: 
+    ['authentication.tasks.send_low_stock_push_alerts',
+     'authentication.tasks.send_push_notification_task',
+     'base.tasks.database_backup_task',
+     'celery.accumulate',
+     'celery.backend_cleanup',
+     'celery.chain',
+     'celery.chord',
+     'celery.chord_unlock',
+     'celery.chunks',
+     'celery.group',
+     'celery.map',
+     'celery.starmap',
+     'company.tasks.create_company_task',
+     'company.tasks.generate_pending_receipts',
+     'company.tasks.import_initial_data_task',
+     'company.tasks.send_billing_expiry_10day_reminders',
+     'company.tasks.send_billing_expiry_reminders_custom',
+     'company.tasks.send_company_creation_admin_sms_task',
+     'company.tasks.send_company_creation_completion_email_task',
+     'company.tasks.send_grace_period_payment_reminders',
+     'company.tasks.send_installment_reminders',
+     'company.tasks.send_newsletter_task',
+     'company.tasks.send_overdue_notices',
+     'company.tasks.send_trial_end_reminders',
+     'config_packages.tasks.import_tables_background',
+     'items.tasks.calculate_inventory_task',
+     'items.tasks.export_items_task',
+     'items.tasks.export_stock_taking_task',
+     'items.tasks.import_stock_taking_task',
+     'items.tasks.post_item_journals_async',
+     'items.tasks.process_item_import',
+     'items.tasks.process_journal_import']
+[I 260716 09:20:16 mixins:228] Connected to redis://127.0.0.1:6379/4
+[W 260716 09:20:17 inspector:44] Inspect method scheduled failed
+[W 260716 09:20:17 inspector:44] Inspect method active_queues failed
+[W 260716 09:20:17 inspector:44] Inspect method registered failed
+[W 260716 09:20:17 inspector:44] Inspect method stats failed
+[W 260716 09:20:17 inspector:44] Inspect method active failed
