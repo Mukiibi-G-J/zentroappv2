@@ -1,12 +1,10 @@
 """
-Remap page-engine and permission objects from legacy offset IDs to raw BC IDs.
+LEGACY — prefer ``align_zentro_page_ids`` (PageId == ObjectId, Zentro 10xxx).
 
-Legacy scheme: object_id = 1000 + BC page ID (e.g. 1031 Item List).
-BC scheme:     object_id = BC page ID (e.g. 31 Item List).
+Older tenants used offset object IDs. Current scheme is ``ZENTRO_PAGE_REGISTRY``.
 
-Zentro custom pages: 15xxx -> 50xxx.
+Usage (legacy only)::
 
-Usage:
     python manage.py tenant_command remap_bc_page_object_ids --schema=primewise
 """
 
@@ -30,7 +28,7 @@ NEW_CUSTOM_BASE = 50_000
 
 
 class Command(BaseCommand):
-    help = 'Remap page object_ids from 1000+offset to raw Business Central IDs'
+    help = 'LEGACY: remap old offset object_ids (prefer align_zentro_page_ids)'
 
     def add_arguments(self, parser):
         parser.add_argument(

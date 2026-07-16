@@ -5,7 +5,7 @@ New companies normally get their PostgreSQL schema by **cloning** `_zentro_templ
 The template is **pre-seeded** during rebuild with tenant-generic baseline data:
 
 - Default roles, role centres, user groups
-- Pages engine (`seed_pages`) + BC-style permission objects
+- Pages engine (`seed_pages`) + Zentro page IDs (PageId == ObjectId)
 - Permission sets (`setup_page_permissions`)
 - Chart of accounts / posting groups (JSON import) and related seeds
 - Number series + PurchasePayable / SalesReceivable setup

@@ -130,13 +130,21 @@ WHERE conrelid = 'TENANT.authentication_applicationprofile'::regclass
   AND contype = 'f';
 ```
 
-### 6. Seed pages + BC permissions
+### 6. Seed pages + permissions
 
 ```bash
 python manage.py seed_pages --schema=TENANT
+# seed aligns PageId == ObjectId from ZENTRO_PAGE_REGISTRY (10xxx)
 python manage.py tenant_command setup_page_permissions --schema=TENANT
 python manage.py clear_invalid_ledger_applies_to_ids --schema=TENANT
 python manage.py tenant_command backfill_entry_dimensions --schema=TENANT --first-branch
+```
+
+If pages were seeded before the Zentro ID align:
+
+```bash
+python manage.py tenant_command align_zentro_page_ids --schema=TENANT
+python manage.py tenant_command setup_page_permissions --schema=TENANT
 ```
 
 ### 7. Backfill UserPersonalization (Role Centre profile)
@@ -251,6 +259,7 @@ Sidebar empty / cards show "—"
 
 - Playbook: [00-restore-production-db-playbook.md](./00-restore-production-db-playbook.md)  
 - Pilot: [08-primewise-v2-readiness.md](./08-primewise-v2-readiness.md)  
+- **Zentro page IDs (PageId == ObjectId):** [12-page-id-vs-object-id.md](./12-page-id-vs-object-id.md)  
 - Sequences: [03-pg-sequence-reset-after-restore.md](./03-pg-sequence-reset-after-restore.md)  
 - Deploy: [../../deploy/DEPLOY.md](../../deploy/DEPLOY.md)  
 - Nginx template: [../../deploy/nginx/zentro-api.conf](../../deploy/nginx/zentro-api.conf)

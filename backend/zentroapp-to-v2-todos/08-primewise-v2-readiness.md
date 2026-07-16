@@ -30,8 +30,8 @@ Take one real production schema (`primewise`) through every V2 gap. When this is
 
 ### C. Data + V2 engine (was missing from older todos)
 
-- [x] `seed_pages --schema=primewise` (pages engine + BC `object_id` sync)
-- [x] `tenant_command setup_page_permissions --schema=primewise` (BC-style permission sets)
+- [x] `seed_pages --schema=primewise` (pages engine + Zentro PageId/ObjectId sync)
+- [x] `tenant_command setup_page_permissions --schema=primewise` (page permission sets)
 - [x] `clear_invalid_ledger_applies_to_ids --schema=primewise` (0 rows on this dump)
 - [x] `tenant_command backfill_entry_dimensions --schema=primewise --first-branch`
   - **No-op on this dump:** all tables `updated=0 matched=0`. Does **not** create/rename/merge branch values (Central / Mwanjarai unchanged). Only fills NULL `global_dimension_1` / `dimension_set_id` on ledgers/docs.
@@ -97,8 +97,10 @@ python scripts/_fix_primewise_sequences.py
 python manage.py migrate_schemas --shared
 python manage.py migrate_schemas --schema=primewise
 
-# 3) Pages engine + BC permissions (REQUIRED for V2 UI)
+# 3) Pages engine + permissions (REQUIRED for V2 UI)
 python manage.py seed_pages --schema=primewise
+# If already seeded without Zentro IDs:
+# python manage.py tenant_command align_zentro_page_ids --schema=primewise
 python manage.py tenant_command setup_page_permissions --schema=primewise
 
 # 4) Ledger / dimensions
@@ -138,7 +140,7 @@ python scripts/_assess_primewise_v2.py
 | `purchases_vendorledger.applies_to_id` | column exists |
 | `sales_customerledgerentry.applies_to_id` | column exists |
 | Payment rows with `applies_to_id` set | **0** |
-| BC permission sets | updated via `setup_page_permissions` |
+| Page permission sets | updated via `setup_page_permissions` |
 | `ApplicationProfile` → RC page | all profiles have `role_centre_page_id` on tenant `page_engine_page` |
 | `UserPersonalization` rows | **one per user** (default `BUSINESS-MGR`) |
 | `GET /api/auth/me/` (authenticated) | `roleCentrePageId` set, `navItems` non-empty for Admin/Business Manager |
@@ -157,7 +159,7 @@ Helper: `scripts/_assess_primewise_v2.py`
 | **Active subscription** | Expired sub blocks `/api/pages/` (402) → empty sidebar despite `auth/me` nav |
 | **Nginx 64k + slim JWT** | Admin `page_permissions` in JWT → 400 Header Too Large |
 | **Origin → tenant** | Apex API login without Origin used **public** user (same email) |
-| **BC `setup_page_permissions`** | Permission lines use page-engine object IDs (1000 + BC page id) |
+| **`setup_page_permissions`** | Permission lines use Zentro page IDs (PageId == ObjectId, 10xxx) |
 | **Primewise-only migrate** | Faster iteration than migrating all 30+ tenants first |
 | **`authentication.0020` safe RenameIndex** | Shared migrate failed on restored public when old `auth_devpush_*` indexes missing |
 
@@ -184,8 +186,8 @@ Full replay for another DB: **[11-restore-to-v2-ui-checklist.md](./11-restore-to
 | `seed_pages` | Lists/cards + restaurant + permission set pages seeded |
 | `setup_page_permissions` | 28 updated, 5 created, 139 lines |
 | Bad payment `applies_to_id` | **0** |
-| Pages after seed | **130** rows (`102` with BC `object_id`) |
-| Permission sets | **42** after BC setup |
+| Pages after seed | **130** rows (registered pages with Zentro `object_id` / PageId) |
+| Permission sets | **42** after `setup_page_permissions` |
 | Dimension `--first-branch` | **No row updates** (existing branches intact) |
 | Role Centre | **10** profiles → RC pages; **14/14** users have personalization |
 | Subscription (pilot) | Extended to **2026-09-14** so `/api/pages/` is not 402 |

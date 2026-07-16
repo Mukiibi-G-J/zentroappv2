@@ -58,6 +58,8 @@ SOURCE_TABLE_PAGE_ALIASES: dict[str, list[str]] = {
     'SalesOrderLine': ['Sales Order Page', 'SalesOrderList'],
     'SalesInvoice': ['Sales Invoice Page', 'SalesInvoiceList'],
     'SalesInvoiceLine': ['Sales Invoice Page', 'SalesInvoiceList'],
+    'PostedSalesInvoice': ['Posted Sales Invoices', 'PostedSalesInvoiceList'],
+    'PostedSalesInvoiceLine': ['Posted Sales Invoices', 'PostedSalesInvoiceList'],
     'PurchaseInvoice': ['Purchase Invoices', 'PurchaseInvoiceList'],
     'PurchaseInvoiceLine': ['Purchase Invoices', 'PurchaseInvoiceList'],
     'PostedPurchaseInvoice': ['Posted Purchase Invoices', 'PostedPurchaseInvoiceList'],

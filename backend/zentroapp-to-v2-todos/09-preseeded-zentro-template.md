@@ -8,7 +8,7 @@
 
 ## Goal
 
-New companies clone a **pre-seeded** golden schema instead of re-running roles, pages engine, BC permissions, JSON import, and seed commands on every signup.
+New companies clone a **pre-seeded** golden schema instead of re-running roles, pages engine, page permissions, JSON import, and seed commands on every signup.
 
 ---
 
@@ -25,7 +25,7 @@ New companies clone a **pre-seeded** golden schema instead of re-running roles, 
 ### Baked into template (tenant-generic)
 
 - Roles, role centres, user groups  
-- `seed_pages` (pages engine + BC `object_id`)  
+- `seed_pages` (pages engine + Zentro PageId/ObjectId)  
 - `setup_page_permissions` + legacy `populate_page_objects`  
 - JSON chart/posting import + related seeds  
 - Number series + PurchasePayable / SalesReceivable  

@@ -1674,7 +1674,12 @@ def _parent_record_for_line(obj):
 
 
 def _record_is_read_only(obj) -> bool:
-    if obj.__class__.__name__ in ('PostedPurchaseInvoice', 'PostedPurchaseInvoiceLine'):
+    if obj.__class__.__name__ in (
+        'PostedPurchaseInvoice',
+        'PostedPurchaseInvoiceLine',
+        'PostedSalesInvoice',
+        'PostedSalesInvoiceLine',
+    ):
         return True
     if _record_is_posted(obj):
         return True
@@ -3433,8 +3438,56 @@ class PageDataRecordView(APIView):
         if model.__name__ in ('UserSetup', 'UserPersonalization'):
             base_qs = base_qs.select_related('user')
         if hasattr(model, 'system_id'):
-            return base_qs.filter(system_id=system_id).first()
+            obj = base_qs.filter(system_id=system_id).first()
+            if obj is not None:
+                return obj
+            # Document routes sometimes pass the open-document SystemId after posting.
+            if model.__name__ == 'PostedSalesInvoice':
+                return self._resolve_posted_sales_invoice(base_qs, system_id)
+            if model.__name__ == 'PostedPurchaseInvoice':
+                return self._resolve_posted_purchase_invoice(base_qs, system_id)
+            return None
         return base_qs.filter(pk=system_id).first()
+
+    @staticmethod
+    def _resolve_posted_sales_invoice(base_qs, system_id):
+        from sales.models import SalesInvoice
+
+        si = SalesInvoice.objects.filter(system_id=system_id).only(
+            'customer_invoice_no', 'customer_id',
+        ).first()
+        if si is None or not si.customer_invoice_no:
+            return None
+        qs = base_qs.filter(customer_invoice_no=si.customer_invoice_no)
+        if si.customer_id:
+            qs = qs.filter(customer_id=si.customer_id)
+        return qs.order_by('-id').first()
+
+    @staticmethod
+    def _resolve_posted_purchase_invoice(base_qs, system_id):
+        from purchases.models import PurchaseInvoice
+
+        pi = PurchaseInvoice.objects.filter(system_id=system_id).first()
+        if pi is None:
+            return None
+        # Prefer vendor invoice no / document link fields when present
+        for lookup in (
+            {'vendor_invoice_no': getattr(pi, 'vendor_invoice_no', None)},
+            {'no': getattr(pi, 'no', None)},
+        ):
+            key, val = next(iter(lookup.items()))
+            if not val:
+                continue
+            if not hasattr(base_qs.model, key):
+                continue
+            qs = base_qs.filter(**{key: val})
+            vendor_id = getattr(pi, 'vendor_id', None)
+            if vendor_id and hasattr(base_qs.model, 'vendor_id'):
+                qs = qs.filter(vendor_id=vendor_id)
+            found = qs.order_by('-id').first()
+            if found is not None:
+                return found
+        return None
 
     def get(self, request, system_id: str):
         page_id = request.query_params.get('PageId')

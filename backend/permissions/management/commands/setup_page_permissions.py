@@ -1,8 +1,8 @@
 """
-Management command to create default permission sets with BC-style page permissions.
+Management command to create default permission sets with page-engine permissions.
 
-Page lines reference page-engine names (e.g. ``GLAccountList`` → object ID 1016).
-Run ``seed_pages`` and ``sync_page_permission_objects`` first.
+Page lines reference page names (e.g. ``ItemList`` → Zentro ID 10201).
+Run ``seed_pages`` (or ``align_zentro_page_ids``) first so PageId == ObjectId.
 
 Usage:
     python manage.py tenant_command setup_page_permissions --schema=hardwareworld
@@ -16,11 +16,11 @@ from permissions.table_permissions import create_permission_lines
 
 
 class Command(BaseCommand):
-    help = 'Create default permission sets with BC-aligned page object permissions'
+    help = 'Create default permission sets with Zentro page object permissions'
 
     def handle(self, *args, **options):
         self.stdout.write('\n' + '=' * 80)
-        self.stdout.write(self.style.SUCCESS('SETTING UP BC-STYLE PAGE PERMISSIONS'))
+        self.stdout.write(self.style.SUCCESS('SETTING UP PAGE PERMISSIONS'))
         self.stdout.write('=' * 80 + '\n')
 
         created_sets = 0
@@ -74,4 +74,4 @@ class Command(BaseCommand):
         self.stdout.write(f'Permission sets created: {created_sets}')
         self.stdout.write(f'Permission sets updated: {updated_sets}')
         self.stdout.write(f'Permission lines created: {created_lines}')
-        self.stdout.write(self.style.SUCCESS('\n[OK] BC-style page permissions setup complete!'))
+        self.stdout.write(self.style.SUCCESS('\n[OK] Page permissions setup complete!'))

@@ -1,9 +1,8 @@
 """
-Sync page-engine pages to base.Objects for BC-style permission lines.
+Sync page-engine pages to ``base.Objects`` for permission lines.
 
 Each Page with a non-null ``object_id`` becomes (or updates) a Page row in
-``base.Objects`` using the same numeric ID as in permission sets — mirroring
-how BC permission lines reference compiled page object IDs.
+``base.Objects`` using the same numeric ID (Zentro page ID = PageId = ObjectId).
 """
 
 from __future__ import annotations
@@ -25,7 +24,7 @@ def _page_type_ref():
         code='PAGE',
         defaults={
             'name': 'Page',
-            'description': 'UI pages (BC-style object permissions)',
+            'description': 'UI pages (permission objects)',
             'sort_order': 2,
         },
     )
@@ -91,7 +90,7 @@ def sync_page_permission_object(page: 'Page') -> tuple[object | None, bool]:
 
 
 def _infer_module(page: 'Page') -> str:
-    """Best-effort module code when the page is not in BC_PAGE_REGISTRY."""
+    """Best-effort module code when the page is not in ZENTRO_PAGE_REGISTRY."""
     table = (page.source_table or '').lower()
     if table in ('customer', 'salesorder', 'salesinvoice', 'salesorderline', 'salesinvoiceline'):
         return 'sales'
@@ -115,7 +114,7 @@ def sync_all_page_permission_objects(
     *,
     only_with_object_id: bool = True,
 ) -> dict[str, int]:
-    """Sync every page-engine page that has a BC-style object_id assigned."""
+    """Sync every page-engine page that has an object_id assigned."""
     from pages.models import Page
 
     stats = {'created': 0, 'updated': 0, 'skipped': 0}
@@ -139,10 +138,13 @@ def sync_all_page_permission_objects(
 
 def apply_object_id_from_registry(page: 'Page') -> 'Page':
     """
-    Set ``page.object_id`` from BC or Zentro custom registry when the page name is mapped.
+    Set ``page.object_id`` from ``ZENTRO_PAGE_REGISTRY`` when the page name is mapped.
+
+    Prefer ``align_zentro_page_ids`` so ``page_id == object_id``. This helper only
+    updates ``object_id`` (used during seed before PK alignment).
 
     Clears stale ``object_id`` values on other pages that incorrectly hold the target ID
-    (e.g. after registry remaps) so the unique constraint is never violated.
+    so the unique constraint is never violated.
     """
     from pages.bc_page_ids import resolve_page_object_id
     from pages.models import Page

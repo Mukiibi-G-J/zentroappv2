@@ -771,8 +771,16 @@ def seed():
 
     restaurant_pages = seed_restaurant_pages()
 
-    _apply_all_bc_page_object_ids()
+    _apply_all_zentro_page_object_ids()
+    from pages.management.commands.align_zentro_page_ids import align_zentro_page_ids
+
+    align_stats = align_zentro_page_ids(sync_permissions=False)
     _sync_page_permission_objects()
+    if align_stats['mapped']:
+        print(
+            f"Aligned {align_stats['mapped']} pages so PageId == ObjectId "
+            f"(Zentro 10xxx registry)"
+        )
 
     from pages.desktop_pages import sync_desktop_enabled_flags
 
@@ -843,8 +851,8 @@ def seed():
     }
 
 
-def _apply_all_bc_page_object_ids() -> None:
-    """Assign BC-aligned object_id (1000 + BC page ID) on registered page-engine pages."""
+def _apply_all_zentro_page_object_ids() -> None:
+    """Assign Zentro page ObjectId (= registry ID) on registered pages."""
     from pages.bc_page_ids import all_registered_page_names
     from pages.permission_sync import apply_object_id_from_registry
 
@@ -852,6 +860,10 @@ def _apply_all_bc_page_object_ids() -> None:
         page = Page.objects.filter(name=page_name).first()
         if page is not None:
             apply_object_id_from_registry(page)
+
+
+# Backward-compatible name used by older call sites / docs
+_apply_all_bc_page_object_ids = _apply_all_zentro_page_object_ids
 
 
 def _sync_page_permission_objects() -> None:

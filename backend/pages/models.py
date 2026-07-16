@@ -65,8 +65,8 @@ class Page(models.Model):
         unique=True,
         db_index=True,
         help_text=(
-            'BC page object ID (same as Business Central, e.g. 31 for Item List, 16 for '
-            'Chart of Accounts). Synced to base.Objects for permission set lines.'
+            'Zentro page ID for permissions (same as page_id for registered pages, '
+            'e.g. 10201 ItemList). Synced to base.Objects for permission set lines.'
         ),
     )
     name = models.CharField(max_length=200, unique=True)

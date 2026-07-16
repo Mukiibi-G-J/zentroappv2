@@ -13,13 +13,13 @@
 - [ ] `python manage.py clear_invalid_ledger_applies_to_ids --schema=<tenant_schema>` (pilot)
 - [ ] `python manage.py clear_invalid_ledger_applies_to_ids` (all tenants)
 - [ ] SQL / admin verify: zero Payment rows with `applies_to_id` set
-- [ ] Functional: Apply Entries cancel clears stamps; Preview Posting counts match BC
+- [ ] Functional: Apply Entries cancel clears stamps; Preview Posting counts look correct
 
 ---
 
 ## Problem
 
-Vendor/customer **Payment** ledger rows incorrectly had `applies_to_id` set. In Business Central, Applies-to ID is a **temporary staging stamp on invoices/credits only** during Apply Entries — not on payment rows. Wrong values caused Apply Vendor Entries and Preview Posting to show huge filtered lists.
+Vendor/customer **Payment** ledger rows incorrectly had `applies_to_id` set. Applies-to ID is a **temporary staging stamp on invoices/credits only** during Apply Entries — not on payment rows. Wrong values caused Apply Vendor Entries and Preview Posting to show huge filtered lists.
 
 ---
 
@@ -42,7 +42,7 @@ python manage.py seed_pages --schema=<tenant_schema>
 
 ---
 
-## Background (BC semantics)
+## Background (Applies-to semantics)
 
 | Field | Where | Purpose |
 |-------|-------|---------|

@@ -1,170 +1,185 @@
 """
-Business Central–aligned page object IDs for Zentro permissions.
+Zentro page IDs for the page engine and permissions.
 
-BC permission sets reference pages by type + ID (see AL ``permissionset`` blocks).
-Zentro uses the **same numeric IDs as BC** (e.g. page 31 Item List → object_id 31).
+Rule: PageId == ObjectId == stable Zentro page ID (same number everywhere).
 
-Zentro-only pages (no BC counterpart) use IDs from ``ZENTRO_CUSTOM_PAGE_ID_START`` (50 000+),
-matching BC partner-extension ranges.
+Bands align with classic ZentroApp ``populate_page_objects`` ranges so old
+permission sets / mental model stay familiar:
+
+  10000–10099  Sales
+  10100–10199  Customers
+  10200–10299  Items / inventory
+  10300–10399  Purchases / vendors
+  10400–10499  Payments
+  10500–10599  Financials / G/L
+  10600–10699  Bank / dimensions / setup extras
+  10700–10799  Restaurant
+  10800–10899  User management
+  10900–10999  Company / manufacturing / reports
+  12000–12999  Role Centres & other V2-only shells
+
+Tables / ledger permissions stay in the low table-object ranges (separate system).
 """
 
 from __future__ import annotations
 
-ZENTRO_CUSTOM_PAGE_ID_START = 50_000
+# Lowest ID used for page-engine pages (keeps clear of table object IDs).
+ZENTRO_PAGE_ID_START = 10_000
 
-# page_engine Page.name → (bc_page_id, module_code)
-BC_PAGE_REGISTRY: dict[str, tuple[int, str]] = {
-    # ── Financials / G/L ─────────────────────────────────────────────────────
-    'GLAccountCard': (15, 'financials'),
-    'GLAccountList': (16, 'financials'),
-    'GeneralLedgerEntryList': (20, 'financials'),
-    'GeneralLedgerSetupCard': (118, 'financials'),
-    'GeneralPostingSetupList': (252, 'financials'),
-    'GeneralBusinessPostingGroupList': (253, 'financials'),
-    'GeneralProductPostingGroupList': (254, 'financials'),
-    'FinancialReportList': (108, 'financials'),
-    'FinancialReportOverview': (490, 'financials'),
-    'FinancialReportRowGroupList': (103, 'financials'),
-    'FinancialReportRowDefinition': (104, 'financials'),
-    'FinancialReportRowGroupCard': (50001, 'financials'),
-    'FinancialReportColumnGroupList': (488, 'financials'),
-    'FinancialReportColumnGroupCard': (489, 'financials'),
-    # ── Sales — Customer ───────────────────────────────────────────────────────
-    'CustomerCard': (21, 'customers'),
-    'CustomerList': (22, 'customers'),
-    'CustomerLedgerEntryList': (25, 'customers'),
-    'CustomerAppliedEntriesList': (232, 'sales'),
-    # ── Purchases — Vendor ─────────────────────────────────────────────────────
-    'VendorCard': (26, 'purchases'),
-    'VendorList': (27, 'purchases'),
-    'VendorLedgerEntryList': (29, 'purchases'),
-    'VendorAppliedEntriesList': (233, 'purchases'),
-    # ── Inventory — Item ───────────────────────────────────────────────────────
-    'ItemCard': (30, 'inventory'),
-    'ItemList': (31, 'inventory'),
-    'ItemLedgerEntryList': (38, 'inventory'),
-    'ItemUnitOfMeasureList': (5404, 'inventory'),
-    'InventorySetupCard': (1407, 'inventory'),
-    'UnitOfMeasureList': (209, 'inventory'),
-    # ── Journals ───────────────────────────────────────────────────────────────
-    'GeneralJournal': (39, 'financials'),
-    'GeneralJournalBatchList': (251, 'financials'),
-    'CashReceiptJournal': (255, 'payments'),
-    'PaymentJournalCard': (256, 'payments'),
-    'PaymentJournalList': (257, 'payments'),
-    # ── Sales documents ────────────────────────────────────────────────────────
-    'SalesOrder': (42, 'sales'),
-    'SalesOrderSubform': (46, 'sales'),
-    'SalesOrderList': (9305, 'sales'),
-    'SalesInvoice': (43, 'sales'),
-    'SalesInvoiceSubform': (47, 'sales'),
-    'SalesInvoiceList': (9301, 'sales'),
-    'PostedSalesInvoiceList': (9302, 'sales'),
-    # ── Purchase documents ─────────────────────────────────────────────────────
-    'PurchaseInvoice': (51, 'purchases'),
-    'PurchaseInvoiceSubform': (52, 'purchases'),
-    'PurchaseInvoiceList': (9308, 'purchases'),
-    'PostedPurchaseInvoiceList': (146, 'purchases'),
-    'PostedPurchaseInvoice': (138, 'purchases'),
-    'PostedPurchaseInvoiceSubform': (139, 'purchases'),
-    'PostedItemTrackingLines': (6511, 'inventory'),
-    # ── Bank ───────────────────────────────────────────────────────────────────
-    'BankAccountCard': (371, 'bankAccount'),
-    'BankAccountList': (372, 'bankAccount'),
-    'BankAccountLedgerEntryList': (374, 'bankAccount'),
-    # ── Payments setup ─────────────────────────────────────────────────────────
-    'PaymentMethodList': (427, 'payments'),
-    # ── Dimensions ─────────────────────────────────────────────────────────────
-    'DimensionList': (536, 'financials'),
-    'DimensionCard': (537, 'financials'),
-    'DimensionValueList': (539, 'financials'),
-    'DimensionValueCard': (540, 'financials'),
-    # ── Expenses ───────────────────────────────────────────────────────────────
-    'ExpenseList': (5802, 'expenses'),
-    'ExpenseCard': (5803, 'expenses'),
-    # ── Item journals ──────────────────────────────────────────────────────────
-    'ItemJournalCard': (40, 'inventory'),
-    'InventoryAdjustmentJournalList': (262, 'inventory'),
-    'UserSetupList': (119, 'user_management'),
-    'UsersCard': (9800, 'user_management'),
-    'UsersList': (9801, 'user_management'),
-    'UserSettingsList': (9176, 'user_management'),
-    'UserSettingsCard': (9175, 'user_management'),
-    'PermissionSetsList': (9042, 'user_management'),
-    'PermissionSetsCard': (9043, 'user_management'),
-    'UserGroupsList': (9830, 'user_management'),
-    'UserGroupsCard': (9831, 'user_management'),
-    # ── Setup ──────────────────────────────────────────────────────────────────
-    'NoSeriesList': (456, 'setup'),
-    'NoSeriesCard': (457, 'setup'),
-    'CompanyCard': (79, 'company'),
-    'ManufacturingSetupCard': (99000858, 'manufacturing'),
+# page_engine Page.name → (zentro_page_id, module_code)
+ZENTRO_PAGE_REGISTRY: dict[str, tuple[int, str]] = {
+    # ── Sales (10000) ──────────────────────────────────────────────────────────
+    'SalesPOS': (10002, 'sales'),
+    'SalesInvoiceList': (10003, 'sales'),
+    'PostedSalesInvoiceList': (10004, 'sales'),
+    'PostedSalesInvoice': (10014, 'sales'),
+    'PostedSalesInvoiceSubform': (10015, 'sales'),
+    'SalesOrderList': (10005, 'sales'),
+    'SalesOrder': (10006, 'sales'),
+    'SalesOrderSubform': (10007, 'sales'),
+    'SalesInvoice': (10008, 'sales'),
+    'SalesInvoiceSubform': (10009, 'sales'),
+    'CustomerAppliedEntriesList': (10010, 'sales'),
+    'ApplyCustomerEntries': (10011, 'sales'),
+    'SalesManagerRC': (10012, 'sales'),
+    'CashierRC': (10013, 'sales'),
+    # ── Customers (10100) ──────────────────────────────────────────────────────
+    'CustomerList': (10101, 'customers'),
+    'CustomerCard': (10102, 'customers'),
+    'CustomerLedgerEntryList': (10103, 'customers'),
+    # ── Items / inventory (10200) ──────────────────────────────────────────────
+    'ItemList': (10201, 'inventory'),
+    'ItemCard': (10202, 'inventory'),
+    'InventoryAdjustmentJournalList': (10203, 'inventory'),
+    'OpeningBalanceJournalList': (10204, 'inventory'),
+    'ItemLedgerEntryList': (10205, 'inventory'),
+    'ItemUnitOfMeasureList': (10206, 'inventory'),
+    'ItemUnitOfMeasureSubform': (10207, 'inventory'),
+    'UnitOfMeasureList': (10208, 'inventory'),
+    'InventorySetupCard': (10209, 'inventory'),
+    'ItemJournalCard': (10210, 'inventory'),
+    'ItemTrackingLinesWorksheet': (10211, 'inventory'),
+    'PostedItemTrackingLines': (10212, 'inventory'),
+    'WarehouseRC': (10213, 'inventory'),
+    'PharmacistRC': (10214, 'inventory'),
+    # ── Purchases / vendors (10300) ────────────────────────────────────────────
+    'PurchaseInvoiceList': (10301, 'purchases'),
+    'PostedPurchaseInvoiceList': (10302, 'purchases'),
+    'VendorList': (10303, 'purchases'),
+    'VendorCard': (10304, 'purchases'),
+    'PurchaseInvoice': (10305, 'purchases'),
+    'PurchaseInvoiceSubform': (10306, 'purchases'),
+    'PostedPurchaseInvoice': (10307, 'purchases'),
+    'PostedPurchaseInvoiceSubform': (10308, 'purchases'),
+    'VendorLedgerEntryList': (10309, 'purchases'),
+    'VendorAppliedEntriesList': (10310, 'purchases'),
+    'ApplyVendorEntries': (10311, 'purchases'),
+    # ── Payments (10400) ───────────────────────────────────────────────────────
+    'PaymentJournalList': (10401, 'payments'),
+    'PaymentJournalCard': (10402, 'payments'),
+    'CashReceiptJournal': (10403, 'payments'),
+    'CashReceiptJournalBatchList': (10404, 'payments'),
+    'PaymentMethodList': (10405, 'payments'),
+    # ── Financials (10500) ─────────────────────────────────────────────────────
+    'GLAccountList': (10501, 'financials'),
+    'GLAccountCard': (10502, 'financials'),
+    'GeneralLedgerEntryList': (10503, 'financials'),
+    'GeneralLedgerSetupCard': (10504, 'financials'),
+    'GeneralJournal': (10505, 'financials'),
+    'GeneralJournalBatchList': (10506, 'financials'),
+    'GeneralPostingSetupList': (10507, 'financials'),
+    'GeneralBusinessPostingGroupList': (10508, 'financials'),
+    'GeneralProductPostingGroupList': (10509, 'financials'),
+    'FinancialReportList': (10510, 'financials'),
+    'FinancialReportOverview': (10511, 'financials'),
+    'FinancialReportRowGroupList': (10512, 'financials'),
+    'FinancialReportRowDefinition': (10513, 'financials'),
+    'FinancialReportRowGroupCard': (10514, 'financials'),
+    'FinancialReportColumnGroupList': (10515, 'financials'),
+    'FinancialReportColumnGroupCard': (10516, 'financials'),
+    'FinancialReportCard': (10517, 'financials'),
+    'AccountingRC': (10518, 'financials'),
+    'ExpenseList': (10520, 'expenses'),
+    'ExpenseCard': (10521, 'expenses'),
+    # ── Bank / dimensions / no. series (10600) ────────────────────────────────
+    'BankAccountList': (10601, 'bankAccount'),
+    'BankAccountCard': (10602, 'bankAccount'),
+    'BankAccountLedgerEntryList': (10603, 'bankAccount'),
+    'DimensionList': (10610, 'financials'),
+    'DimensionCard': (10611, 'financials'),
+    'DimensionValueList': (10612, 'financials'),
+    'DimensionValueCard': (10613, 'financials'),
+    'NoSeriesList': (10620, 'setup'),
+    'NoSeriesCard': (10621, 'setup'),
+    # ── Restaurant (10700) ─────────────────────────────────────────────────────
+    'RestaurantOrder': (10710, 'restaurant'),
+    'RestaurantOrderList': (10711, 'restaurant'),
+    'KitchenDisplay': (10712, 'restaurant'),
+    'KitchenDisplayList': (10713, 'restaurant'),
+    'RestaurantPOS': (10714, 'restaurant'),
+    'MenuBuilder': (10715, 'restaurant'),
+    'TableList': (10716, 'restaurant'),
+    'FloorList': (10717, 'restaurant'),
+    'ReservationList': (10718, 'restaurant'),
+    'MenuItemList': (10719, 'restaurant'),
+    'MenuCategoryList': (10720, 'restaurant'),
+    'MenuList': (10721, 'restaurant'),
+    'RestaurantManagerRC': (10722, 'restaurant'),
+    # ── User management (10800) ────────────────────────────────────────────────
+    'UserSetupList': (10801, 'user_management'),
+    'UsersList': (10802, 'user_management'),
+    'UsersCard': (10803, 'user_management'),
+    'UserSettingsList': (10804, 'user_management'),
+    'UserSettingsCard': (10805, 'user_management'),
+    'PermissionSetsList': (10806, 'user_management'),
+    'PermissionSetsCard': (10807, 'user_management'),
+    'UserGroupsList': (10808, 'user_management'),
+    'UserGroupsCard': (10809, 'user_management'),
+    # ── Company / manufacturing / reports (10900) ──────────────────────────────
+    'CompanyCard': (10901, 'company'),
+    'CompanySubscriptionCard': (10902, 'company'),
+    'CompanyBillingHistoryList': (10903, 'company'),
+    'CompanyPaymentMethodList': (10904, 'company'),
+    'ManufacturingSetupCard': (10910, 'manufacturing'),
+    'ExpiryReport': (10920, 'reports'),
+    'InventoryTransactionDetailReport': (10921, 'reports'),
+    # ── Role Centres / general shells (12000) ──────────────────────────────────
+    'BusinessManagerRC': (12001, 'general'),
+    'OperationsManagerRC': (12002, 'general'),
 }
 
-# Zentro-only pages: (object_id, module) — 50 000+ partner-extension range
-ZENTRO_CUSTOM_PAGE_REGISTRY: dict[str, tuple[int, str]] = {
-    'SalesPOS': (50_003, 'sales'),
-    'CashReceiptJournalBatchList': (50_004, 'payments'),
-    'ApplyVendorEntries': (50_010, 'purchases'),
-    'ApplyCustomerEntries': (50_011, 'sales'),
-    'ItemTrackingLinesWorksheet': (50_012, 'inventory'),
-    'FinancialReportCard': (50_013, 'financials'),
-    'CompanySubscriptionCard': (50_020, 'company'),
-    'CompanyBillingHistoryList': (50_021, 'company'),
-    'CompanyPaymentMethodList': (50_022, 'company'),
-    'OpeningBalanceJournalList': (50_030, 'inventory'),
-    'RestaurantOrder': (50_100, 'restaurant'),
-    'RestaurantOrderList': (50_101, 'restaurant'),
-    'KitchenDisplay': (50_102, 'restaurant'),
-    'KitchenDisplayList': (50_103, 'restaurant'),
-    'RestaurantPOS': (50_104, 'restaurant'),
-    'MenuBuilder': (50_105, 'restaurant'),
-    'TableList': (50_106, 'restaurant'),
-    'FloorList': (50_107, 'restaurant'),
-    'ReservationList': (50_108, 'restaurant'),
-    'MenuItemList': (50_109, 'restaurant'),
-    'MenuCategoryList': (50_110, 'restaurant'),
-    'MenuList': (50_111, 'restaurant'),
-    'ExpiryReport': (50_200, 'reports'),
-    'InventoryTransactionDetailReport': (50_201, 'reports'),
-    'BusinessManagerRC': (50_300, 'general'),
-    'SalesManagerRC': (50_301, 'sales'),
-    'AccountingRC': (50_302, 'financials'),
-    'WarehouseRC': (50_303, 'inventory'),
-    'CashierRC': (50_304, 'sales'),
-    'RestaurantManagerRC': (50_305, 'restaurant'),
-    'OperationsManagerRC': (50_306, 'general'),
-    'PharmacistRC': (50_307, 'inventory'),
-}
+# Backward-compatible aliases (older imports)
+BC_PAGE_REGISTRY = ZENTRO_PAGE_REGISTRY
+ZENTRO_CUSTOM_PAGE_REGISTRY: dict[str, tuple[int, str]] = {}
+ZENTRO_CUSTOM_PAGE_ID_START = 12_000
 
 
-def bc_page_object_id(bc_page_id: int) -> int:
-    """Return the BC page ID unchanged (same as Business Central)."""
-    if bc_page_id <= 0:
-        raise ValueError(f'BC page ID must be positive, got {bc_page_id}')
-    return bc_page_id
+def zentro_page_id(page_id: int) -> int:
+    if page_id < ZENTRO_PAGE_ID_START:
+        raise ValueError(f'Zentro page ID must be >= {ZENTRO_PAGE_ID_START}, got {page_id}')
+    return page_id
 
 
-# Backward-compatible alias
-zentro_page_object_id = bc_page_object_id
+# Legacy aliases kept so existing imports do not break
+bc_page_object_id = zentro_page_id
 
 
 def module_for_page_name(page_name: str) -> str | None:
-    if page_name in BC_PAGE_REGISTRY:
-        return BC_PAGE_REGISTRY[page_name][1]
-    if page_name in ZENTRO_CUSTOM_PAGE_REGISTRY:
-        return ZENTRO_CUSTOM_PAGE_REGISTRY[page_name][1]
+    if page_name in ZENTRO_PAGE_REGISTRY:
+        return ZENTRO_PAGE_REGISTRY[page_name][1]
     return None
 
 
 def resolve_page_object_id(page_name: str) -> int | None:
-    """Stable permission object ID for a page-engine name (BC ID or 50 000+ custom)."""
-    if page_name in BC_PAGE_REGISTRY:
-        return BC_PAGE_REGISTRY[page_name][0]
-    if page_name in ZENTRO_CUSTOM_PAGE_REGISTRY:
-        return ZENTRO_CUSTOM_PAGE_REGISTRY[page_name][0]
+    """Stable Zentro page ID (used as both PageId and ObjectId)."""
+    if page_name in ZENTRO_PAGE_REGISTRY:
+        return ZENTRO_PAGE_REGISTRY[page_name][0]
     return None
 
 
+def resolve_zentro_page_id(page_name: str) -> int | None:
+    return resolve_page_object_id(page_name)
+
+
 def all_registered_page_names() -> list[str]:
-    return sorted(set(BC_PAGE_REGISTRY) | set(ZENTRO_CUSTOM_PAGE_REGISTRY))
+    return sorted(ZENTRO_PAGE_REGISTRY)

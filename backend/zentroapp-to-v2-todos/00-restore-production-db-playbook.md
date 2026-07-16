@@ -216,7 +216,7 @@ What we hit on first prod dump → V2 migrate:
 | Public admin `system_id` missing | `repair_customuser_system_id_all_schemas` |
 | 301 vs 349 migration rows | Cosmetic — use `compare_schema_checks.py` |
 | `auth_devpush_user_active_idx` missing on shared migrate | Safe rename in `authentication.0020` — [10](./10-auth-0020-safe-index-rename.md) |
-| Empty `page_engine_page` after migrate | `seed_pages` + BC permissions — [08](./08-primewise-v2-readiness.md) |
+| Empty `page_engine_page` after migrate | `seed_pages` + page permissions — [08](./08-primewise-v2-readiness.md) |
 | Slow new-company signup | Pre-seed `_zentro_template` — [09](./09-preseeded-zentro-template.md) |
 | Empty sidebar / wrong user after restore (Jul 2026 DO) | Domains, RC FK, personalization, subscription, nginx 64k, Origin tenant — [11](./11-restore-to-v2-ui-checklist.md) |
 

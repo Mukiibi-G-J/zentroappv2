@@ -53,7 +53,7 @@ Tick items per environment: **staging first**, then **production**.
 | 06 | Migration history row count mismatch (cosmetic) | ℹ️ Documented | [06-migration-history-row-count.md](./06-migration-history-row-count.md) |
 
 | 07 | Public schema: `authentication_customuser.system_id` missing (admin login) | ✅ Local `public` · ☐ Production | [07-public-schema-system-id.md](./07-public-schema-system-id.md) |
-| 08 | **Primewise pilot → V2 ready** (migrate + seed_pages + BC permissions) | ✅ Local `primewise` | [08-primewise-v2-readiness.md](./08-primewise-v2-readiness.md) |
+| 08 | **Primewise pilot → V2 ready** (migrate + seed_pages + page permissions) | ✅ Local `primewise` | [08-primewise-v2-readiness.md](./08-primewise-v2-readiness.md) |
 
 | 09 | Pre-seeded `_zentro_template` (fast company creation) | ✅ Code · ☐ rebuild per env | [09-preseeded-zentro-template.md](./09-preseeded-zentro-template.md) |
 
@@ -61,9 +61,11 @@ Tick items per environment: **staging first**, then **production**.
 
 | 11 | **After restore → V2 web UI** (Role Centre, Origin tenant, nginx JWT, subscription) | 📋 Use every restore | [11-restore-to-v2-ui-checklist.md](./11-restore-to-v2-ui-checklist.md) |
 
+| 12 | **Zentro page IDs** (PageId == ObjectId, 10xxx bands) | 📖 Reference | [12-page-id-vs-object-id.md](./12-page-id-vs-object-id.md) |
 
 
-Add new todos as `12-….md` in **this folder** and link them in the table above.
+
+Add new todos as `13-….md` in **this folder** and link them in the table above.
 
 
 
@@ -79,7 +81,7 @@ Add new todos as `12-….md` in **this folder** and link them in the table above
 
 2. **Follow** [00-restore-production-db-playbook.md](./00-restore-production-db-playbook.md) (migrate → sequences → repairs → verify).
 
-3. **Pilot tenant** (e.g. `primewise`): [08-primewise-v2-readiness.md](./08-primewise-v2-readiness.md) — includes `seed_pages` + BC permissions (required for V2 UI).
+3. **Pilot tenant** (e.g. `primewise`): [08-primewise-v2-readiness.md](./08-primewise-v2-readiness.md) — includes `seed_pages` + page permissions (required for V2 UI).
 
 4. **V2 web UI after restore** (Role Centre, domains, Origin login, nginx JWT, subscription): [11-restore-to-v2-ui-checklist.md](./11-restore-to-v2-ui-checklist.md) — **required** whenever you restore into another DB and expect the frontend to work.
 

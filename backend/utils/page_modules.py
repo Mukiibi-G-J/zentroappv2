@@ -59,6 +59,7 @@ _PAGE_NAME_MODULE_OVERRIDES: dict[str, str | None] = {
     "SalesOrderList": "sales",
     "SalesInvoiceList": "sales",
     "PostedSalesInvoiceList": "sales",
+    "PostedSalesInvoice": "sales",
     "PurchaseInvoiceList": "purchases",
     "PostedPurchaseInvoiceList": "purchases",
     "PostedPurchaseInvoice": "purchases",
