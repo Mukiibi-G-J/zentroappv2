@@ -50,6 +50,9 @@ CSRF_TRUSTED_ORIGINS = [
     "https://zentroapp.app",
     "https://*.zentroapp.app",
     "http://localhost:8000",
+    "http://localhost:8002",
+    "http://127.0.0.1:8000",
+    "http://127.0.0.1:8002",
     "https://zentroapp-backend.com",
     "https://*.zentroapp-backend.com",
     "http://localhost:5173",
@@ -619,7 +622,12 @@ CSRF_COOKIE_SECURE = False
 
 # Production security settings
 if ENVIRONMENT == "production":
-    SECURE_SSL_REDIRECT = True
+    # Override with SECURE_SSL_REDIRECT=false for SSH/Cursor localhost tunnels.
+    SECURE_SSL_REDIRECT = os.getenv("SECURE_SSL_REDIRECT", "true").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_BROWSER_XSS_FILTER = True

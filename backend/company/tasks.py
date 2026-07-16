@@ -23,8 +23,6 @@ from django.template.loader import render_to_string
 from django.core.management import call_command
 from django_tenants.utils import tenant_context
 from celery.utils.log import get_task_logger
-from django.core.management.base import OutputWrapper
-from django.core.management.color import color_style
 from django.utils.html import strip_tags
 from io import StringIO
 from redis.exceptions import ConnectionError as RedisConnectionError
@@ -47,20 +45,16 @@ from company.subscription_billing import (
     parse_billing_period_from_metadata,
     subscription_period_end_inclusive,
 )
-from company.tenant_import import run_tenant_data_import
+from company.tenant_baseline import (
+    assign_user_to_admin_group,
+    ensure_branch_location,
+    ensure_default_vendor_and_customer,
+    ensure_inventory_posting_for_branch,
+    run_tenant_baseline_bootstrap,
+    tenant_has_baseline_data,
+)
 
-from authentication.models import CustomUser as User, Role
-from items.models import Location
-
-from purchases.models import PurchasePayable
-from sales.models import SalesReceivable
-from setup.models import NoSeriesLines, NoSeries
-from purchases.models import Vendor, VendorPostingGroup
-from sales.models import Customer, CustomerPostingGroup
-from financials.models import PaymentMethod, G_LAccount
-from postings.models import GeneralBusinessPostingGroup, GeneralPostingSetup
-from postings.models import InventoryPostingSetup
-from sales.enums import CustomerType
+from authentication.models import CustomUser as User
 
 logger = get_task_logger(__name__)
 DEBUG_ADMIN_USERNAME = getattr(settings, "DEBUG_ADMIN_USERNAME", "debug_admin")
@@ -88,267 +82,7 @@ def generate_unique_username_for_tenant(full_name: str) -> str:
 
 
 
-def create_default_roles(schema_name):
-    """Create default user roles for a new company"""
-    try:
-        with schema_context(schema_name):
-            default_roles = [
-                {
-                    "name": "Admin",
-                    "description": "Full system administrator with complete access to all features and settings",
-                    "permissions": ["all"],
-                    "is_active": True,
-                },
-                {
-                    "name": "Manager",
-                    "description": "Business manager with comprehensive access to reports, user management, and business settings",
-                    "permissions": [
-                        # Core System
-                        "view_dashboard",
-                        "view_profile",
-                        "edit_profile",
-                        # Sales
-                        "view_sales",
-                        "create_sales",
-                        "edit_sales",
-                        "view_sales_history",
-                        "create_sales_invoice",
-                        # Purchases
-                        "view_purchases",
-                        "create_purchases",
-                        "edit_purchases",
-                        "view_purchase_history",
-                        # Items
-                        "view_items",
-                        "create_items",
-                        "edit_items",
-                        "manage_item_categories",
-                        # Inventory
-                        "view_inventory",
-                        "adjust_inventory",
-                        "view_inventory_history",
-                        # Customers
-                        "view_customers",
-                        "create_customers",
-                        "edit_customers",
-                        # Vendors
-                        "view_vendors",
-                        "create_vendors",
-                        "edit_vendors",
-                        # Expenses
-                        "view_expenses",
-                        "create_expenses",
-                        "edit_expenses",
-                        "view_expense_history",
-                        # Payments
-                        "view_payments",
-                        "create_payments",
-                        "edit_payments",
-                        "view_payment_history",
-                        # Financials
-                        "view_financials",
-                        "create_financials",
-                        "edit_financials",
-                        "view_chart_of_accounts",
-                        "view_profit_loss",
-                        "view_balance_sheet",
-                        # Reports
-                        "view_reports",
-                        "export_reports",
-                        "create_custom_reports",
-                        # User Management
-                        "manage_users",
-                        "manage_roles",
-                        "view_user_activity",
-                        # Company Management
-                        "view_company",
-                        "edit_company",
-                        "manage_company_settings",
-                        # Configuration
-                        "view_settings",
-                        "edit_settings",
-                        # Subscription
-                        "view_subscription",
-                        "manage_subscription",
-                    ],
-                    "is_active": True,
-                },
-                {
-                    "name": "Sales",
-                    "description": "Sales staff with access to sales, customers, and basic reporting",
-                    "permissions": [
-                        # Core System
-                        "view_dashboard",
-                        "view_profile",
-                        "edit_profile",
-                        # Sales
-                        "view_sales",
-                        "create_sales",
-                        "edit_sales",
-                        "view_sales_history",
-                        "create_sales_invoice",
-                        # Customers
-                        "view_customers",
-                        "create_customers",
-                        "edit_customers",
-                        # Items
-                        "view_items",
-                        # Inventory
-                        "view_inventory",
-                        # Reports
-                        "view_reports",
-                        "export_reports",
-                    ],
-                    "is_active": True,
-                },
-                {
-                    "name": "Cashier",
-                    "description": "Cashier with access to sales transactions and basic customer management",
-                    "permissions": [
-                        # Core System
-                        "view_dashboard",
-                        "view_profile",
-                        "edit_profile",
-                        # Sales
-                        "view_sales",
-                        "create_sales",
-                        "view_sales_history",
-                        # Customers
-                        "view_customers",
-                        "create_customers",
-                        # Items
-                        "view_items",
-                        # Inventory
-                        "view_inventory",
-                        # Reports
-                        "view_reports",
-                    ],
-                    "is_active": True,
-                },
-                {
-                    "name": "Inventory",
-                    "description": "Inventory manager with access to stock management and purchasing",
-                    "permissions": [
-                        # Core System
-                        "view_dashboard",
-                        "view_profile",
-                        "edit_profile",
-                        # Items
-                        "view_items",
-                        "create_items",
-                        "edit_items",
-                        "manage_item_categories",
-                        "manage_item_units",
-                        # Inventory
-                        "view_inventory",
-                        "adjust_inventory",
-                        "view_inventory_history",
-                        "manage_inventory_tracking",
-                        # Purchases
-                        "view_purchases",
-                        "create_purchases",
-                        "edit_purchases",
-                        "view_purchase_history",
-                        # Vendors
-                        "view_vendors",
-                        "create_vendors",
-                        "edit_vendors",
-                        # Reports
-                        "view_reports",
-                        "export_reports",
-                    ],
-                    "is_active": True,
-                },
-                {
-                    "name": "Accountant",
-                    "description": "Accountant with access to financial records, reports, and accounting features",
-                    "permissions": [
-                        # Core System
-                        "view_dashboard",
-                        "view_profile",
-                        "edit_profile",
-                        # Financials
-                        "view_financials",
-                        "create_financials",
-                        "edit_financials",
-                        "view_chart_of_accounts",
-                        "manage_chart_of_accounts",
-                        "view_profit_loss",
-                        "view_balance_sheet",
-                        # Sales
-                        "view_sales",
-                        "view_sales_history",
-                        # Purchases
-                        "view_purchases",
-                        "view_purchase_history",
-                        # Items
-                        "view_items",
-                        # Inventory
-                        "view_inventory",
-                        "view_inventory_history",
-                        # Expenses
-                        "view_expenses",
-                        "create_expenses",
-                        "edit_expenses",
-                        "view_expense_history",
-                        # Payments
-                        "view_payments",
-                        "create_payments",
-                        "edit_payments",
-                        "view_payment_history",
-                        "manage_payment_methods",
-                        # Reports
-                        "view_reports",
-                        "export_reports",
-                        "create_custom_reports",
-                    ],
-                    "is_active": True,
-                },
-                {
-                    "name": "User",
-                    "description": "Basic user with limited access to view-only features",
-                    "permissions": [
-                        # Core System
-                        "view_dashboard",
-                        "view_profile",
-                        "edit_profile",
-                        # Sales
-                        "view_sales",
-                        # Customers
-                        "view_customers",
-                        # Items
-                        "view_items",
-                        # Inventory
-                        "view_inventory",
-                        # Reports
-                        "view_reports",
-                    ],
-                    "is_active": True,
-                },
-            ]
-
-            created_roles = []
-            for role_data in default_roles:
-                role, created = Role.objects.get_or_create(
-                    name=role_data["name"],
-                    defaults={
-                        "description": role_data["description"],
-                        "permissions": role_data["permissions"],
-                        "is_active": role_data["is_active"],
-                    },
-                )
-                if created:
-                    created_roles.append(role.name)
-                    logger.info(f"Created role: {role.name}")
-
-            logger.info(
-                f"Successfully created {len(created_roles)} roles: {', '.join(created_roles)}"
-            )
-            return created_roles
-
-    except Exception as e:
-        logger.error(f"Error creating default roles: {str(e)}")
-        raise e
+# create_default_roles lives in company.tenant_baseline (imported above)
 
 
 def update_task_progress(self, progress, message, status):
@@ -362,6 +96,21 @@ def update_task_progress(self, progress, message, status):
                 "status": status,
             },
         )
+        # Heartbeat for get_task_status: detect abandoned PROGRESS after worker kill.
+        task_id = getattr(getattr(self, "request", None), "id", None)
+        if task_id:
+            from django.core.cache import cache
+
+            cache.set(
+                f"company_create_progress_{task_id}",
+                {
+                    "progress": progress,
+                    "message": message,
+                    "status": status,
+                    "updated_at": time.time(),
+                },
+                timeout=3600,
+            )
         # Remove the small delay for solo pool on Windows
         # time.sleep(0.1)  # This can cause issues with solo pool
     except Exception as e:
@@ -477,7 +226,11 @@ def create_company_task(self, data):
         domain_suffix = (
             "localhost"
             if settings.ENVIRONMENT == "development"
-            else "zentroapp-backend.com"
+            else getattr(
+                settings,
+                "BACKEND_DOMAIN",
+                getattr(settings, "DOMAIN", "zentroapp-api.uncodedsolutions.com"),
+            )
         )
         full_domain = f"{schema_name}.{domain_suffix}"
 
@@ -511,7 +264,7 @@ def create_company_task(self, data):
                     onboarding_data=onboarding_data,  # Store as JSON
                     enabled_modules=["pos"],  # POS is the base module and required
                 )
-                # django-tenants runs full tenant migrations on Company.save (auto_create_schema=True).
+                # Prefer clone from pre-seeded `_zentro_template`; falls back to migrations.
                 _log_company_creation_phase(
                     "tenant_schema_and_migrations_done", t_start, phase_mark
                 )
@@ -553,15 +306,11 @@ def create_company_task(self, data):
                     if not password or not str(password).strip():
                         raise ValueError("Password is required and cannot be blank")
 
-                    from dimension.setup import (
-                        DEFAULT_FIRST_BRANCH_CODE,
-                        DEFAULT_FIRST_BRANCH_DESCRIPTION,
-                        ensure_default_branch_dimension_and_gl_setup,
-                    )
-
-                    branch_setup = ensure_default_branch_dimension_and_gl_setup(
-                        default_branch_value_code=DEFAULT_FIRST_BRANCH_CODE,
-                        default_branch_value_description=DEFAULT_FIRST_BRANCH_DESCRIPTION,
+                    branch_value = ensure_branch_location(
+                        address=data.get("address") or "",
+                        city=data.get("city") or "",
+                        phone=data["phone"],
+                        email=data["email"],
                     )
 
                     admin_username = generate_unique_username_for_tenant(
@@ -574,18 +323,6 @@ def create_company_task(self, data):
                         phone_number=data["phone"],
                         password=password,
                         is_verified=False,
-                    )
-
-                    # Location.code must match BRANCH DimensionValue.code.
-                    # Inventory journals resolve location from branch, not raw address text.
-                    branch_value = branch_setup["default_branch_value"]
-                    Location.objects.create(
-                        code=branch_value.code,
-                        description=branch_value.description,
-                        address=(data.get("address") or "").strip(),
-                        city=data.get("city") or "",
-                        phone=data["phone"],
-                        email=data["email"],
                     )
 
                     user.global_dimension_1 = branch_value
@@ -601,803 +338,128 @@ def create_company_task(self, data):
                         "after_admin_user_bootstrap", t_start, phase_mark
                     )
 
-                    # Create default roles
-                    update_task_progress(
-                        self, 68, "Creating default roles...", "creating_roles"
-                    )
+                    created_roles = []
+                    command_output = None
+                    used_template_baseline = tenant_has_baseline_data()
 
-                    try:
-                        created_roles = create_default_roles(company.schema_name)
-                        logger.info(
-                            f"Created roles for {company.name}: {', '.join(created_roles)}"
-                        )
-
-                        # Create default role centers
-                        update_task_progress(
-                            self,
-                            69,
-                            "Creating default role centers...",
-                            "creating_role_centers",
-                        )
-
-                        try:
-                            # Call setup_default_role_centers command
-                            output_buffer = StringIO()
-                            output_wrapper = OutputWrapper(output_buffer, ending="")
-
-                            call_command(
-                                "setup_default_role_centers",
-                                stdout=output_wrapper,
-                                stderr=output_wrapper,
-                                verbosity=0,
-                            )
-
-                            role_center_output = output_buffer.getvalue()
-                            output_buffer.close()
-                            logger.info(
-                                f"Created default role centers for {company.name}"
-                            )
-                        except Exception as rc_error:
-                            logger.error(
-                                f"Error creating role centers: {str(rc_error)}"
-                            )
-                            # Don't fail if role center creation fails
-
-                        # NEW: Create Page Objects for permission system
+                    if used_template_baseline:
                         update_task_progress(
                             self,
                             70,
-                            "Setting up page objects...",
-                            "creating_page_objects",
+                            "Using pre-seeded template baseline...",
+                            "template_baseline",
                         )
-
-                        try:
-                            output_buffer = StringIO()
-                            output_wrapper = OutputWrapper(output_buffer, ending="")
-
-                            call_command(
-                                "populate_page_objects",
-                                stdout=output_wrapper,
-                                stderr=output_wrapper,
-                                verbosity=0,
-                            )
-
-                            output_buffer.close()
-                            logger.info(f"Created page objects for {company.name}")
-                        except Exception as po_error:
-                            logger.error(
-                                f"Error creating page objects: {str(po_error)}"
-                            )
-                            # Don't fail if page objects creation fails
-
-                        # NEW: Setup Permission Sets
+                        logger.info(
+                            "Skipping baseline bootstrap for %s "
+                            "(cloned from pre-seeded template)",
+                            company.name,
+                        )
+                        assign_user_to_admin_group(user)
+                        command_output = "skipped: template baseline"
+                        _log_company_creation_phase(
+                            "after_roles_permissions_user_groups",
+                            t_start,
+                            phase_mark,
+                        )
+                        _log_company_creation_phase(
+                            "after_tenant_json_import", t_start, phase_mark
+                        )
+                    else:
                         update_task_progress(
                             self,
-                            71,
-                            "Setting up permission sets...",
-                            "creating_permission_sets",
+                            68,
+                            "Bootstrapping tenant baseline...",
+                            "creating_roles",
+                        )
+                        logger.info(
+                            "Running full baseline bootstrap for %s "
+                            "(template missing or empty)",
+                            company.name,
                         )
 
-                        try:
-                            output_buffer = StringIO()
-                            output_wrapper = OutputWrapper(output_buffer, ending="")
+                        def _baseline_progress(pct, message, status):
+                            update_task_progress(self, pct, message, status)
 
-                            call_command(
-                                "setup_page_permissions",
-                                stdout=output_wrapper,
-                                stderr=output_wrapper,
-                                verbosity=0,
-                            )
-
-                            output_buffer.close()
-                            logger.info(
-                                f"Created permission sets for {company.name}"
-                            )
-                        except Exception as ps_error:
-                            logger.error(
-                                f"Error creating permission sets: {str(ps_error)}"
-                            )
-                            # Don't fail if permission sets creation fails
-
-                        # Seed Mobile Money Account (G/L Account 2930)
-                        update_task_progress(
-                            self,
-                            71.75,
-                            "Seeding mobile money account...",
-                            "seeding_mobile_money_account",
+                        baseline = run_tenant_baseline_bootstrap(
+                            company.schema_name,
+                            progress=_baseline_progress,
+                            ensure_branch=False,
                         )
-                        try:
-                            call_command(
-                                "seed_mobile_money_account",
-                                schema=company.schema_name,
-                            )
-                            logger.info(
-                                f"Seeded mobile money account for {company.name}"
-                            )
-                        except Exception as mm_error:
-                            logger.error(
-                                f"Error seeding mobile money account: {str(mm_error)}"
-                            )
-
-                        # Seed Mobile Money Bank Accounts (MTN_MONEY and AIRTEL_MONEY)
-                        # Must run after seed_mobile_money_account as it depends on G/L Account 2930
-                        update_task_progress(
-                            self,
-                            71.77,
-                            "Seeding mobile money bank accounts...",
-                            "seeding_mobile_money_bank_accounts",
+                        created_roles = baseline.get("created_roles") or []
+                        command_output = baseline.get("import_output")
+                        assign_user_to_admin_group(user)
+                        _log_company_creation_phase(
+                            "after_roles_permissions_user_groups",
+                            t_start,
+                            phase_mark,
                         )
-                        try:
-                            call_command("seed_mobile_money_bank_accounts")
-                            logger.info(
-                                f"Seeded mobile money bank accounts for {company.name}"
-                            )
-                        except Exception as mmba_error:
-                            logger.error(
-                                f"Error seeding mobile money bank accounts: {str(mmba_error)}"
-                            )
-
-                        # Setup Bank Account configuration
-                        update_task_progress(
-                            self,
-                            71.8,
-                            "Setting up bank account configuration...",
-                            "setting_up_bank_account",
-                        )
-                        try:
-                            call_command("setup_bank_account")
-                            logger.info(
-                                f"Set up bank account configuration for {company.name}"
-                            )
-                        except Exception as ba_error:
-                            logger.error(
-                                f"Error setting up bank account: {str(ba_error)}"
-                            )
-
-                        # Seed Prepayment Number Series
-                        update_task_progress(
-                            self,
-                            71.85,
-                            "Seeding prepayment number series...",
-                            "seeding_prepayment_no_series",
-                        )
-                        try:
-                            call_command("seed_prepayment_no_series")
-                            logger.info(
-                                f"Seeded prepayment number series for {company.name}"
-                            )
-                        except Exception as pns_error:
-                            logger.error(
-                                f"Error seeding prepayment number series: {str(pns_error)}"
-                            )
-
-                        # NEW: Create User Groups
-                        update_task_progress(
-                            self,
-                            72,
-                            "Creating user groups...",
-                            "creating_user_groups",
+                        _log_company_creation_phase(
+                            "after_tenant_json_import", t_start, phase_mark
                         )
 
-                        try:
-                            from authentication.models import UserGroup
-                            from permissions.models import PermissionSet
-
-                            # Get all roles
-                            admin_role = Role.objects.filter(name="Admin").first()
-                            manager_role = Role.objects.filter(
-                                name="Manager"
-                            ).first()
-                            sales_role = Role.objects.filter(name="Sales").first()
-                            cashier_role = Role.objects.filter(
-                                name="Cashier"
-                            ).first()
-                            inventory_role = Role.objects.filter(
-                                name="Inventory"
-                            ).first()
-                            accountant_role = Role.objects.filter(
-                                name="Accountant"
-                            ).first()
-                            user_role = Role.objects.filter(name="User").first()
-
-                            admin_group = None
-
-                            # Create Admin User Group
-                            if admin_role:
-                                admin_group, created = (
-                                    UserGroup.objects.get_or_create(
-                                        code="Admin",
-                                        defaults={
-                                            "name": "Admin",
-                                            "description": "Administrator user group with full access",
-                                            "default_profile": admin_role,
-                                            "is_active": True,
-                                        },
-                                    )
-                                )
-                                # Always ensure Admin group has every active permission set (covers new modules like Prepayments)
-                                all_permission_sets = PermissionSet.objects.filter(
-                                    is_active=True
-                                )
-                                admin_group.permission_sets.set(all_permission_sets)
-                                logger.info(
-                                    f"{'Created' if created else 'Updated'} Admin user group with {all_permission_sets.count()} permission sets"
-                                )
-
-                            # Create Manager User Group
-                            if manager_role:
-                                manager_group, created = (
-                                    UserGroup.objects.get_or_create(
-                                        code="Manager",
-                                        defaults={
-                                            "name": "Manager",
-                                            "description": "Manager user group with comprehensive access",
-                                            "default_profile": manager_role,
-                                            "is_active": True,
-                                        },
-                                    )
-                                )
-                                if created:
-                                    # Assign full access permission sets to Manager
-                                    manager_permissions = (
-                                        PermissionSet.objects.filter(
-                                            code__in=[
-                                                "SALES_FULL",
-                                                "CUSTOMER_FULL",
-                                                "ITEMS_FULL",
-                                                "PURCHASES_FULL",
-                                                "PAYMENTS_FULL",
-                                                "EXPENSES_FULL",
-                                                "FINANCIALS_FULL",
-                                            ]
-                                        )
-                                    )
-                                    manager_group.permission_sets.add(
-                                        *manager_permissions
-                                    )
-                                    logger.info(
-                                        f"Created Manager user group with {manager_permissions.count()} permission sets"
-                                    )
-
-                            # Create Sales User Group
-                            if sales_role:
-                                sales_group, created = (
-                                    UserGroup.objects.get_or_create(
-                                        code="Sales",
-                                        defaults={
-                                            "name": "Sales",
-                                            "description": "Sales user group with sales and customer access",
-                                            "default_profile": sales_role,
-                                            "is_active": True,
-                                        },
-                                    )
-                                )
-                                if created:
-                                    sales_permissions = (
-                                        PermissionSet.objects.filter(
-                                            code__in=[
-                                                "SALES_FULL",
-                                                "CUSTOMER_FULL",
-                                                "ITEMS_VIEW_ONLY",
-                                            ]
-                                        )
-                                    )
-                                    sales_group.permission_sets.add(
-                                        *sales_permissions
-                                    )
-                                    logger.info(f"Created Sales user group")
-
-                            # Create Cashier User Group
-                            if cashier_role:
-                                cashier_group, created = (
-                                    UserGroup.objects.get_or_create(
-                                        code="Cashier",
-                                        defaults={
-                                            "name": "Cashier",
-                                            "description": "Cashier user group with POS access",
-                                            "default_profile": cashier_role,
-                                            "is_active": True,
-                                        },
-                                    )
-                                )
-                                if created:
-                                    cashier_permissions = (
-                                        PermissionSet.objects.filter(
-                                            code__in=[
-                                                "SALES_CASHIER",
-                                                "CUSTOMER_BASIC",
-                                                "ITEMS_VIEW_ONLY",
-                                            ]
-                                        )
-                                    )
-                                    cashier_group.permission_sets.add(
-                                        *cashier_permissions
-                                    )
-                                    logger.info(f"Created Cashier user group")
-
-                            # Create Inventory User Group
-                            if inventory_role:
-                                inventory_group, created = (
-                                    UserGroup.objects.get_or_create(
-                                        code="Inventory",
-                                        defaults={
-                                            "name": "Inventory",
-                                            "description": "Inventory user group with stock management access",
-                                            "default_profile": inventory_role,
-                                            "is_active": True,
-                                        },
-                                    )
-                                )
-                                if created:
-                                    inventory_permissions = (
-                                        PermissionSet.objects.filter(
-                                            code__in=[
-                                                "ITEMS_FULL",
-                                                "PURCHASES_FULL",
-                                            ]
-                                        )
-                                    )
-                                    inventory_group.permission_sets.add(
-                                        *inventory_permissions
-                                    )
-                                    logger.info(f"Created Inventory user group")
-
-                            # Create Accountant User Group
-                            if accountant_role:
-                                accountant_group, created = (
-                                    UserGroup.objects.get_or_create(
-                                        code="Accountant",
-                                        defaults={
-                                            "name": "Accountant",
-                                            "description": "Accountant user group with financial access",
-                                            "default_profile": accountant_role,
-                                            "is_active": True,
-                                        },
-                                    )
-                                )
-                                if created:
-                                    accountant_permissions = (
-                                        PermissionSet.objects.filter(
-                                            code__in=[
-                                                "FINANCIALS_FULL",
-                                                "PAYMENTS_FULL",
-                                                "EXPENSES_FULL",
-                                                "SALES_VIEW_ONLY",
-                                                "PURCHASES_VIEW_ONLY",
-                                            ]
-                                        )
-                                    )
-                                    accountant_group.permission_sets.add(
-                                        *accountant_permissions
-                                    )
-                                    logger.info(f"Created Accountant user group")
-
-                            # Create User User Group (basic access)
-                            if user_role:
-                                user_group, created = (
-                                    UserGroup.objects.get_or_create(
-                                        code="User",
-                                        defaults={
-                                            "name": "User",
-                                            "description": "Basic user group with view-only access",
-                                            "default_profile": user_role,
-                                            "is_active": True,
-                                        },
-                                    )
-                                )
-                                if created:
-                                    user_permissions = PermissionSet.objects.filter(
-                                        code__in=[
-                                            "SALES_VIEW_ONLY",
-                                            "CUSTOMER_VIEW_ONLY",
-                                            "ITEMS_VIEW_ONLY",
-                                            "FINANCIALS_VIEW_ONLY",
-                                        ]
-                                    )
-                                    user_group.permission_sets.add(
-                                        *user_permissions
-                                    )
-                                    logger.info(f"Created User user group")
-
-                            # Assign the initial admin user to Admin group
-                            if admin_role and user:
-                                user.user_groups.add(admin_group)
-                                logger.info(
-                                    f"Assigned admin user to Admin user group"
-                                )
-
-                            # Debug admin: same logic as Company.save on_commit (idempotent)
-                            try:
-                                ensure_debug_admin_for_schema(company.schema_name)
-                                logger.info(
-                                    "Ensured debug admin user for schema %s",
-                                    company.schema_name,
-                                )
-                            except Exception as debug_user_error:
-                                logger.error(
-                                    "Error ensuring debug admin user: %s",
-                                    debug_user_error,
-                                    exc_info=True,
-                                )
-
-                        except Exception as ug_error:
-                            logger.error(
-                                f"Error creating user groups: {str(ug_error)}"
+                    update_task_progress(
+                        self,
+                        87,
+                        "Configuring subscription...",
+                        "importing_data",
+                    )
+                    subscription_data = data.get("subscription", {}) or {}
+                    update_subscription = Subscription.objects.get(company=company)
+                    plan = subscription_data.get("plan")
+                    if plan and update_subscription.plan != plan:
+                        if SubscriptionPlan.MULTI_BRANCH.value in str(plan):
+                            update_subscription.plan = (
+                                SubscriptionPlan.MULTI_BRANCH.value
                             )
-                            # Don't fail if user groups creation fails
-                    except Exception as role_error:
-                        logger.error(f"Error creating roles: {str(role_error)}")
-                        # Don't fail the entire process if role creation fails
-                        # Just log the error and continue
+                            update_subscription.is_trial = True
+                            update_subscription.status = (
+                                SubscriptionStatus.PENDING.value
+                            )
+                        elif SubscriptionPlan.PREMIUM.value in str(plan):
+                            update_subscription.plan = SubscriptionPlan.PREMIUM.value
+                            update_subscription.is_trial = False
+                            update_subscription.status = (
+                                SubscriptionStatus.PENDING.value
+                            )
+                        update_subscription.save()
+
+                    update_task_progress(
+                        self,
+                        94,
+                        "Creating default vendors and customers...",
+                        "setting_up_series",
+                    )
+                    ensure_default_vendor_and_customer(
+                        address=data.get("address") or "",
+                        city=data.get("city") or "",
+                    )
+                    ensure_inventory_posting_for_branch(branch_value.code)
 
                     _log_company_creation_phase(
-                        "after_roles_permissions_user_groups",
+                        "after_number_series_and_defaults",
                         t_start,
                         phase_mark,
                     )
 
-                    # Start data import process (often smaller than migrations; profile logs show truth).
-                    update_task_progress(
-                        self, 73, "Starting data import...", "importing_data"
+                    try:
+                        ensure_debug_admin_for_schema(company.schema_name)
+                    except Exception as _dbg_e:
+                        logger.warning(
+                            "ensure_debug_admin (post-bootstrap): %s",
+                            _dbg_e,
+                            exc_info=True,
+                        )
+
+                    login_url_ready = _build_company_login_url(company)
+                    send_company_creation_completion_email_task.delay(
+                        company_email=company.email or "",
+                        company_name=company.name,
+                        login_url=login_url_ready,
                     )
 
-                    # Remove delay - handled on frontend
-                    # time.sleep(1)
-
-                    try:
-                        file_path = os.path.join(
-                            settings.BASE_DIR,
-                            "tenant_semuna_export_20250227_062346.json",
-                        )
-
-                        update_task_progress(
-                            self, 75, "Reading import file...", "importing_data"
-                        )
-
-                        try:
-                            with open(
-                                file_path, "r", encoding="utf-8"
-                            ) as json_file:
-                                import_data = json.load(json_file)
-
-                            update_task_progress(
-                                self,
-                                80,
-                                "Importing initial data...",
-                                "importing_data",
-                            )
-
-                            _log_company_creation_phase(
-                                "before_tenant_json_import", t_start, phase_mark
-                            )
-                            output_buffer = StringIO()
-                            output_wrapper = OutputWrapper(output_buffer, ending="")
-                            style = color_style()
-                            run_tenant_data_import(
-                                company.schema_name,
-                                import_data,
-                                output_wrapper,
-                                output_wrapper,
-                                style,
-                            )
-                            command_output = output_buffer.getvalue()
-                            output_buffer.close()
-
-                            call_command("seed_prepayment_accounts")
-
-                            # Expense categories/types need G/L accounts from tenant JSON import.
-                            update_task_progress(
-                                self,
-                                83,
-                                "Seeding expense categories...",
-                                "seeding_expense_categories",
-                            )
-                            try:
-                                call_command(
-                                    "seed_expense_categories",
-                                    tenant=company.schema_name,
-                                )
-                                logger.info(
-                                    f"Seeded expense categories for {company.name}"
-                                )
-                            except Exception as ec_error:
-                                logger.error(
-                                    f"Error seeding expense categories: {str(ec_error)}"
-                                )
-
-                            update_task_progress(
-                                self,
-                                84,
-                                "Seeding expense types...",
-                                "seeding_expense_types",
-                            )
-                            try:
-                                call_command(
-                                    "seed_expense_types",
-                                    tenant=company.schema_name,
-                                )
-                                logger.info(
-                                    f"Seeded expense types for {company.name}"
-                                )
-                            except Exception as et_error:
-                                logger.error(
-                                    f"Error seeding expense types: {str(et_error)}"
-                                )
-
-                            update_task_progress(
-                                self,
-                                85,
-                                "Updating inventory setup...",
-                                "importing_data",
-                            )
-
-                            # Sales posting needs (location, inventory_posting_group) rows, not only NULL-location defaults.
-                            try:
-                                from postings.setup import (
-                                    ensure_inventory_posting_setups_for_location,
-                                )
-
-                                location = Location.objects.filter(
-                                    code=branch_value.code
-                                ).first()
-                                if not location:
-                                    logger.warning(
-                                        "No Location for branch %s; skipping inventory posting setup sync",
-                                        branch_value.code,
-                                    )
-                                else:
-                                    created_setups = (
-                                        ensure_inventory_posting_setups_for_location(
-                                            location
-                                        )
-                                    )
-                                    if created_setups:
-                                        logger.info(
-                                            "Created %s InventoryPostingSetup(s) for location %s",
-                                            created_setups,
-                                            location.code,
-                                        )
-                                    elif not InventoryPostingSetup.objects.filter(
-                                        location=location
-                                    ).exists():
-                                        logger.warning(
-                                            "No InventoryPostingSetup templates (location=NULL) to copy for %s",
-                                            location.code,
-                                        )
-                            except Exception as location_error:
-                                logger.error(
-                                    "Error syncing InventoryPostingSetup for branch location: %s",
-                                    location_error,
-                                )
-                                # Don't fail the entire process if location update fails
-
-                            update_task_progress(
-                                self,
-                                87,
-                                "Configuring subscription...",
-                                "importing_data",
-                            )
-
-                            # Create subscription
-                            subscription_data = data.get("subscription", {})
-                            print("subscription_data", subscription_data)
-                            update_subscription = Subscription.objects.get(
-                                company=company
-                            )
-                            if update_subscription.plan != subscription_data.get(
-                                "plan"
-                            ):
-                                if (
-                                    SubscriptionPlan.MULTI_BRANCH.value
-                                    in subscription_data.get("plan")
-                                ):
-                                    update_subscription.plan = (
-                                        SubscriptionPlan.MULTI_BRANCH.value
-                                    )
-                                    update_subscription.is_trial = True
-                                    update_subscription.status = (
-                                        SubscriptionStatus.PENDING.value
-                                    )
-                                    print("one", update_subscription.plan)
-                                elif (
-                                    SubscriptionPlan.PREMIUM.value
-                                    in subscription_data.get("plan")
-                                ):
-                                    update_subscription.plan = (
-                                        SubscriptionPlan.PREMIUM.value
-                                    )
-                                    update_subscription.is_trial = False
-                                    update_subscription.status = (
-                                        SubscriptionStatus.PENDING.value
-                                    )
-                                    print("three", update_subscription.plan)
-                                update_subscription.save()
-
-                            # Check if there were any error messages in the output
-                            if (
-                                "Error" in command_output
-                                or "error" in command_output
-                            ):
-                                raise Exception(
-                                    f"Import errors occurred: {command_output}"
-                                )
-
-                            logger.info(f"Import command output: {command_output}")
-
-                            _log_company_creation_phase(
-                                "after_tenant_json_import", t_start, phase_mark
-                            )
-
-                        except json.JSONDecodeError as je:
-                            raise Exception(f"Invalid JSON file: {str(je)}")
-                        except Exception as e:
-                            logger.error(f"Import command error: {str(e)}")
-                            raise Exception(f"Import failed: {str(e)}")
-
-                        update_task_progress(
-                            self,
-                            90,
-                            "Setting up number series...",
-                            "setting_up_series",
-                        )
-
-                        # Remove delay - handled on frontend
-                        # time.sleep(2)
-
-                        # Setup number series
-                        series_result = setup_default_no_series()
-                        logger.info(f"Number series setup result: {series_result}")
-
-                        update_task_progress(
-                            self,
-                            92,
-                            "Creating default records...",
-                            "setting_up_series",
-                        )
-
-                        print("NoSeries", NoSeries.objects.all())
-                        vendor_no_series = NoSeries.objects.get(code="VENDOR")
-                        print("vendor_no_series", vendor_no_series)
-
-                        PurchasePayable.objects.create(
-                            vendor_no=NoSeriesLines.objects.get(
-                                no_series=NoSeries.objects.get(code="VENDOR"),
-                            ),
-                            invoice_no=NoSeriesLines.objects.get(
-                                no_series=NoSeries.objects.get(code="INV"),
-                            ),
-                            posted_invoice_no=NoSeriesLines.objects.get(
-                                no_series=NoSeries.objects.get(code="POSTINV"),
-                            ),
-                            credit_memo_no=NoSeriesLines.objects.get(
-                                no_series=NoSeries.objects.get(code="PURCR"),
-                            ),
-                            posted_credit_memo_no=NoSeriesLines.objects.get(
-                                no_series=NoSeries.objects.get(code="POSTPURCR"),
-                            ),
-                        )
-
-                        SalesReceivable.objects.create(
-                            customer_no=NoSeriesLines.objects.get(
-                                no_series=NoSeries.objects.get(code="CUSTOMER"),
-                            ),
-                            sales_no=NoSeriesLines.objects.get(
-                                no_series=NoSeries.objects.get(code="SALES"),
-                            ),
-                            invoice_no=NoSeriesLines.objects.get(
-                                no_series=NoSeries.objects.get(code="SALESINV"),
-                            ),
-                            posted_invoice_no=NoSeriesLines.objects.get(
-                                no_series=NoSeries.objects.get(code="PSIN"),
-                            ),
-                            credit_memo_no=NoSeriesLines.objects.get(
-                                no_series=NoSeries.objects.get(code="CM"),
-                            ),
-                            posted_credit_memo_no=NoSeriesLines.objects.get(
-                                no_series=NoSeries.objects.get(code="POSTCM"),
-                            ),
-                            posted_prepayment_invoice_no=NoSeriesLines.objects.get(
-                                no_series=NoSeries.objects.get(code="POSTPREPINV"),
-                            ),
-                            posted_prepayment_credit_memo_no=NoSeriesLines.objects.get(
-                                no_series=NoSeries.objects.get(code="POSTPREPCM"),
-                            ),
-                            sales_order_no=NoSeriesLines.objects.get(
-                                no_series=NoSeries.objects.get(code="SO"),
-                            ),
-                            sales_price_list_no=NoSeriesLines.objects.get(
-                                no_series=NoSeries.objects.get(code="SPL"),
-                            ),
-                        )
-
-                        try:
-                            call_command("seed_credit_memo_numbers", verbosity=0)
-                        except Exception as cm_error:
-                            logger.warning(
-                                "seed_credit_memo_numbers after SalesReceivable create: %s",
-                                cm_error,
-                            )
-
-                        update_task_progress(
-                            self,
-                            94,
-                            "Creating default vendors and customers...",
-                            "setting_up_series",
-                        )
-
-                        Vendor.objects.create(
-                            name="General",
-                            address=data["address"],
-                            address_2=data["address"],
-                            city=data["city"],
-                            payment_method=PaymentMethod.objects.get(code="CASH"),
-                            vendor_posting_group=VendorPostingGroup.objects.get(
-                                code="DOMESTIC"
-                            ),
-                            business_posting_group=GeneralBusinessPostingGroup.objects.get(
-                                code="DOMESTIC"
-                            ),
-                        )
-                        Customer.objects.create(
-                            name="General",
-                            address=data["address"],
-                            address_2=data["address"],
-                            city=data["city"],
-                            payment_method=PaymentMethod.objects.get(code="CASH"),
-                            general_business_posting_group=GeneralBusinessPostingGroup.objects.get(
-                                code="DOMESTIC"
-                            ),
-                            customer_posting_group=CustomerPostingGroup.objects.get(
-                                code="DOMESTIC"
-                            ),
-                            customer_type=CustomerType.General.name,
-                        )
-
-                        from dimension.setup import (
-                            DEFAULT_FIRST_BRANCH_CODE,
-                            DEFAULT_FIRST_BRANCH_DESCRIPTION,
-                            ensure_default_branch_dimension_and_gl_setup,
-                        )
-
-                        # Reconcile dimensions after import/seeds (no extra BRANCH row if one exists)
-                        ensure_default_branch_dimension_and_gl_setup(
-                            default_branch_value_code=DEFAULT_FIRST_BRANCH_CODE,
-                            default_branch_value_description=DEFAULT_FIRST_BRANCH_DESCRIPTION,
-                        )
-
-                        _log_company_creation_phase(
-                            "after_number_series_and_defaults",
-                            t_start,
-                            phase_mark,
-                        )
-
-                        # Template clone may run ensure_debug_admin before Admin group exists;
-                        # re-run after full bootstrap (idempotent).
-                        try:
-                            ensure_debug_admin_for_schema(company.schema_name)
-                        except Exception as _dbg_e:
-                            logger.warning(
-                                "ensure_debug_admin (post-bootstrap): %s",
-                                _dbg_e,
-                                exc_info=True,
-                            )
-
-                        login_url_ready = _build_company_login_url(company)
-                        send_company_creation_completion_email_task.delay(
-                            company_email=company.email or "",
-                            company_name=company.name,
-                            login_url=login_url_ready,
-                        )
-
-                        update_task_progress(
-                            self, 96, "Finalizing setup...", "finalizing"
-                        )
-
-                    except Exception as import_error:
-                        logger.error(
-                            f"Error during data import: {str(import_error)}"
-                        )
-                        raise import_error
+                    update_task_progress(
+                        self, 96, "Finalizing setup...", "finalizing"
+                    )
 
                 except Exception as user_error:
                     logger.error(f"Error creating user: {str(user_error)}")
@@ -1407,12 +469,19 @@ def create_company_task(self, data):
 
             _log_company_creation_phase("completed", t_start, phase_mark)
 
+            login_url_ready = _build_company_login_url(company)
             return {
                 "state": "SUCCESS",
                 "progress": 100,
                 "message": "Company setup completed successfully!",
                 "status": "completed",
                 "company_name": data["name"],
+                "login_url": login_url_ready,
+                "used_template_baseline": bool(
+                    used_template_baseline
+                    if "used_template_baseline" in locals()
+                    else False
+                ),
                 "import_details": (
                     command_output if "command_output" in locals() else None
                 ),
@@ -1433,27 +502,11 @@ def create_company_task(self, data):
 
     except ValueError as ve:
         logger.error(f"Validation error: {str(ve)}")
-        self.update_state(
-            state="FAILURE",
-            meta={
-                "progress": 0,
-                "message": str(ve),
-                "status": "failed",
-                "error_type": "validation_error",
-            },
-        )
+        # Do not update_state(FAILURE, meta=dict) — Celery expects exception
+        # payloads with exc_type; a plain meta dict breaks task-status polling.
         raise
     except Exception as e:
         logger.error(f"Error in company creation process: {str(e)}")
-        self.update_state(
-            state="FAILURE",
-            meta={
-                "progress": 0,
-                "message": str(e),
-                "status": "failed",
-                "error_type": "task_execution_failed",
-            },
-        )
         # Tenant onboarding after schema creation runs in nested transaction.atomic(...)
         raise
 
@@ -2106,10 +1159,15 @@ def _build_company_subscription_url(company):
         host = parsed.netloc
 
     host_lower = host.lower()
-    # Tenant `domain_url` is stored on the backend as `*.zentroapp-backend.com`,
-    # but the frontend the user must visit is `*.zentroapp.app`.
-    # E.g. semuna.zentroapp-backend.com -> semuna.zentroapp.app
-    if "zentroapp-backend.com" in host_lower:
+    # Tenant `domain_url` is the API host; map to the frontend host for links.
+    backend_domain = getattr(
+        settings, "BACKEND_DOMAIN", "zentroapp-api.uncodedsolutions.com"
+    )
+    frontend_domain = getattr(settings, "DOMAIN", "zentroapp.uncodedsolutions.com")
+    if backend_domain and backend_domain in host_lower:
+        host = host.replace(backend_domain, frontend_domain)
+    # Legacy V1 mapping
+    elif "zentroapp-backend.com" in host_lower:
         host = host.replace("zentroapp-backend.com", "zentroapp.app")
 
     is_local = host_lower.endswith(".localhost") or host_lower == "localhost"
@@ -2126,12 +1184,14 @@ def _build_company_subscription_url(company):
 
 def _build_company_login_url(company):
     """Build per-company frontend login URL."""
+    frontend_domain = getattr(settings, "DOMAIN", "zentroapp.uncodedsolutions.com")
+    fallback = f"https://{frontend_domain}/login"
     if not company or not getattr(company, "domain_url", None):
-        return "https://zentroapp.app/sign-in"
+        return fallback
 
     raw_domain = str(company.domain_url).strip().rstrip("/")
     if not raw_domain:
-        return "https://zentroapp.app/sign-in"
+        return fallback
 
     scheme = ""
     host = raw_domain
@@ -2141,7 +1201,13 @@ def _build_company_login_url(company):
         host = parsed.netloc
 
     host_lower = host.lower()
-    if "zentroapp-backend.com" in host_lower:
+    backend_domain = getattr(
+        settings, "BACKEND_DOMAIN", "zentroapp-api.uncodedsolutions.com"
+    )
+    if backend_domain and backend_domain in host_lower:
+        host = host.replace(backend_domain, frontend_domain)
+        host_lower = host.lower()
+    elif "zentroapp-backend.com" in host_lower:
         host = host.replace("zentroapp-backend.com", "zentroapp.app")
         host_lower = host.lower()
 
@@ -2151,9 +1217,13 @@ def _build_company_login_url(company):
 
     has_explicit_port = ":" in host and host.rsplit(":", 1)[1].isdigit()
     if is_local and not has_explicit_port:
-        host = f"{host}:5173"
+        # Next.js app (V2) defaults to 3000; override with FRONTEND_DEV_PORT if needed.
+        front_port = getattr(settings, "FRONTEND_DEV_PORT", None) or os.getenv(
+            "FRONTEND_DEV_PORT", "3000"
+        )
+        host = f"{host}:{front_port}"
 
-    return f"{scheme}://{host}/sign-in"
+    return f"{scheme}://{host}/login"
 
 
 @shared_task

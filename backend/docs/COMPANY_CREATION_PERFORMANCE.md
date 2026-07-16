@@ -13,19 +13,31 @@ Phases (in order):
 | Phase | Meaning |
 | --- | --- |
 | `validation_complete` | Request payload validated |
-| `company_and_domain_created` | `Company` + `Domain` saved (includes new tenant schema creation and **full migration run** via django-tenants) |
+| `company_and_domain_created` | `Company` + `Domain` saved (clone from `_zentro_template` or slow migrations) |
 | `after_admin_user_bootstrap` | Admin user, branch dimension, location |
-| `after_roles_permissions_user_groups` | Roles, management commands, user groups |
-| `after_tenant_json_import` | JSON baseline import + `seed_prepayment_accounts` + subscription patch + inventory location update |
-| `after_number_series_and_defaults` | Number series, default vendor/customer, branch reconcile |
+| `after_roles_permissions_user_groups` | Roles/permissions/user groups (skipped when template is pre-seeded) |
+| `after_tenant_json_import` | JSON baseline import (skipped when template is pre-seeded) |
+| `after_number_series_and_defaults` | Company-specific vendor/customer + inventory posting sync |
 | `completed` | Main task finished (SMS and completion email are queued separately) |
 
-**How to record a baseline:** run one signup (staging or local with Celery + Redis), then search worker logs for `company_creation_timing`. The largest `phase_delta_s` indicates the bottleneck (usually `company_and_domain_created` if migrations dominate).
+**How to record a baseline:** run one signup (staging or local with Celery + Redis), then search worker logs for `company_creation_timing`. The largest `phase_delta_s` indicates the bottleneck. With a pre-seeded template, roles/import phases should be near-zero.
 
-## If migrations dominate
+## Fast path (recommended)
 
-- **Squash migrations** (Django) for apps that are stable, to reduce work per new tenant schema.
-- **Template schema (advanced):** maintain a PostgreSQL schema that is already migrated (and optionally pre-seeded), then clone it for each new tenant instead of running the full migration chain. Requires updating the template on every deploy that changes migrations. Coordinate with django-tenants lifecycle (schema name rename or `CREATE SCHEMA ... WITH TEMPLATE` patterns).
+1. Keep `_zentro_template` rebuilt and **pre-seeded**: `python manage.py rebuild_template_schema`
+2. Verify: `python manage.py verify_template_schema` (checks migrations **and** baseline rows)
+3. Signup clones structure + baseline; `create_company_task` only creates admin + company-specific rows
+
+Shared bootstrap lives in `company/tenant_baseline.py` (`run_tenant_baseline_bootstrap`).
+
+## If migrations dominate (template missing)
+
+- Run `rebuild_template_schema` so signups stop falling back to per-tenant migrations.
+- **Squash migrations** (Django) for apps that are stable, to reduce rebuild time.
+
+## If post-clone bootstrap still runs
+
+- Template exists but was built **before** pre-seed support → `tenant_has_baseline_data()` is false → full seed runs every signup. Rebuild once.
 
 ## Celery workers
 

@@ -199,46 +199,158 @@ def company_onboarding(request):
 
 def get_task_status(request, task_id):
     task = AsyncResult(task_id)
+    enqueued = bool(cache.get(f"company_create_enqueued_{task_id}"))
+    # Schema clone can sit at "Creating company..." for several minutes; past this
+    # with no progress heartbeat the worker was almost certainly killed/restarted.
+    PROGRESS_STALE_SECONDS = 15 * 60
+
+    def _safe_task_snapshot():
+        """
+        Celery crashes when FAILURE was stored via update_state(meta=dict)
+        without exc_type. Fall back to django_celery_results row in that case.
+        """
+        try:
+            state = task.state
+            info = task.info
+            return state, info, None
+        except (ValueError, TypeError, KeyError) as exc:
+            logger.warning(
+                "AsyncResult decode failed for %s (%s); using TaskResult row",
+                task_id,
+                exc,
+            )
+            try:
+                from django_celery_results.models import TaskResult
+
+                row = TaskResult.objects.filter(task_id=task_id).first()
+                if not row:
+                    return FAILURE, str(exc), None
+                state = row.status or FAILURE
+                raw = row.result
+                info = raw
+                if isinstance(raw, str) and raw:
+                    try:
+                        parsed = json.loads(raw)
+                    except Exception:
+                        parsed = None
+                    if isinstance(parsed, dict):
+                        # Proper Celery exception payload
+                        if "exc_message" in parsed:
+                            msg = parsed.get("exc_message")
+                            if isinstance(msg, (list, tuple)):
+                                info = " ".join(str(x) for x in msg)
+                            else:
+                                info = str(msg) if msg is not None else str(parsed)
+                        else:
+                            info = parsed
+                    else:
+                        info = raw
+                return state, info, row
+            except Exception as fallback_exc:
+                logger.exception(
+                    "TaskResult fallback failed for %s: %s", task_id, fallback_exc
+                )
+                return FAILURE, str(exc), None
+
+    state, info, _row = _safe_task_snapshot()
 
     # Get or set the start time in cache
     start_time = cache.get(f"task_start_{task_id}")
-    if not start_time and task.state != PENDING:
+    if not start_time and state != PENDING:
         start_time = time.time()
         cache.set(f"task_start_{task_id}", start_time, timeout=3600)  # 1 hour timeout
 
-    if task.state == PENDING:
-        response = {
-            "state": task.state,
-            "progress": 0,
-            "message": "Task is pending...",
-            "status": "pending",
-        }
-    elif task.state == FAILURE:
-        response = {
-            "state": task.state,
-            "progress": 0,
-            "message": str(task.info),  # Error message
-            "status": "failed",
-        }
+    if state == PENDING:
+        if not enqueued:
+            # Celery reports PENDING for unknown IDs — treat as dead session.
+            response = {
+                "state": "FAILURE",
+                "progress": 0,
+                "message": (
+                    "Company creation was never started on the server "
+                    "(stale browser session or the create request did not reach Celery). "
+                    "Please try again."
+                ),
+                "status": "unknown",
+                "enqueued": False,
+            }
+        else:
+            response = {
+                "state": state,
+                "progress": 0,
+                "message": "Task is pending...",
+                "status": "pending",
+                "enqueued": True,
+            }
+    elif state == FAILURE:
+        if isinstance(info, dict):
+            message = (
+                info.get("message")
+                or info.get("exc_message")
+                or str(info)
+            )
+            if isinstance(message, (list, tuple)):
+                message = " ".join(str(x) for x in message)
+            response = {
+                "state": state,
+                "progress": int(info.get("progress") or 0),
+                "message": str(message),
+                "status": info.get("status") or "failed",
+            }
+        else:
+            response = {
+                "state": state,
+                "progress": 0,
+                "message": str(info) if info is not None else "Company creation failed",
+                "status": "failed",
+            }
     else:
         # For STARTED, PROGRESS, SUCCESS states
-        if task.info is None:
+        if info is None:
             response = {
-                "state": task.state,
+                "state": state,
                 "progress": 100,
                 "message": "Task completed",
                 "status": "completed",
             }
-        else:
+        elif isinstance(info, dict):
             response = {
-                "state": task.state,
-                "progress": task.info.get("progress", 0),
-                "message": task.info.get("message", ""),
-                "status": task.info.get("status", ""),
+                "state": state,
+                "progress": info.get("progress", 0),
+                "message": info.get("message", ""),
+                "status": info.get("status", ""),
             }
             # Add result data if task is successful
-            if task.state == SUCCESS:
-                response["result"] = task.info
+            if state == SUCCESS:
+                response["result"] = info
+                if info.get("login_url"):
+                    response["login_url"] = info["login_url"]
+                if "used_template_baseline" in info:
+                    response["used_template_baseline"] = info["used_template_baseline"]
+        else:
+            response = {
+                "state": state,
+                "progress": 100 if state == SUCCESS else 0,
+                "message": str(info),
+                "status": "completed" if state == SUCCESS else state.lower(),
+            }
+
+        # Abandoned in-flight create: Celery left PROGRESS after Ctrl+C / restart.
+        if state == "PROGRESS":
+            heartbeat = cache.get(f"company_create_progress_{task_id}") or {}
+            updated_at = heartbeat.get("updated_at") or start_time
+            if updated_at and (time.time() - float(updated_at)) > PROGRESS_STALE_SECONDS:
+                response = {
+                    "state": "FAILURE",
+                    "progress": int(response.get("progress") or 0),
+                    "message": (
+                        "Company creation stopped updating (Celery worker likely "
+                        "restarted or was interrupted while cloning the tenant schema). "
+                        "Keep the worker running, clear this signup session, and try again."
+                    ),
+                    "status": "abandoned",
+                    "enqueued": enqueued,
+                }
 
     return JsonResponse(response)
 
@@ -361,6 +473,9 @@ def create_company_account(request):
                     )
 
                 result = create_company_task.delay(task_data)
+                # So get_task_status can tell a real enqueue from an orphaned/browser task_id.
+                cache.set(f"company_create_enqueued_{result.id}", True, timeout=3600)
+                cache.set(f"task_start_{result.id}", time.time(), timeout=3600)
 
                 return Response(
                     {

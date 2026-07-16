@@ -19,19 +19,40 @@ urlpatterns = [
         name="task-status",
     ),
     path(
-        "api/company/validate-company-name/",
-        views.validate_company_name,
-        name="validate_company_name",
+        "api/company/task-status/<str:task_id>",
+        views.get_task_status,
+        name="task-status-noslash",
     ),
     path(
         "api/company/create-company-account/",
         views.create_company_account,
         name="create-company-account",
     ),
+    # Slashless aliases: Next.js rewrites can strip trailing slash on POST.
+    path(
+        "api/company/create-company-account",
+        views.create_company_account,
+        name="create-company-account-noslash",
+    ),
     path(
         "api/company/check-company-exists/",
         views.check_company_exists,
         name="check-company-exists",
+    ),
+    path(
+        "api/company/check-company-exists",
+        views.check_company_exists,
+        name="check-company-exists-noslash",
+    ),
+    path(
+        "api/company/validate-company-name/",
+        views.validate_company_name,
+        name="validate_company_name",
+    ),
+    path(
+        "api/company/validate-company-name",
+        views.validate_company_name,
+        name="validate_company_name-noslash",
     ),
     # Company Overview and User Management APIs
     path(

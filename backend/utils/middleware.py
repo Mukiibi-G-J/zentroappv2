@@ -6,8 +6,38 @@ Provides middleware for checking module permissions on incoming requests.
 
 from django.http import JsonResponse
 from django.core.exceptions import PermissionDenied
+from django.middleware.security import SecurityMiddleware
 from utils.modules import get_module_config
 import re
+
+
+# Hosts used by local runserver and Cursor/SSH port-forwards to production.
+_LOCAL_TUNNEL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+class LocalhostAwareSecurityMiddleware(SecurityMiddleware):
+    """
+    Like SecurityMiddleware, but never forces HTTPS for localhost / 127.0.0.1.
+
+    Cursor Remote SSH auto-forwards production gunicorn (e.g. :8002) onto
+    localhost. With SECURE_SSL_REDIRECT=True, that becomes a 301 to
+    https://localhost:8002 which has no TLS listener. Skip the redirect (and
+    clear the Secure cookie flag) for those hosts so admin works over HTTP.
+    """
+
+    def process_request(self, request):
+        host = request.get_host().split(":")[0].lower().strip("[]")
+        if host in _LOCAL_TUNNEL_HOSTS:
+            return None
+        return super().process_request(request)
+
+    def process_response(self, request, response):
+        response = super().process_response(request, response)
+        host = request.get_host().split(":")[0].lower().strip("[]")
+        if host in _LOCAL_TUNNEL_HOSTS:
+            for morsel in response.cookies.values():
+                morsel["secure"] = False
+        return response
 
 
 class ModulePermissionMiddleware:

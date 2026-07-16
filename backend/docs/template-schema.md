@@ -2,13 +2,25 @@
 
 New companies normally get their PostgreSQL schema by **cloning** `_zentro_template` instead of replaying every tenant migration. That keeps signup fast (milliseconds vs minutes).
 
+The template is **pre-seeded** during rebuild with tenant-generic baseline data:
+
+- Default roles, role centres, user groups
+- Pages engine (`seed_pages`) + BC-style permission objects
+- Permission sets (`setup_page_permissions`)
+- Chart of accounts / posting groups (JSON import) and related seeds
+- Number series + PurchasePayable / SalesReceivable setup
+
+Signup then clones that data and only adds company-specific rows (admin user, domain, location contact fields, General vendor/customer, subscription).
+
 ## First-time and after migration changes
 
 ```bash
 python manage.py rebuild_template_schema
 ```
 
-This drops `_zentro_template` (if present), recreates it with full tenant migrations, then deletes the throwaway `Company` row so the template schema is **not** linked in `public.company_company`.
+This drops `_zentro_template` (if present), recreates it with full tenant migrations, **runs baseline bootstrap**, then deletes the throwaway `Company` row so the template schema is **not** linked in `public.company_company`.
+
+**Note:** Rebuild is slower than before (migrations + full seed once). Each signup is much faster when cloning the seeded template.
 
 ## Automatic rebuild (local / deploy scripts)
 
@@ -26,8 +38,8 @@ export DISABLE_TEMPLATE_REBUILD=1
 python manage.py verify_template_schema
 ```
 
-- Exit code **0**: `_zentro_template` exists and has **no pending migrations** (checked via Django’s `MigrationExecutor` on that schema).
-- Exit code **1**: missing or stale.
+- Exit code **0**: `_zentro_template` exists, has **no pending migrations**, and has **baseline data** (roles, pages, permission sets, number series).
+- Exit code **1**: missing, stale migrations, or empty (unseeded) template.
 
 **Note:** Comparing `django_migrations` row counts between `_zentro_template` and `public` is not meaningful in django-tenants (different app sets on shared vs tenant). The verify command uses pending-migration detection instead.
 

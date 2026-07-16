@@ -49,10 +49,15 @@ Tick items per environment: **staging first**, then **production**.
 | 06 | Migration history row count mismatch (cosmetic) | ℹ️ Documented | [06-migration-history-row-count.md](./06-migration-history-row-count.md) |
 
 | 07 | Public schema: `authentication_customuser.system_id` missing (admin login) | ✅ Local `public` · ☐ Production | [07-public-schema-system-id.md](./07-public-schema-system-id.md) |
+| 08 | **Primewise pilot → V2 ready** (migrate + seed_pages + BC permissions) | ✅ Local `primewise` | [08-primewise-v2-readiness.md](./08-primewise-v2-readiness.md) |
+
+| 09 | Pre-seeded `_zentro_template` (fast company creation) | ✅ Code · ☐ rebuild per env | [09-preseeded-zentro-template.md](./09-preseeded-zentro-template.md) |
+
+| 10 | Safe `authentication.0020` DevicePushToken index rename (restore blocker) | ✅ Code · ✅ local | [10-auth-0020-safe-index-rename.md](./10-auth-0020-safe-index-rename.md) |
 
 
 
-Add new todos as `08-….md` in **this folder** and link them in the table above.
+Add new todos as `11-….md` in **this folder** and link them in the table above.
 
 
 
@@ -68,9 +73,13 @@ Add new todos as `08-….md` in **this folder** and link them in the table above
 
 2. **Follow** [00-restore-production-db-playbook.md](./00-restore-production-db-playbook.md) (migrate → sequences → repairs → verify).
 
-3. Complete data todos (01, seeds, permissions) per [../PRODUCTION_RUNBOOK.md](../PRODUCTION_RUNBOOK.md).
+3. **Pilot tenant** (e.g. `primewise`): [08-primewise-v2-readiness.md](./08-primewise-v2-readiness.md) — includes `seed_pages` + BC permissions (required for V2 UI).
 
-4. Smoke test per tenant (payments, posting, permissions, admin login).
+4. Complete data todos (01, ledger cleanup) + remaining tenants the same way as 08.
+
+5. **New company signup speed:** rebuild pre-seeded template per [09-preseeded-zentro-template.md](./09-preseeded-zentro-template.md).
+
+6. Smoke test per tenant (payments, posting, permissions, admin login, Role Centre).
 
 
 
@@ -95,6 +104,10 @@ Add new todos as `08-….md` in **this folder** and link them in the table above
 | [../docs/branch_dimension_backfill_production.md](../docs/branch_dimension_backfill_production.md) | Branch / dimension backfill |
 
 | [../docs/PRODUCTION_ZENTRO_TEMPLATE_RELEASE_PROMPT.md](../docs/PRODUCTION_ZENTRO_TEMPLATE_RELEASE_PROMPT.md) | `_zentro_template` after migrations |
+
+| [../docs/template-schema.md](../docs/template-schema.md) | Pre-seeded golden template (signup clone) |
+
+| [../docs/COMPANY_CREATION_PERFORMANCE.md](../docs/COMPANY_CREATION_PERFORMANCE.md) | Signup timing / baseline skip |
 
 | [../docs/general/TOKEN_VALID_AFTER_PRODUCTION_RUNBOOK.md](../docs/general/TOKEN_VALID_AFTER_PRODUCTION_RUNBOOK.md) | `token_valid_after` repair |
 

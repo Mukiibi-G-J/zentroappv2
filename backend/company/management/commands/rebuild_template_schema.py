@@ -13,8 +13,9 @@ logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
     help = (
-        "Drop and recreate PostgreSQL schema _zentro_template using full tenant migrations, "
-        "then remove the throwaway Company row (schema is kept)."
+        "Drop and recreate PostgreSQL schema _zentro_template using full tenant "
+        "migrations, pre-seed baseline (pages engine, BC permissions, roles, "
+        "JSON import, seeds), then remove the throwaway Company row (schema kept)."
     )
 
     def handle(self, *args, **options) -> None:

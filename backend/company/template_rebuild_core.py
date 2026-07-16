@@ -30,8 +30,9 @@ def _remove_template_company_row(Company) -> None:
 
 def run_rebuild_template_schema() -> None:
     """
-    Drop ``_zentro_template``, create it via full django-tenants migrations, then remove
-    the throwaway ``Company`` row while keeping the schema.
+    Drop ``_zentro_template``, create it via full django-tenants migrations,
+    seed tenant-generic baseline (pages engine, BC permissions, JSON import, …),
+    then remove the throwaway ``Company`` row while keeping the schema.
     """
     from company.models import Company
 
@@ -55,12 +56,29 @@ def run_rebuild_template_schema() -> None:
         company.auto_create_schema = True
         company.save()
 
-        company.auto_drop_schema = False
-        company.delete()
+    # Baseline must run with the schema present (outside public-only block).
+    # Includes pages engine, BC permission objects, roles, JSON import, seeds.
+    from company.tenant_baseline import run_tenant_baseline_bootstrap
+
+    logger.info(
+        "template_rebuild: seeding baseline into %s (roles, pages, permissions, data)",
+        TEMPLATE_SCHEMA_NAME,
+    )
+    run_tenant_baseline_bootstrap(TEMPLATE_SCHEMA_NAME, ensure_branch=True)
+
+    with schema_context("public"):
+        from company.models import Company
+
+        company = Company.objects.filter(schema_name=TEMPLATE_SCHEMA_NAME).first()
+        if company:
+            company.auto_drop_schema = False
+            company.delete()
+        else:
+            _remove_template_company_row(Company)
 
     ts = datetime.now(timezone.utc).isoformat()
     logger.info(
-        "template_rebuild: golden schema %s rebuilt successfully at %s",
+        "template_rebuild: golden schema %s rebuilt and pre-seeded successfully at %s",
         TEMPLATE_SCHEMA_NAME,
         ts,
     )

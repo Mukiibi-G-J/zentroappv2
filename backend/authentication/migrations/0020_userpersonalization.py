@@ -7,52 +7,173 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+def _rename_index_if_exists(schema_editor, old_name: str, new_name: str) -> None:
+    """Safe rename for restored DBs where the old long index name was never created."""
+    if schema_editor.connection.vendor != "postgresql":
+        return
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1 FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE c.relkind = 'i'
+                  AND c.relname = %s
+                  AND n.nspname = current_schema()
+            )
+            """,
+            [old_name],
+        )
+        has_old = bool(cursor.fetchone()[0])
+        cursor.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1 FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE c.relkind = 'i'
+                  AND c.relname = %s
+                  AND n.nspname = current_schema()
+            )
+            """,
+            [new_name],
+        )
+        has_new = bool(cursor.fetchone()[0])
+        if has_old and not has_new:
+            # Identifiers from our migrations only — not user input.
+            cursor.execute(f'ALTER INDEX "{old_name}" RENAME TO "{new_name}"')
+
+
+def rename_devicepushtoken_indexes(apps, schema_editor):
+    _rename_index_if_exists(
+        schema_editor,
+        "auth_devpush_user_active_idx",
+        "authenticat_user_id_38450c_idx",
+    )
+    _rename_index_if_exists(
+        schema_editor,
+        "auth_devpush_fcm_token_idx",
+        "authenticat_fcm_tok_d1531f_idx",
+    )
+
+
+def noop_reverse(apps, schema_editor):
+    pass
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('authentication', '0019_customuser_system_id'),
+        ("authentication", "0019_customuser_system_id"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='UserPersonalization',
+            name="UserPersonalization",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True, db_index=True, verbose_name='Created At')),
-                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='Updated At')),
-                ('system_id', utils.utils.UUIField(db_index=True, default=uuid.uuid4, editable=False, max_length=36, unique=True, verbose_name='System ID')),
-                ('role', models.CharField(blank=True, default='', max_length=100)),
-                ('language', models.CharField(blank=True, choices=[('en', 'English'), ('sw', 'Swahili'), ('fr', 'French'), ('lg', 'Luganda')], default='en', max_length=20)),
-                ('time_zone', models.CharField(blank=True, default='Africa/Kampala', max_length=60)),
-                ('teaching_tips', models.BooleanField(default=True)),
-                ('created_by', models.CharField(blank=True, default='', max_length=150)),
-                ('modified_by', models.CharField(blank=True, default='', max_length=150)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "created_at",
+                    models.DateTimeField(
+                        auto_now_add=True, db_index=True, verbose_name="Created At"
+                    ),
+                ),
+                (
+                    "updated_at",
+                    models.DateTimeField(auto_now=True, verbose_name="Updated At"),
+                ),
+                (
+                    "system_id",
+                    utils.utils.UUIField(
+                        db_index=True,
+                        default=uuid.uuid4,
+                        editable=False,
+                        max_length=36,
+                        unique=True,
+                        verbose_name="System ID",
+                    ),
+                ),
+                ("role", models.CharField(blank=True, default="", max_length=100)),
+                (
+                    "language",
+                    models.CharField(
+                        blank=True,
+                        choices=[
+                            ("en", "English"),
+                            ("sw", "Swahili"),
+                            ("fr", "French"),
+                            ("lg", "Luganda"),
+                        ],
+                        default="en",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "time_zone",
+                    models.CharField(
+                        blank=True, default="Africa/Kampala", max_length=60
+                    ),
+                ),
+                ("teaching_tips", models.BooleanField(default=True)),
+                (
+                    "created_by",
+                    models.CharField(blank=True, default="", max_length=150),
+                ),
+                (
+                    "modified_by",
+                    models.CharField(blank=True, default="", max_length=150),
+                ),
             ],
             options={
-                'verbose_name': 'User Personalization',
-                'verbose_name_plural': 'User Personalizations',
-                'db_table': 'authentication_userpersonalization',
-                'ordering': ['user__username'],
+                "verbose_name": "User Personalization",
+                "verbose_name_plural": "User Personalizations",
+                "db_table": "authentication_userpersonalization",
+                "ordering": ["user__username"],
             },
         ),
-        migrations.RenameIndex(
-            model_name='devicepushtoken',
-            new_name='authenticat_user_id_38450c_idx',
-            old_name='auth_devpush_user_active_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='devicepushtoken',
-            new_name='authenticat_fcm_tok_d1531f_idx',
-            old_name='auth_devpush_fcm_token_idx',
+        migrations.SeparateDatabaseAndState(
+            state_operations=[
+                migrations.RenameIndex(
+                    model_name="devicepushtoken",
+                    new_name="authenticat_user_id_38450c_idx",
+                    old_name="auth_devpush_user_active_idx",
+                ),
+                migrations.RenameIndex(
+                    model_name="devicepushtoken",
+                    new_name="authenticat_fcm_tok_d1531f_idx",
+                    old_name="auth_devpush_fcm_token_idx",
+                ),
+            ],
+            database_operations=[
+                migrations.RunPython(rename_devicepushtoken_indexes, noop_reverse),
+            ],
         ),
         migrations.AlterField(
-            model_name='customuser',
-            name='system_id',
-            field=utils.utils.UUIField(default=uuid.uuid4, editable=False, max_length=36, unique=True, verbose_name='System ID'),
+            model_name="customuser",
+            name="system_id",
+            field=utils.utils.UUIField(
+                default=uuid.uuid4,
+                editable=False,
+                max_length=36,
+                unique=True,
+                verbose_name="System ID",
+            ),
         ),
         migrations.AddField(
-            model_name='userpersonalization',
-            name='user',
-            field=models.OneToOneField(help_text='User this personalization belongs to', on_delete=django.db.models.deletion.CASCADE, related_name='personalization', to=settings.AUTH_USER_MODEL),
+            model_name="userpersonalization",
+            name="user",
+            field=models.OneToOneField(
+                help_text="User this personalization belongs to",
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="personalization",
+                to=settings.AUTH_USER_MODEL,
+            ),
         ),
     ]

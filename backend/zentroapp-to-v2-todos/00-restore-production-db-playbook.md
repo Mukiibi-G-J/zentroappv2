@@ -42,6 +42,11 @@ python scripts/final_migration_audit.py
 # --- 7. Smoke tests ---
 # Public admin: http://localhost:8002/admin/login/
 # Tenant admin: http://TENANT.localhost:8002/admin/
+
+# --- 8. V2 pages engine (REQUIRED per tenant used in V2 UI) ---
+# python manage.py seed_pages --schema=primewise
+# python manage.py tenant_command setup_page_permissions --schema=primewise
+# See: 08-primewise-v2-readiness.md
 ```
 
 ---
@@ -203,5 +208,8 @@ What we hit on first prod dump → V2 migrate:
 | `motomoto` pages drift | fake `pages 0010` + migrate |
 | Public admin `system_id` missing | `repair_customuser_system_id_all_schemas` |
 | 301 vs 349 migration rows | Cosmetic — use `compare_schema_checks.py` |
+| `auth_devpush_user_active_idx` missing on shared migrate | Safe rename in `authentication.0020` — [10](./10-auth-0020-safe-index-rename.md) |
+| Empty `page_engine_page` after migrate | `seed_pages` + BC permissions — [08](./08-primewise-v2-readiness.md) |
+| Slow new-company signup | Pre-seed `_zentro_template` — [09](./09-preseeded-zentro-template.md) |
 
-All documented in todos `02`–`07` in this folder.
+All documented in todos `02`–`10` in this folder.

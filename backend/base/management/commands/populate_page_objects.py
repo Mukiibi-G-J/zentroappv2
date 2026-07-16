@@ -31,7 +31,7 @@ class Command(BaseCommand):
         if created:
             self.stdout.write(self.style.SUCCESS("✅ Created Page object type"))
         else:
-            self.stdout.write(self.style.WARNING("ℹ️  Page object type already exists"))
+            self.stdout.write(self.style.WARNING("Page object type already exists"))
 
         # Define all page objects based on actual routes
         # Format: (object_id, name, module_code, description, route)
