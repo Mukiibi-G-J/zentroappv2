@@ -55,6 +55,7 @@ MAIN_DOMAIN_ROUTES = [
     "/company/payment-methods/create_payment_intent/",
     "/company/payment-methods/verify_payment/",
     "/home/on-boarding",
+    "/home/on-boarding/",
     "/company/pricing-plans-v2/",
 ]
 

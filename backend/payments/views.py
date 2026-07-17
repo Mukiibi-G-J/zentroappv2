@@ -634,6 +634,38 @@ class PaymentJournalViewSet(viewsets.ModelViewSet):
             }
         )
 
+    @action(detail=False, methods=["post"], url_path="quick-customer-payment")
+    def quick_customer_payment(self, request):
+        """POS one-shot: create customer payment, apply oldest open invoice, and post."""
+        from payments.quick_customer_payment import (
+            QuickCustomerPaymentError,
+            quick_customer_payment as run_quick_customer_payment,
+        )
+
+        try:
+            create_only = bool(request.data.get("create_only"))
+            result = run_quick_customer_payment(
+                customer_id=request.data.get("customer_id"),
+                amount=request.data.get("amount"),
+                payment_method_id=request.data.get("payment_method_id"),
+                request=request,
+                create_only=create_only,
+            )
+            return Response(result, status=status.HTTP_201_CREATED)
+        except QuickCustomerPaymentError as exc:
+            return Response(
+                {"error": exc.message},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as e:
+            logger.error(
+                "Error in quick-customer-payment: %s", str(e), exc_info=True
+            )
+            return Response(
+                {"error": f"Failed to record payment: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
     @action(detail=True, methods=["post"])
     def post_payment_journal(self, request, pk=None):
         """Post a payment journal entry"""

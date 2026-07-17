@@ -1,6 +1,7 @@
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
 from django.db import transaction, connection
+from django.db.models import Q
 from celery.result import AsyncResult
 from celery.states import PENDING, SUCCESS, FAILURE, STARTED
 import time
@@ -19,7 +20,7 @@ from decimal import Decimal, InvalidOperation
 
 from .models import Pricing, PaymentMethod, BillingHistory, Subscription, AddOn
 
-from company.models import Company
+from company.models import Company, Domain
 from company.tasks import create_company_task, import_initial_data_task
 from company.enums import SubscriptionPlan, SubscriptionStatus
 from company.subscription_billing import (
@@ -384,8 +385,42 @@ def validate_company_name(request):
             },
             status=status.HTTP_400_BAD_REQUEST,
         )
-    # Check if company name is already taken
-    if Company.objects.filter(name=company_name).exists():
+
+    # Workspace URL / schema is lowercase name with spaces removed (matches create + frontend slug).
+    schema_name = "".join(company_name.lower().split())
+    if len(schema_name) < 3:
+        return Response(
+            {
+                "isValid": False,
+                "message": "Company name must be at least 3 characters",
+                "errors": ["Company name is too short"],
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    with schema_context("public"):
+        # Case-insensitive name + schema/domain collision (e.g. PRIMEWISE / primewise).
+        name_taken = Company.objects.filter(
+            Q(name__iexact=company_name)
+            | Q(name__iexact=schema_name)
+            | Q(schema_name__iexact=schema_name)
+            | Q(schema_name__iexact=company_name.lower())
+        ).exists()
+        if not name_taken:
+            domain_suffix = (
+                "localhost"
+                if settings.ENVIRONMENT == "development"
+                else getattr(
+                    settings,
+                    "BACKEND_DOMAIN",
+                    getattr(settings, "DOMAIN", "zentroapp-api.uncodedsolutions.com"),
+                )
+            )
+            name_taken = Domain.objects.filter(
+                domain__iexact=f"{schema_name}.{domain_suffix}"
+            ).exists()
+
+    if name_taken:
         return Response(
             {
                 "isValid": False,
@@ -394,11 +429,12 @@ def validate_company_name(request):
             },
             status=status.HTTP_400_BAD_REQUEST,
         )
-    # Company name is valid
+
     return Response(
         {
             "isValid": True,
             "message": f"Company name '{company_name}' is valid",
+            "schema_name": schema_name,
         },
         status=status.HTTP_200_OK,
     )
@@ -538,8 +574,13 @@ def check_company_exists(request):
             )
 
         with schema_context("public"):
-            # Check if company name is already taken
-            if Company.objects.filter(name__iexact=company_name).exists():
+            schema_name = "".join(company_name.lower().split())
+            # Check if company name / workspace slug is already taken
+            if Company.objects.filter(
+                Q(name__iexact=company_name)
+                | Q(name__iexact=schema_name)
+                | Q(schema_name__iexact=schema_name)
+            ).exists():
                 return Response(
                     {
                         "is_existing": True,

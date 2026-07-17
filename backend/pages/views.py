@@ -125,12 +125,17 @@ def _serialize_relation_row(model, obj, related_field, display_field):
         code = getattr(uom, 'code', '') if uom else ''
         name = getattr(uom, 'description', '') if uom else ''
         qty = obj.quantity_per_unit
+        if qty is None or qty == '':
+            qty = 1
+        qty_str = str(qty)
+        # Name column: prefer description; otherwise show how many base units this UOM contains
+        display_name = (name or '').strip() or f'{qty_str} per {code}'.strip()
         return {
             'Value': str(value),
-            'Caption': f'{code} — {name}'.strip(' —') if name else code,
+            'Caption': f'{code} — {display_name}'.strip(' —') if display_name else code,
             'Code': code,
-            'Name': name,
-            'QuantityPerUnit': str(qty) if qty is not None else '',
+            'Name': display_name,
+            'QuantityPerUnit': qty_str,
         }
     if model.__name__ == 'Objects':
         object_name = getattr(obj, 'object_name', '') or ''
@@ -375,6 +380,8 @@ MODEL_REGISTRY: dict[str, tuple[str, str]] = {
     'SalesInvoiceLine': ('sales', 'SalesInvoiceLine'),
     'PostedSalesInvoice': ('sales', 'PostedSalesInvoice'),
     'PostedSalesInvoiceLine': ('sales', 'PostedSalesInvoiceLine'),
+    'SalesCreditMemo': ('sales', 'SalesCreditMemo'),
+    'SalesCreditMemoLine': ('sales', 'SalesCreditMemoLine'),
     'PurchaseInvoice': ('purchases', 'PurchaseInvoice'),
     'PurchaseInvoiceLine': ('purchases', 'PurchaseInvoiceLine'),
     'PostedPurchaseInvoice': ('purchases', 'PostedPurchaseInvoice'),
@@ -725,6 +732,35 @@ def _purchase_unit_cost_from_item(item) -> Decimal | None:
     return cost if cost > 0 else None
 
 
+def _sales_unit_price_from_item(item) -> Decimal | None:
+    """Selling price for sales lines; None when the item has no unit price."""
+    if item is None:
+        return None
+    price = getattr(item, 'unit_price', None)
+    if price is None or price == '':
+        return None
+    price = Decimal(str(price))
+    return price if price >= 0 else None
+
+
+def _apply_sales_line_item_price_defaults(payload: dict) -> dict:
+    """Qty default + unit price from item card when an item is on a sales line."""
+    line_type = payload.get('type') or 'item'
+    if line_type != 'item':
+        return payload
+    item = payload.get('item')
+    if not item:
+        return payload
+    if not payload.get('quantity'):
+        payload['quantity'] = 1
+    price = _sales_unit_price_from_item(item)
+    if price is not None:
+        payload['unit_price'] = price
+    elif not payload.get('unit_price'):
+        payload['unit_price'] = 0
+    return payload
+
+
 def _apply_purchase_invoice_line_item_defaults(payload: dict) -> dict:
     """Description, UOM, qty=1, and unit cost when an item is on a purchase line."""
     line_type = payload.get('type') or 'item'
@@ -744,15 +780,24 @@ def _apply_purchase_invoice_line_item_defaults(payload: dict) -> dict:
     return payload
 
 
-def _apply_item_line_defaults_to_payload(payload: dict) -> dict:
+def _apply_item_line_defaults_to_payload(payload: dict, model=None) -> dict:
     """Description + purchase UOM when an item is set on document line create."""
     item = payload.get('item')
     if not item:
         return payload
     payload['description'] = _description_from_item(item)
     iuom = _default_item_unit_of_measure(item)
-    if iuom:
+    if not iuom:
+        return payload
+    field_names = None
+    if model is not None:
+        field_names = {
+            f.name for f in model._meta.get_fields()
+            if getattr(f, 'concrete', False) and not getattr(f, 'many_to_many', False)
+        }
+    if field_names is None or 'item_unit_of_measure' in field_names:
         payload['item_unit_of_measure'] = iuom
+    if field_names is None or 'unit_of_measure' in field_names:
         payload['unit_of_measure'] = iuom.unit_of_measure
     return payload
 
@@ -868,6 +913,28 @@ def _sync_purchase_invoice_line_from_item(obj) -> list[str]:
     elif obj.unit_cost:
         obj.unit_cost = Decimal('0')
         extra.append('unit_cost')
+    return extra
+
+
+def _sync_sales_line_from_item(obj) -> list[str]:
+    """When item changes on a sales line, stamp qty (if empty) and unit price from item."""
+    if type(obj).__name__ not in ('SalesInvoiceLine', 'SalesOrderLine'):
+        return []
+    item = getattr(obj, 'item', None)
+    if not item:
+        return []
+    extra: list[str] = []
+    if not obj.quantity:
+        obj.quantity = 1
+        extra.append('quantity')
+    price = _sales_unit_price_from_item(item)
+    if price is not None:
+        if obj.unit_price != price:
+            obj.unit_price = price
+            extra.append('unit_price')
+    elif obj.unit_price:
+        obj.unit_price = Decimal('0')
+        extra.append('unit_price')
     return extra
 
 
@@ -1026,6 +1093,7 @@ def _sync_item_driven_line_fields(obj) -> list[str]:
         _sync_line_description_from_item(obj),
         _sync_line_item_unit_of_measure(obj),
         _sync_purchase_invoice_line_from_item(obj),
+        _sync_sales_line_from_item(obj),
     ):
         for field_name in part:
             if field_name not in extra:
@@ -1253,6 +1321,14 @@ def _serialize_branch_aware_computed_value(obj, field_name: str, request):
                 return obj.user_name
             return ''
 
+    if model_name == 'SalesCreditMemo' and field_name == 'total_amount':
+        from django.db.models import Sum
+
+        if hasattr(obj, '_prefetched_objects_cache') and 'lines' in obj._prefetched_objects_cache:
+            return float(sum(line.amount or 0 for line in obj.lines.all()))
+        total = obj.lines.aggregate(s=Sum('amount')).get('s') or 0
+        return float(total)
+
     if model_name == 'PurchaseInvoice' and field_name == 'total_amount':
         from purchases.serializers import PurchaseInvoiceSerializer
 
@@ -1275,6 +1351,7 @@ def _uses_branch_aware_computed(obj, field_name: str) -> bool:
     return (
         (model_name == 'SalesInvoice' and field_name in ('total_amount', 'user_name'))
         or (model_name == 'PostedSalesInvoice' and field_name in ('total_amount', 'user_name'))
+        or (model_name == 'SalesCreditMemo' and field_name == 'total_amount')
         or (model_name == 'PurchaseInvoice' and field_name == 'total_amount')
     )
 
@@ -1351,6 +1428,8 @@ def _serialize_record(obj, fields: list[PageControlField], request=None) -> dict
         'SalesInvoice',
         'PostedSalesInvoice',
         'PostedSalesInvoiceLine',
+        'SalesCreditMemo',
+        'SalesCreditMemoLine',
         'PostedPurchaseInvoiceLine',
         'PostedPurchaseInvoice',
         'TrackingSpecification',
@@ -2057,7 +2136,8 @@ def _apply_sales_order_line_defaults(payload: dict, request) -> dict:
         payload['type'] = 'item'
     if not payload.get('quantity'):
         payload['quantity'] = 0
-    return _apply_item_line_defaults_to_payload(payload)
+    payload = _apply_item_line_defaults_to_payload(payload)
+    return _apply_sales_line_item_price_defaults(payload)
 
 
 GENERAL_VENDOR_NO = 'VENDOR-000001'
@@ -2236,7 +2316,8 @@ def _apply_sales_invoice_line_defaults(payload: dict, request) -> dict:
         payload['type'] = 'item'
     if not payload.get('quantity'):
         payload['quantity'] = 0
-    return _apply_item_line_defaults_to_payload(payload)
+    payload = _apply_item_line_defaults_to_payload(payload)
+    return _apply_sales_line_item_price_defaults(payload)
 
 
 def _apply_purchase_invoice_line_defaults(payload: dict, request) -> dict:
@@ -2670,6 +2751,203 @@ def post_purchase_invoice(record, request):
     return record
 
 
+def _resolve_sales_invoice_for_credit_memo(credit_memo):
+    from sales.models import SalesInvoice
+
+    posted_invoice = credit_memo.original_invoice
+    if not posted_invoice:
+        raise ValueError('Credit memo is not linked to an original posted invoice.')
+
+    customer_invoice_no = getattr(posted_invoice, 'customer_invoice_no', None)
+    sales_invoice = None
+    if customer_invoice_no:
+        sales_invoice = SalesInvoice.objects.filter(
+            customer_invoice_no=customer_invoice_no,
+            customer=posted_invoice.customer,
+            status='Posted',
+        ).first()
+    if not sales_invoice:
+        sales_invoice = SalesInvoice.objects.filter(
+            customer=posted_invoice.customer,
+            document_date=posted_invoice.document_date,
+            status='Posted',
+        ).first()
+    if not sales_invoice:
+        raise ValueError(
+            f'Could not find original Sales Invoice for credit memo {credit_memo.credit_memo_no}.',
+        )
+    return sales_invoice
+
+
+def _credit_memo_reversal_wrapper(sales_invoice):
+    from sales.models import SalesCreditMemo
+
+    class ReversalInvoiceWrapper:
+        def __init__(self, invoice):
+            self.no = invoice.invoice_no
+            self.customer = invoice.customer
+            self.document_date = invoice.document_date
+            self.posting_date = invoice.posting_date
+            self.vat_date = getattr(invoice, 'vat_date', None)
+            self.due_date = getattr(invoice, 'due_date', None)
+            self.customer_invoice_no = getattr(invoice, 'customer_invoice_no', None)
+            self.status = invoice.status
+            self.reversed = False
+            self.posted_sales_invoice_lines = invoice.lines
+            self.credit_memos = SalesCreditMemo.objects.none()
+
+    return ReversalInvoiceWrapper(sales_invoice)
+
+
+def _validate_sales_invoice_for_posting(invoice):
+    """Shared validation before preview/post (mirrors SalesInvoiceAdmin.preview_posting)."""
+    if invoice.status == 'Posted':
+        raise ValueError('This sales invoice has already been posted.')
+    if not invoice.payment_method:
+        raise ValueError(
+            f'Invoice {invoice.invoice_no} does not have a payment method set. '
+            'Choose how you paid before posting.',
+        )
+    invoice.full_clean()
+    invoice.clean()
+    for line in invoice.lines.all():
+        line.full_clean()
+        line.clean()
+
+
+def _sales_invoice_insufficient_inventory_message(entries) -> str | None:
+    insufficient_items = []
+    for item_preview in entries.get('inventory_reduction_preview', []):
+        reduction = item_preview.get('reduction_info') or {}
+        if not reduction.get('insufficient_inventory'):
+            continue
+        item = item_preview.get('item')
+        item_name = getattr(item, 'item_name', None) or str(item)
+        insufficient_items.append(
+            {
+                'item': item_name,
+                'shortage': reduction.get('remaining_after_reduction'),
+                'requested': item_preview.get('quantity_to_reduce'),
+            },
+        )
+    if not insufficient_items:
+        return None
+    lines = [
+        'Cannot post invoice due to insufficient inventory:',
+    ]
+    for item in insufficient_items:
+        lines.append(
+            f"• {item['item']}: Requested {item['requested']:.2f} units, "
+            f"Shortage: {item['shortage']:.2f} units",
+        )
+    return '\n'.join(lines)
+
+
+def preview_sales_invoice(record, request):
+    from payments.posting_preview import (
+        build_posting_preview_content,
+        processor_entries_have_rows,
+    )
+    from sales.admin import SalesInvoiceProcessor
+
+    _validate_sales_invoice_for_posting(record)
+
+    receipt_no = (
+        f"RCP-{timezone.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
+    )
+    processor = SalesInvoiceProcessor(record, request, receipt_no)
+    entries = processor.process()
+
+    if isinstance(entries, dict) and entries.get('success') is False:
+        raise ValueError(entries.get('message', 'Preview failed'))
+
+    if not processor_entries_have_rows(entries):
+        raise ValueError('Preview returned no entries')
+
+    content = build_posting_preview_content(
+        entries,
+        message=f'Preview posting for sales invoice {record.invoice_no}',
+        batch_name=record.invoice_no,
+    )
+    return {'command': 'PREVIEW', 'content': content}
+
+
+def post_sales_invoice(record, request):
+    from sales.admin import SalesInvoicePostingProcessor, SalesInvoiceProcessor
+
+    _validate_sales_invoice_for_posting(record)
+
+    receipt_no = (
+        f"RCP-{timezone.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
+    )
+    preview_processor = SalesInvoiceProcessor(record, request, receipt_no)
+    entries = preview_processor.process()
+
+    if isinstance(entries, dict) and entries.get('success') is False:
+        raise ValueError(entries.get('message', 'Unknown error during posting'))
+
+    inventory_error = _sales_invoice_insufficient_inventory_message(entries)
+    if inventory_error:
+        raise ValueError(inventory_error)
+
+    processor = SalesInvoicePostingProcessor(record, request, receipt_no)
+    with transaction.atomic():
+        result = processor.post()
+        if not result.get('success'):
+            raise ValueError(result.get('message', 'Unknown error during posting'))
+
+    record.refresh_from_db()
+    return record
+
+
+def preview_sales_credit_memo(record, request):
+    from payments.posting_preview import (
+        build_posting_preview_content,
+        processor_entries_have_rows,
+    )
+    from sales.admin import SalesInvoiceReversalProcessor
+
+    if record.status == 'Posted':
+        raise ValueError('This credit memo has already been posted.')
+    if not record.original_invoice:
+        raise ValueError('Credit memo is not linked to an original posted invoice.')
+
+    sales_invoice = _resolve_sales_invoice_for_credit_memo(record)
+    wrapper = _credit_memo_reversal_wrapper(sales_invoice)
+    processor = SalesInvoiceReversalProcessor(wrapper, request)
+    entries = processor.process()
+
+    if isinstance(entries, dict) and entries.get('success') is False:
+        raise ValueError(entries.get('message', 'Preview failed'))
+    if not processor_entries_have_rows(entries):
+        raise ValueError('Preview returned no entries')
+
+    content = build_posting_preview_content(
+        entries,
+        message=f'Preview posting for credit memo {record.credit_memo_no}',
+        batch_name=record.credit_memo_no,
+    )
+    return {'command': 'PREVIEW', 'content': content}
+
+
+def post_sales_credit_memo(record, request):
+    from sales.admin import SalesCreditMemoPostingProcessor
+
+    if record.status == 'Posted':
+        raise ValueError('This credit memo has already been posted.')
+    if not record.original_invoice:
+        raise ValueError('Credit memo is not linked to an original posted invoice.')
+
+    processor = SalesCreditMemoPostingProcessor(record, request)
+    with transaction.atomic():
+        result = processor.post()
+        if not result.get('success'):
+            raise ValueError(result.get('message', 'Unknown error during posting'))
+
+    record.refresh_from_db()
+    return record
+
+
 def post_payment_journal(record, request):
     import uuid
 
@@ -2705,9 +2983,19 @@ def post_payment_journal(record, request):
 
 
 def post_item_journal(record, request):
+    from items.posting import ItemJournalFinalPoster
+
+    preview_data = _run_item_journal_preview(record, request)
+    poster = ItemJournalFinalPoster(preview_data, record, request.user)
+    poster.post_to_tables()
+    record.refresh_from_db()
+    return record
+
+
+def _run_item_journal_preview(record, request):
+    """Shared validation + preview processor for item journals."""
     from common.enums import Status
     from items.admin import ItemJournalPreviewProcessor
-    from items.posting import ItemJournalFinalPoster
 
     if record.status == Status.Posted.value:
         raise ValueError('This journal has already been posted.')
@@ -2751,11 +3039,46 @@ def post_item_journal(record, request):
     ):
         errors = validation_storage.validation_errors or ['Journal failed validation.']
         raise ValueError('; '.join(str(e) for e in errors))
+    return preview_data
 
-    poster = ItemJournalFinalPoster(preview_data, record, request.user)
-    poster.post_to_tables()
-    record.refresh_from_db()
-    return record
+
+def preview_item_journal(record, request):
+    from payments.posting_preview import build_posting_preview_content
+
+    preview_data = _run_item_journal_preview(record, request)
+    content = build_posting_preview_content(
+        preview_data,
+        message=f'Preview posting for journal {record.document_no}',
+        batch_name=record.document_no,
+    )
+    # Item journals may only produce item/value entries; still show GL when present.
+    if not content.get('Entries') and not content.get('RelatedEntries'):
+        # Fallback flat rows from item ledger preview so the dialog is never empty
+        rows = []
+        for i, entry in enumerate(preview_data.get('item_entries') or [], start=1):
+            amount = float(entry.get('total') or 0)
+            rows.append({
+                'Line': i,
+                'Side': 'Debit' if amount >= 0 else 'Credit',
+                'LedgerType': 'Item',
+                'Account': str(entry.get('item') or 'Item'),
+                'Amount': abs(amount),
+            })
+        for i, entry in enumerate(preview_data.get('gl_entries') or [], start=len(rows) + 1):
+            amount = float(entry.get('amount') or 0)
+            gl = entry.get('gl_account')
+            account = getattr(gl, 'no', None) or str(gl or 'G/L')
+            rows.append({
+                'Line': i,
+                'Side': 'Debit' if amount >= 0 else 'Credit',
+                'LedgerType': 'G/L',
+                'Account': account,
+                'Amount': abs(amount),
+            })
+        content['Entries'] = rows
+        if not rows:
+            raise ValueError('Preview returned no entries')
+    return {'command': 'PREVIEW', 'content': content}
 
 
 def preview_general_journal_batch_handler(_record, request):
@@ -2883,10 +3206,15 @@ ACTION_HANDLERS = {
     ('Item', 'block'): block_item,
     ('Customer', 'block'): block_customer,
     ('ItemJournal', 'post_item_journal'): post_item_journal,
+    ('ItemJournal', 'preview_item_journal'): preview_item_journal,
     ('PaymentJournal', 'preview_payment_journal'): preview_payment_journal,
     ('PaymentJournal', 'post_payment_journal'): post_payment_journal,
     ('PurchaseInvoice', 'preview_purchase_invoice'): preview_purchase_invoice,
     ('PurchaseInvoice', 'post_purchase_invoice'): post_purchase_invoice,
+    ('SalesInvoice', 'preview_sales_invoice'): preview_sales_invoice,
+    ('SalesInvoice', 'post_sales_invoice'): post_sales_invoice,
+    ('SalesCreditMemo', 'preview_credit_memo'): preview_sales_credit_memo,
+    ('SalesCreditMemo', 'post_credit_memo'): post_sales_credit_memo,
     ('GeneralJournalLine', 'preview_general_journal'): preview_general_journal_batch_handler,
     ('GeneralJournalLine', 'post_general_journal'): post_general_journal_batch_handler,
     ('FinancialReportRowLine', 'recalculate_financial_report'): recalculate_financial_report_handler,
@@ -3164,6 +3492,14 @@ class PageDataView(APIView):
             elif source_table == 'PostedSalesInvoiceLine':
                 qs = qs.select_related(
                     'item', 'posted_sales_invoice', 'resource',
+                ).order_by('id')
+            elif source_table == 'SalesCreditMemo':
+                qs = qs.select_related(
+                    'customer', 'original_invoice',
+                ).prefetch_related('lines').order_by('-posting_date', '-id')
+            elif source_table == 'SalesCreditMemoLine':
+                qs = qs.select_related(
+                    'item', 'credit_memo', 'location_code',
                 ).order_by('id')
             elif source_table == 'PurchaseInvoiceLine':
                 qs = qs.select_related(
@@ -3629,7 +3965,9 @@ class PageDataRecordView(APIView):
                         )
                         defaults = {field_name: value}
                     if field_name == 'item' and _model_has_item_and_description(model):
-                        defaults = _apply_item_line_defaults_to_payload(defaults)
+                        defaults = _apply_item_line_defaults_to_payload(defaults, model=model)
+                        if model.__name__ in ('SalesInvoiceLine', 'SalesOrderLine'):
+                            defaults = _apply_sales_line_item_price_defaults(defaults)
                     if model.__name__ in (
                         'PaymentLine', 'CashReceiptJournalLine', 'GeneralJournalLine',
                     ):
@@ -3659,6 +3997,11 @@ class PageDataRecordView(APIView):
                         )
                         if page.source_table == 'ItemJournal':
                             defaults = _apply_item_journal_create_defaults(defaults, request)
+                            if not defaults.get('item') and not defaults.get('item_id'):
+                                return Response(
+                                    {'error': 'Item is required to create an item journal.'},
+                                    status=status.HTTP_400_BAD_REQUEST,
+                                )
                         if model.__name__ == 'Floor':
                             defaults = _apply_floor_create_defaults(defaults, request)
                         defaults = _apply_audit_on_create(defaults, model, request.user)
@@ -4124,6 +4467,25 @@ def _compute_this_month_revenue(request) -> float:
     return float(total or 0)
 
 
+def _compute_overdue_receivables(request) -> float:
+    """Sum remaining amount on open customer ledger entries past due date."""
+    model = _get_model('CustomerLedgerEntry')
+    if model is None:
+        return 0.0
+
+    today = timezone.now().date()
+    qs = model.objects.filter(
+        open=True,
+        due_date__isnull=False,
+        due_date__lt=today,
+    )
+    qs = _apply_request_branch_filter(
+        qs, request, source_table='CustomerLedgerEntry', model=model,
+    )
+    total = qs.aggregate(total=Sum('sales_detailed_entries__amount'))['total']
+    return float(total or 0)
+
+
 def _serialize_cue_data(cue: PageControl, *, layout_style: str, request=None) -> dict:
     value = _compute_cue_value(cue, request=request)
     if cue.name == 'RCCueDelayedOrders':
@@ -4132,6 +4494,8 @@ def _serialize_cue_data(cue: PageControl, *, layout_style: str, request=None) ->
         value = _compute_avg_days_delayed(request)
     elif cue.name == 'RCCueTotalRevenue':
         value = _compute_this_month_revenue(request)
+    elif cue.name == 'RCCueOverdueReceivables':
+        value = _compute_overdue_receivables(request)
     elif cue.name in ('RCCueTodaySales', 'PostedCueToday'):
         value = _compute_today_posted_sales(request)
     elif cue.name == 'RCCueInventoryValue':
@@ -4140,7 +4504,14 @@ def _serialize_cue_data(cue: PageControl, *, layout_style: str, request=None) ->
     first_field = cue.fields.first()
     aggregate = cue.cue_aggregate or 'count'
     formatted = _format_cue_display_value(value, aggregate)
-    if cue.name in ('RCCueTodaySales', 'PostedCueToday', 'RCCueTotalRevenue') and value is not None:
+    money_cues = (
+        'RCCueTodaySales',
+        'PostedCueToday',
+        'RCCueTotalRevenue',
+        'RCCueOverdueReceivables',
+        'RCCueReceivables',
+    )
+    if cue.name in money_cues and value is not None:
         try:
             formatted = f'UGX {float(value):,.0f}'
         except (TypeError, ValueError):
@@ -4154,10 +4525,15 @@ def _serialize_cue_data(cue: PageControl, *, layout_style: str, request=None) ->
             'posting_date_from=__month_start__&posting_date_to=__month_end__'
             '&filterLabel=This month'
         )
+    elif cue.name == 'RCCueOverdueReceivables':
+        drill_down_query = (
+            'open=True&due_date_to=__yesterday__'
+            '&filterLabel=Overdue receivables'
+        )
 
     caption = cue.caption or ''
     if cue.name == 'RCCueTotalRevenue':
-        caption = 'Total Revenue (This month)'
+        caption = 'Sales This Month'
 
     return {
         'Name': cue.name,
@@ -4512,9 +4888,13 @@ def _headline_uses_today_sales(control: PageControl) -> bool:
 def _compute_headline_value(control: PageControl, request=None):
     if _headline_uses_today_sales(control):
         return _compute_today_posted_sales(request)
-    if control.name in ('RCHeadlineRevenue', 'RCCueTotalRevenue'):
+    if control.name == 'RCHeadlineRevenue':
+        return _compute_this_month_revenue(request)
+    if control.name == 'RCCueTotalRevenue':
         chart = _compute_revenue_chart(request)
         return sum(point.get('Value', 0) for point in chart.get('Points', []))
+    if control.name == 'RCHeadlineOverdue':
+        return _compute_overdue_receivables(request)
     if not control.cue_source_table:
         return None
     return _compute_cue_value(control, request=request)
@@ -4546,6 +4926,16 @@ def _serialize_headline_item(control: PageControl, request=None) -> dict:
     drill_down_query = ''
     if _headline_uses_today_sales(control):
         drill_down_query = "posting_date=__today__&filterLabel=Today's sales"
+    elif control.name == 'RCHeadlineRevenue':
+        drill_down_query = (
+            'posting_date_from=__month_start__&posting_date_to=__month_end__'
+            '&filterLabel=This month'
+        )
+    elif control.name == 'RCHeadlineOverdue':
+        drill_down_query = (
+            'open=True&due_date_to=__yesterday__'
+            '&filterLabel=Overdue receivables'
+        )
     return {
         'ControlId': control.page_control_id,
         'Title': control.caption or '',
@@ -4645,6 +5035,29 @@ class RoleCentreView(APIView):
 
             for control in top_controls:
                 if control.name == 'RCRecentSalesOrders' and assistance_headline:
+                    continue
+
+                if control.name == 'RCReports':
+                    from financials.models import FinancialReport
+
+                    fr_list = Page.objects.filter(name='FinancialReportList').first()
+                    fr_overview = Page.objects.filter(name='FinancialReportOverview').first()
+                    report_rows = []
+                    for report in FinancialReport.objects.order_by('name'):
+                        report_rows.append({
+                            'Name': report.name,
+                            'Description': report.description or report.name,
+                            'SystemId': str(report.system_id),
+                            'PeriodType': report.period_type or 'Month',
+                        })
+                    sections.append({
+                        'ControlId': control.page_control_id,
+                        'ControlType': 'Reports',
+                        'Caption': control.caption or 'Reports',
+                        'ListPageId': fr_list.page_id if fr_list else None,
+                        'OverviewPageId': fr_overview.page_id if fr_overview else None,
+                        'Reports': report_rows,
+                    })
                     continue
 
                 if control.name == 'RCQuickAccess':

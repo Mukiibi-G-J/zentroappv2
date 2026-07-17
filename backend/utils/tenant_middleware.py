@@ -32,6 +32,7 @@ MAIN_DOMAIN_ROUTES = [
     "/api/company/payment-methods/create_payment_intent/",
     "/api/company/payment-methods/verify_payment/",
     "/api/home/on-boarding",
+    "/api/home/on-boarding/",
     "/api/company/pricing-plans-v2/",
     "/api/auth/restaurant-app/company-lookup/",
 ]
@@ -71,6 +72,9 @@ def _schema_from_frontend_origin(request) -> str | None:
     Frontend calls the apex API (zentroapp-api...) from
     {slug}.zentroapp.uncodedsolutions.com — without this, login hits the
     public schema and authenticates the wrong user.
+
+    Local Next rewrites also hit Django via LAN IP (Host has no tenant);
+    Origin {slug}.localhost must map to schema {slug}.
     """
     main_domain = getattr(settings, "DOMAIN", "zentroapp.uncodedsolutions.com")
     for header in ("HTTP_ORIGIN", "HTTP_REFERER"):
@@ -84,6 +88,17 @@ def _schema_from_frontend_origin(request) -> str | None:
         hostname = hostname.lower().strip(".")
         if not hostname or hostname == main_domain or hostname == f"www.{main_domain}":
             continue
+
+        # Dev: primewise.localhost → primewise
+        if settings.ENVIRONMENT == "development":
+            parts = hostname.split(".")
+            if (
+                len(parts) == 2
+                and parts[1] == "localhost"
+                and parts[0] not in ("www", "api", "localhost")
+            ):
+                return parts[0]
+
         suffix = f".{main_domain}"
         if hostname.endswith(suffix):
             slug = hostname[: -len(suffix)]

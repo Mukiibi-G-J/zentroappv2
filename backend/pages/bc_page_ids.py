@@ -39,6 +39,10 @@ ZENTRO_PAGE_REGISTRY: dict[str, tuple[int, str]] = {
     'SalesOrderSubform': (10007, 'sales'),
     'SalesInvoice': (10008, 'sales'),
     'SalesInvoiceSubform': (10009, 'sales'),
+    'SalesCreditMemoList': (10016, 'sales'),
+    'SalesCreditMemo': (10017, 'sales'),
+    'SalesCreditMemoSubform': (10018, 'sales'),
+    'PostedSalesCreditMemoList': (10019, 'sales'),
     'CustomerAppliedEntriesList': (10010, 'sales'),
     'ApplyCustomerEntries': (10011, 'sales'),
     'SalesManagerRC': (10012, 'sales'),
@@ -62,6 +66,7 @@ ZENTRO_PAGE_REGISTRY: dict[str, tuple[int, str]] = {
     'PostedItemTrackingLines': (10212, 'inventory'),
     'WarehouseRC': (10213, 'inventory'),
     'PharmacistRC': (10214, 'inventory'),
+    'PostedInventoryAdjustmentList': (10215, 'inventory'),
     # ── Purchases / vendors (10300) ────────────────────────────────────────────
     'PurchaseInvoiceList': (10301, 'purchases'),
     'PostedPurchaseInvoiceList': (10302, 'purchases'),

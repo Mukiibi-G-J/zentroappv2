@@ -14,12 +14,16 @@ def _active_tenant_schema() -> str | None:
     return None
 
 
-def _run_for_schema(schema_name: str, stdout=None):
+def _run_for_schema(schema_name: str, stdout=None, style=None):
     from pages.seed import seed
+    from receipt_templates.seed import seed_receipt_templates
     with schema_context(schema_name):
         with connection.cursor() as cur:
             ensure_page_engine_schema(cur)
         ids = seed()
+        if stdout:
+            stdout.write(f'  {schema_name}: seeding receipt templates…')
+        seed_receipt_templates(stdout or __import__('sys').stdout, style)
     if stdout:
         stdout.write(
             f"  {schema_name}: list pages {ids['items_list_id']}/{ids['customers_list_id']}/"
@@ -51,7 +55,7 @@ class Command(BaseCommand):
 
         if target:
             try:
-                _run_for_schema(target, self.stdout)
+                _run_for_schema(target, self.stdout, self.style)
                 self.stdout.write(self.style.SUCCESS(f'Done — schema: {target}'))
             except Exception as e:
                 raise CommandError(f'Failed for schema "{target}": {e}') from e
@@ -64,7 +68,7 @@ class Command(BaseCommand):
             errors = []
             for tenant in tenants:
                 try:
-                    _run_for_schema(tenant.schema_name, self.stdout)
+                    _run_for_schema(tenant.schema_name, self.stdout, self.style)
                 except Exception as e:
                     errors.append(f'{tenant.schema_name}: {e}')
                     self.stdout.write(self.style.ERROR(f'  ERR {tenant.schema_name}: {e}'))

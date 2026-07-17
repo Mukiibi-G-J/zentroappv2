@@ -226,6 +226,8 @@ class ItemSerializer(serializers.ModelSerializer):
 
     def get_inventory(self, obj):
         """Branch-filtered inventory when multi-branch is enabled."""
+        if getattr(obj, "type", None) in ("Service", "Non-Inventory"):
+            return None
         request = self.context.get("request")
         try:
             from financials.models import GeneralLedgerSetup
@@ -539,6 +541,8 @@ class ItemListSerializer(serializers.ModelSerializer):
         ]
 
     def get_inventory(self, obj):
+        if getattr(obj, "type", None) in ("Service", "Non-Inventory"):
+            return None
         if getattr(obj, "inventory_total", None) is not None:
             return obj.inventory_total or 0
         v = getattr(obj, "_list_inventory", None)

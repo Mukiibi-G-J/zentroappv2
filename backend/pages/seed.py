@@ -187,10 +187,24 @@ def seed():
         dict(name='no',         caption='No.',        field_type='Code',    visible=True, editable=False, primary_key=True,  tab_index=0),
         dict(name='item_name',  caption='Item Name',  field_type='Text',    visible=True, editable=True,  primary_key=False, tab_index=1),
         dict(name='type',       caption='Type',       field_type='Enum',    visible=True, editable=True,  primary_key=False, tab_index=2),
-        dict(name='unit_price', caption='Unit Price', field_type='Decimal', visible=True, editable=True,  primary_key=False, tab_index=3),
-        dict(name='inventory',  caption='Inventory',  field_type='Integer', visible=True, editable=False, primary_key=False, tab_index=4),
-        dict(name='blocked',    caption='Blocked',    field_type='Boolean', visible=True, editable=True,  primary_key=False, tab_index=5),
+        dict(
+            name='unit_of_measure',
+            caption='Unit of Measure',
+            field_type='Code',
+            visible=True,
+            editable=True,
+            primary_key=False,
+            tab_index=3,
+            has_table_relation=True,
+            related_table='UnitOfMeasure',
+            related_field='code',
+            related_display_field='description',
+        ),
+        dict(name='unit_price', caption='Unit Price', field_type='Decimal', visible=True, editable=True,  primary_key=False, tab_index=4),
+        dict(name='inventory',  caption='Inventory',  field_type='Integer', visible=True, editable=False, primary_key=False, tab_index=5),
+        dict(name='blocked',    caption='Blocked',    field_type='Boolean', visible=True, editable=True,  primary_key=False, tab_index=6),
     ])
+    _ensure_table_relation('Item', 'unit_of_measure', 'UnitOfMeasure')
 
     cust_page, _ = Page.objects.get_or_create(
         name='CustomerList',
@@ -666,6 +680,9 @@ def seed():
     _ensure_user_personalizations()
     sales_order_doc, sales_order_list = _seed_sales_order_pages()
     sales_invoice_doc, sales_invoice_list = _seed_sales_invoice_pages()
+    sales_credit_memo_doc, sales_credit_memo_list = _seed_sales_credit_memo_pages()
+    posted_sales_credit_memo_list = _seed_posted_sales_credit_memo_list(sales_credit_memo_doc)
+    _ = sales_credit_memo_list, posted_sales_credit_memo_list
     sales_pos_page = _seed_sales_pos_page()
     _ = sales_pos_page  # registered in role centre nav
     purchase_invoice_doc, purchase_invoice_list = _seed_purchase_invoice_pages()
@@ -680,9 +697,13 @@ def seed():
         drill_down_page=posted_sales_invoice_list,
     )
     expense_card, expense_list = _seed_expense_pages()
-    item_journal_card, inventory_adj_list, opening_balance_list = _seed_item_journal_pages()
+    item_journal_card, inventory_adj_list, opening_balance_list, _posted_inv_adj_list = (
+        _seed_item_journal_pages()
+    )
     item_iuom_list, _adj_by_item_list = _seed_item_card_drill_down_lists(item_journal_card)
+    _ = item_iuom_list, _adj_by_item_list
     _seed_item_card_page_actions(item_card)
+    _seed_item_list_page_actions(items_page)
     payment_card, payment_list = _seed_payment_journal_pages()
     payment_method_list = _seed_payment_method_list()
     _ = payment_method_list
@@ -727,6 +748,11 @@ def seed():
         expense_list,
         payment_list,
     )
+    rc_debug_admin = _seed_debug_admin_rc(
+        sales_order_list=sales_order_list,
+        posted_sales_invoice_list=posted_sales_invoice_list,
+        customer_ledger_page=customer_ledger_page,
+    )
     _seed_application_profiles(
         business_rc=rc_business,
         sales_rc=rc_sales,
@@ -735,6 +761,7 @@ def seed():
         cashier_rc=rc_cashier,
         pharmacist_rc=rc_pharmacist,
         operations_manager_rc=rc_operations,
+        debug_admin_rc=rc_debug_admin,
     )
     _assign_default_application_profiles()
 
@@ -752,9 +779,23 @@ def seed():
         part_control_name='ItemUnitOfMeasurePart',
         lookup_page=global_uom_list,
     )
+    item_list = Page.objects.filter(name='ItemList').first()
+    if item_list:
+        _wire_relation_lookup_fields(
+            item_list,
+            ('unit_of_measure',),
+            part_control_name='ItemUnitOfMeasurePart',
+            lookup_page=global_uom_list,
+        )
     _wire_relation_lookup_fields(
         item_card,
         ('sales_unit_of_measure', 'purchase_unit_of_measure'),
+        part_control_name='ItemUnitOfMeasurePart',
+        lookup_page=item_iuom_list,
+    )
+    _wire_relation_lookup_fields(
+        item_journal_card,
+        ('item_unit_of_measure',),
         part_control_name='ItemUnitOfMeasurePart',
         lookup_page=item_iuom_list,
     )
@@ -1106,11 +1147,15 @@ def _seed_sales_invoice_pages():
              primary_key=False, tab_index=3),
         dict(name='due_date', caption='Due Date', field_type='Date', visible=True, editable=True,
              primary_key=False, tab_index=4),
+        dict(name='payment_method', caption='How did you pay?', field_type='Code', visible=True,
+             editable=True, primary_key=False, tab_index=5,
+             has_table_relation=True, related_table='PaymentMethod', related_field='code',
+             related_display_field='description'),
         dict(name='status', caption='Status', field_type='Option', visible=True, editable=False,
-             primary_key=False, tab_index=5,
+             primary_key=False, tab_index=6,
              enum_values='Draft,Open,Posted,Cancelled'),
         dict(name='total_amount', caption='Amount', field_type='Decimal', visible=True, editable=False,
-             primary_key=False, tab_index=6),
+             primary_key=False, tab_index=7),
     ])
     PageControlField.objects.filter(
         page_control=general_ctrl,
@@ -1182,7 +1227,278 @@ def _seed_sales_invoice_pages():
              enum_values='Draft,Open,Posted,Cancelled'),
     ])
 
+    PageAction.objects.update_or_create(
+        page=doc,
+        name='preview_sales_invoice',
+        defaults={
+            'caption': 'Preview Posting',
+            'requires_confirmation': False,
+            'confirmation_message': '',
+            'tooltip': 'Preview ledger entries before posting',
+            'visible': True,
+            'ribbon_tab': 'Home',
+            'image_url': 'Eye',
+            'visible_when_field': 'status',
+            'visible_when_values': 'Open,Draft',
+        },
+    )
+    PageAction.objects.update_or_create(
+        page=doc,
+        name='post_sales_invoice',
+        defaults={
+            'caption': 'Post',
+            'requires_confirmation': True,
+            'confirmation_message': 'Post this sales invoice to the general ledger?',
+            'tooltip': 'Post sales invoice',
+            'visible': True,
+            'ribbon_tab': 'Home',
+            'image_url': 'CircleCheck',
+            'visible_when_field': 'status',
+            'visible_when_values': 'Open,Draft',
+        },
+    )
+
     return doc, list_page
+
+
+def _seed_sales_credit_memo_pages():
+    """Document page + ListPart subform for SalesCreditMemo / SalesCreditMemoLine."""
+    subform, _ = Page.objects.update_or_create(
+        name='SalesCreditMemoSubform',
+        defaults={
+            'caption': 'Sales Credit Memo Lines',
+            'source_table': 'SalesCreditMemoLine',
+            'page_type': 'ListPart',
+            'editable': False,
+            'insert_allowed': False,
+            'delete_allowed': False,
+            'modify_allowed': False,
+        },
+    )
+
+    sub_ctrl, _ = PageControl.objects.update_or_create(
+        page=subform,
+        name='SalesCreditMemoSubformRepeater',
+        defaults={
+            'control_type': 'Repeater',
+            'caption': 'Lines',
+            'source_table': 'SalesCreditMemoLine',
+            'show_caption': False,
+            'editable': False,
+            'visible': True,
+        },
+    )
+    _seed_fields(sub_ctrl, subform, [
+        dict(name='item', caption='No.', field_type='Code', visible=True, editable=False,
+             primary_key=False, tab_index=0,
+             has_table_relation=True, related_table='Item', related_field='no',
+             related_display_field='item_name'),
+        dict(name='description', caption='Description', field_type='Text', visible=True,
+             editable=False, primary_key=False, tab_index=1),
+        dict(name='location_code', caption='Location Code', field_type='Code', visible=True,
+             editable=False, primary_key=False, tab_index=2,
+             has_table_relation=True, related_table='Location', related_field='code',
+             related_display_field='description'),
+        dict(name='quantity', caption='Quantity', field_type='Integer', visible=True,
+             editable=False, primary_key=False, tab_index=3),
+        dict(name='unit_price', caption='Unit Price Excl. VAT', field_type='Decimal', visible=True,
+             editable=False, primary_key=False, tab_index=4),
+        dict(name='amount', caption='Line Amount Excl. VAT', field_type='Decimal', visible=True,
+             editable=False, primary_key=False, tab_index=5),
+    ])
+    _ensure_table_relation('SalesCreditMemoLine', 'item', 'Item', 'no', 'item_name')
+    _ensure_table_relation('SalesCreditMemoLine', 'location_code', 'Location', 'code', 'description')
+
+    doc, _ = Page.objects.update_or_create(
+        name='SalesCreditMemo',
+        defaults={
+            'caption': 'Sales Credit Memo',
+            'source_table': 'SalesCreditMemo',
+            'page_type': 'Document',
+            'editable': True,
+            'insert_allowed': False,
+            'delete_allowed': False,
+            'modify_allowed': True,
+            'title_field': 'credit_memo_no',
+        },
+    )
+
+    general_ctrl, _ = PageControl.objects.update_or_create(
+        page=doc,
+        name='SalesCreditMemoGeneral',
+        defaults={
+            'control_type': 'Group',
+            'caption': 'General',
+            'source_table': 'SalesCreditMemo',
+            'show_caption': True,
+            'editable': True,
+            'visible': True,
+        },
+    )
+    _seed_fields(general_ctrl, doc, [
+        dict(name='credit_memo_no', caption='No.', field_type='Code', visible=True, editable=False,
+             primary_key=True, tab_index=0),
+        dict(name='customer', caption='Customer Name', field_type='Code', visible=True, editable=False,
+             primary_key=False, tab_index=1,
+             has_table_relation=True, related_table='Customer', related_field='no',
+             related_display_field='name'),
+        dict(name='document_date', caption='Document Date', field_type='Date', visible=True, editable=True,
+             primary_key=False, tab_index=2),
+        dict(name='posting_date', caption='Posting Date', field_type='Date', visible=True, editable=True,
+             primary_key=False, tab_index=3),
+        dict(name='vat_date', caption='VAT Date', field_type='Date', visible=True, editable=True,
+             primary_key=False, tab_index=4),
+        dict(name='original_invoice_no', caption='Original Invoice No.', field_type='Code',
+             visible=True, editable=False, primary_key=False, tab_index=5),
+        dict(name='reason_for_reversal', caption='Reason for Reversal', field_type='Text',
+             visible=True, editable=True, primary_key=False, tab_index=6),
+        dict(name='status', caption='Status', field_type='Option', visible=True, editable=False,
+             primary_key=False, tab_index=7,
+             enum_values='Draft,Posted'),
+        dict(name='total_amount', caption='Amount', field_type='Decimal', visible=True, editable=False,
+             primary_key=False, tab_index=8),
+    ])
+
+    part_ctrl, _ = PageControl.objects.update_or_create(
+        page=doc,
+        name='SalesCreditMemoLines',
+        defaults={
+            'control_type': 'Part',
+            'caption': 'Lines',
+            'source_table': 'SalesCreditMemoLine',
+            'show_caption': True,
+            'editable': False,
+            'visible': True,
+            'part_page': subform,
+            'link_field': 'credit_memo__system_id',
+        },
+    )
+    part_ctrl.part_page = subform
+    part_ctrl.link_field = 'credit_memo__system_id'
+    part_ctrl.save(update_fields=['part_page', 'link_field'])
+
+    list_page, _ = Page.objects.update_or_create(
+        name='SalesCreditMemoList',
+        defaults={
+            'caption': 'Sales Credit Memos',
+            'source_table': 'SalesCreditMemo',
+            'page_type': 'List',
+            'editable': False,
+            'insert_allowed': False,
+            'delete_allowed': False,
+            'modify_allowed': False,
+            'card_page': doc,
+            'title_field': 'credit_memo_no',
+            'list_filter_field': 'status',
+            'list_filter_value': 'Draft',
+        },
+    )
+    list_page.card_page = doc
+    list_page.list_filter_field = 'status'
+    list_page.list_filter_value = 'Draft'
+    list_page.save(update_fields=['card_page', 'list_filter_field', 'list_filter_value'])
+
+    list_ctrl, _ = PageControl.objects.update_or_create(
+        page=list_page,
+        name='SalesCreditMemoListControl',
+        defaults={
+            'control_type': 'Repeater',
+            'caption': 'Sales Credit Memos',
+            'source_table': 'SalesCreditMemo',
+            'show_caption': True,
+            'editable': False,
+            'visible': True,
+        },
+    )
+    _seed_fields(list_ctrl, list_page, [
+        dict(name='credit_memo_no', caption='No.', field_type='Code', visible=True, editable=False,
+             primary_key=True, tab_index=0, freeze_column=True),
+        dict(name='customer', caption='Customer', field_type='Code', visible=True, editable=False,
+             primary_key=False, tab_index=1,
+             has_table_relation=True, related_table='Customer', related_field='no',
+             related_display_field='name'),
+        dict(name='document_date', caption='Document Date', field_type='Date', visible=True, editable=False,
+             primary_key=False, tab_index=2),
+        dict(name='posting_date', caption='Posting Date', field_type='Date', visible=True, editable=False,
+             primary_key=False, tab_index=3),
+        dict(name='original_invoice_no', caption='Applies-to Doc. No.', field_type='Code',
+             visible=True, editable=False, primary_key=False, tab_index=4),
+        dict(name='status', caption='Status', field_type='Option', visible=True, editable=False,
+             primary_key=False, tab_index=5,
+             enum_values='Draft,Posted'),
+        dict(name='total_amount', caption='Amount', field_type='Decimal', visible=True, editable=False,
+             primary_key=False, tab_index=6),
+    ])
+
+    _link_drill_down(
+        page_names=('SalesCreditMemoList',),
+        field_name='credit_memo_no',
+        drill_down_page=doc,
+    )
+
+    PageAction.objects.update_or_create(
+        page=doc,
+        name='preview_credit_memo',
+        defaults={
+            'caption': 'Preview Posting',
+            'requires_confirmation': False,
+            'confirmation_message': '',
+            'tooltip': 'Preview ledger entries before posting',
+            'visible': True,
+            'ribbon_tab': 'Home',
+            'image_url': 'Eye',
+            'visible_when_field': 'status',
+            'visible_when_values': 'Draft',
+        },
+    )
+    PageAction.objects.update_or_create(
+        page=doc,
+        name='post_credit_memo',
+        defaults={
+            'caption': 'Post',
+            'requires_confirmation': True,
+            'confirmation_message': 'Post this sales credit memo to the general ledger?',
+            'tooltip': 'Post sales credit memo',
+            'visible': True,
+            'ribbon_tab': 'Home',
+            'image_url': 'CircleCheck',
+            'visible_when_field': 'status',
+            'visible_when_values': 'Draft',
+        },
+    )
+
+    return doc, list_page
+
+
+def _seed_posted_sales_credit_memo_list(doc: Page) -> Page:
+    """Posted sales credit memos — same document card, filtered to status=Posted."""
+    return _seed_status_filtered_list_page(
+        name='PostedSalesCreditMemoList',
+        caption='Posted Sales Credit Memos',
+        source_table='SalesCreditMemo',
+        card_page=doc,
+        title_field='credit_memo_no',
+        control_name='PostedSalesCreditMemoListControl',
+        filter_field='status',
+        filter_value='Posted',
+        list_fields=[
+            dict(name='credit_memo_no', caption='No.', field_type='Code', visible=True, editable=False,
+                 primary_key=True, tab_index=0, freeze_column=True),
+            dict(name='customer', caption='Customer', field_type='Code', visible=True, editable=False,
+                 primary_key=False, tab_index=1,
+                 has_table_relation=True, related_table='Customer', related_field='no',
+                 related_display_field='name'),
+            dict(name='posting_date', caption='Posting Date', field_type='Date', visible=True, editable=False,
+                 primary_key=False, tab_index=2),
+            dict(name='original_invoice_no', caption='Applies-to Doc. No.', field_type='Code',
+                 visible=True, editable=False, primary_key=False, tab_index=3),
+            dict(name='total_amount', caption='Amount', field_type='Decimal', visible=True, editable=False,
+                 primary_key=False, tab_index=4),
+            dict(name='status', caption='Status', field_type='Option', visible=True, editable=False,
+                 primary_key=False, tab_index=5,
+                 enum_values='Draft,Posted'),
+        ],
+    )
 
 
 def _seed_sales_pos_page() -> Page:
@@ -1281,6 +1597,13 @@ def _seed_pos_page_actions(pos_page: Page) -> None:
             requires_confirmation=True,
             confirmation_message='Remove all items from the current sale?',
             tooltip='Clear the current sale',
+        ),
+        dict(
+            name='pos_record_payment',
+            caption='Record payment',
+            image_url='Banknote',
+            ribbon_tab='Home',
+            tooltip='Record a customer payment against open invoices',
         ),
         dict(
             name='pos_sales_history',
@@ -1591,6 +1914,8 @@ def _seed_status_filtered_list_page(
     list_fields: list[dict],
     filter_field: str,
     filter_value: str,
+    exclude_field: str = '',
+    exclude_values: str = '',
 ) -> Page:
     """List page scoped to one field value (e.g. status=Posted) via page-engine metadata."""
     list_page, _ = Page.objects.update_or_create(
@@ -1607,13 +1932,18 @@ def _seed_status_filtered_list_page(
             'title_field': title_field,
             'list_filter_field': filter_field,
             'list_filter_value': filter_value,
+            'list_exclude_field': exclude_field,
+            'list_exclude_values': exclude_values,
         },
     )
     list_page.card_page = card_page
     list_page.list_filter_field = filter_field
     list_page.list_filter_value = filter_value
+    list_page.list_exclude_field = exclude_field
+    list_page.list_exclude_values = exclude_values
     list_page.save(update_fields=[
         'card_page', 'list_filter_field', 'list_filter_value',
+        'list_exclude_field', 'list_exclude_values',
     ])
 
     list_ctrl, _ = PageControl.objects.update_or_create(
@@ -3000,7 +3330,7 @@ def _seed_expense_pages() -> tuple[Page, Page]:
     return expense_card, expense_list
 
 
-def _seed_item_journal_pages() -> tuple[Page, Page, Page]:
+def _seed_item_journal_pages() -> tuple[Page, Page, Page, Page]:
     """Inventory Adjustment + Opening Balance journals (ItemJournal, filtered by adjustment_type)."""
     card, _ = Page.objects.update_or_create(
         name='ItemJournalCard',
@@ -3037,30 +3367,53 @@ def _seed_item_journal_pages() -> tuple[Page, Page, Page]:
              primary_key=False, tab_index=1,
              has_table_relation=True, related_table='Item', related_field='no',
              related_display_field='item_name'),
+        dict(name='item_unit_of_measure', caption='Item Unit of Measure', field_type='Code',
+             visible=True, editable=True, primary_key=False, tab_index=2,
+             has_table_relation=True, related_table='ItemUnitOfMeasure', related_field='id',
+             related_display_field='unit_of_measure__code', relation_context_field='item',
+             relation_lookup_footer=True),
+        dict(name='description', caption='Item Name', field_type='Text', visible=True, editable=True,
+             primary_key=False, tab_index=3),
         dict(name='entry_type', caption='Entry Type', field_type='Enum', visible=True, editable=True,
-             primary_key=False, tab_index=2,
+             primary_key=False, tab_index=4,
              enum_values='PositiveAdjustment,NegativeAdjustment'),
         dict(name='quantity', caption='Quantity', field_type='Integer', visible=True, editable=True,
-             primary_key=False, tab_index=3),
-        dict(name='unit_amount', caption='Unit Amount', field_type='Decimal', visible=True, editable=True,
-             primary_key=False, tab_index=4),
-        dict(name='amount', caption='Amount', field_type='Decimal', visible=True, editable=False,
              primary_key=False, tab_index=5),
+        dict(name='unit_amount', caption='Unit Amount', field_type='Decimal', visible=True, editable=True,
+             primary_key=False, tab_index=6),
+        dict(name='amount', caption='Amount', field_type='Decimal', visible=True, editable=False,
+             primary_key=False, tab_index=7),
         dict(name='location_code', caption='Location', field_type='Code', visible=True, editable=True,
-             primary_key=False, tab_index=6,
+             primary_key=False, tab_index=8,
              has_table_relation=True, related_table='Location', related_field='code',
              related_display_field='description'),
         dict(name='date', caption='Date', field_type='Date', visible=True, editable=True,
-             primary_key=False, tab_index=7),
-        dict(name='description', caption='Description', field_type='Text', visible=True, editable=True,
-             primary_key=False, tab_index=8),
+             primary_key=False, tab_index=9),
         dict(name='adjustment_type', caption='Adjustment Type', field_type='Enum', visible=True,
-             editable=False, primary_key=False, tab_index=9,
+             editable=False, primary_key=False, tab_index=10,
              enum_values='operational,opening_balance'),
         dict(name='status', caption='Status', field_type='Enum', visible=True, editable=False,
-             primary_key=False, tab_index=10, enum_values='Open,Posted'),
+             primary_key=False, tab_index=11, enum_values='Open,Posted'),
     ])
+    _ensure_table_relation(
+        'ItemJournal', 'item_unit_of_measure', 'ItemUnitOfMeasure', 'id', 'unit_of_measure__code',
+    )
 
+    PageAction.objects.update_or_create(
+        page=card,
+        name='preview_item_journal',
+        defaults={
+            'caption': 'Preview Posting',
+            'requires_confirmation': False,
+            'confirmation_message': '',
+            'tooltip': 'Preview ledger entries before posting',
+            'visible': True,
+            'ribbon_tab': 'Home',
+            'image_url': 'Eye',
+            'visible_when_field': 'status',
+            'visible_when_values': 'Open',
+        },
+    )
     PageAction.objects.update_or_create(
         page=card,
         name='post_item_journal',
@@ -3082,21 +3435,64 @@ def _seed_item_journal_pages() -> tuple[Page, Page, Page]:
              editable=False, primary_key=True, tab_index=0, freeze_column=True),
         dict(name='item__item_name', caption='Item Name', field_type='Text', visible=True,
              editable=False, primary_key=False, tab_index=1),
+        dict(
+            name='item_unit_of_measure__unit_of_measure__code',
+            caption='Unit of Measure',
+            field_type='Code',
+            visible=True,
+            editable=False,
+            primary_key=False,
+            tab_index=2,
+        ),
         dict(name='entry_type', caption='Entry Type', field_type='Enum', visible=True,
-             editable=False, primary_key=False, tab_index=2,
+             editable=False, primary_key=False, tab_index=3,
              enum_values='PositiveAdjustment,NegativeAdjustment'),
         dict(name='quantity', caption='Quantity', field_type='Integer', visible=True,
-             editable=False, primary_key=False, tab_index=3),
-        dict(name='unit_amount', caption='Unit Amount', field_type='Decimal', visible=True,
              editable=False, primary_key=False, tab_index=4),
-        dict(name='amount', caption='Amount', field_type='Decimal', visible=True,
+        dict(name='unit_amount', caption='Unit Amount', field_type='Decimal', visible=True,
              editable=False, primary_key=False, tab_index=5),
+        dict(name='amount', caption='Amount', field_type='Decimal', visible=True,
+             editable=False, primary_key=False, tab_index=6),
         dict(name='date', caption='Date', field_type='Date', visible=True, editable=False,
-             primary_key=False, tab_index=6),
+             primary_key=False, tab_index=7),
         dict(name='user__full_name', caption='Adjusted By', field_type='Text', visible=True,
-             editable=False, primary_key=False, tab_index=7),
+             editable=False, primary_key=False, tab_index=8),
         dict(name='status', caption='Status', field_type='Enum', visible=True, editable=False,
-             primary_key=False, tab_index=8, enum_values='Open,Posted'),
+             primary_key=False, tab_index=9, enum_values='Open,Posted'),
+    ]
+
+    posted_list_fields = [
+        dict(name='document_no', caption='Document No.', field_type='Code', visible=True,
+             editable=False, primary_key=True, tab_index=0, freeze_column=True),
+        dict(name='item__item_name', caption='Item Name', field_type='Text', visible=True,
+             editable=False, primary_key=False, tab_index=1),
+        dict(
+            name='item_unit_of_measure__unit_of_measure__code',
+            caption='Unit of Measure',
+            field_type='Code',
+            visible=True,
+            editable=False,
+            primary_key=False,
+            tab_index=2,
+        ),
+        dict(name='entry_type', caption='Entry Type', field_type='Enum', visible=True,
+             editable=False, primary_key=False, tab_index=3,
+             enum_values='PositiveAdjustment,NegativeAdjustment'),
+        dict(name='adjustment_type', caption='Adjustment Type', field_type='Enum', visible=True,
+             editable=False, primary_key=False, tab_index=4,
+             enum_values='operational,opening_balance'),
+        dict(name='quantity', caption='Quantity', field_type='Integer', visible=True,
+             editable=False, primary_key=False, tab_index=5),
+        dict(name='unit_amount', caption='Unit Amount', field_type='Decimal', visible=True,
+             editable=False, primary_key=False, tab_index=6),
+        dict(name='amount', caption='Amount', field_type='Decimal', visible=True,
+             editable=False, primary_key=False, tab_index=7),
+        dict(name='date', caption='Date', field_type='Date', visible=True, editable=False,
+             primary_key=False, tab_index=8),
+        dict(name='user__full_name', caption='Adjusted By', field_type='Text', visible=True,
+             editable=False, primary_key=False, tab_index=9),
+        dict(name='status', caption='Status', field_type='Enum', visible=True, editable=False,
+             primary_key=False, tab_index=10, enum_values='Open,Posted'),
     ]
 
     operational_list = _seed_status_filtered_list_page(
@@ -3108,12 +3504,15 @@ def _seed_item_journal_pages() -> tuple[Page, Page, Page]:
         control_name='InventoryAdjustmentJournalListControl',
         filter_field='adjustment_type',
         filter_value='operational',
+        exclude_field='status',
+        exclude_values='Posted',
         list_fields=list_fields,
     )
     operational_list.insert_allowed = True
     operational_list.delete_allowed = True
     operational_list.modify_allowed = True
     operational_list.save(update_fields=['insert_allowed', 'delete_allowed', 'modify_allowed'])
+    _seed_item_journal_list_actions(operational_list)
 
     opening_list = _seed_status_filtered_list_page(
         name='OpeningBalanceJournalList',
@@ -3124,14 +3523,83 @@ def _seed_item_journal_pages() -> tuple[Page, Page, Page]:
         control_name='OpeningBalanceJournalListControl',
         filter_field='adjustment_type',
         filter_value='opening_balance',
+        exclude_field='status',
+        exclude_values='Posted',
         list_fields=list_fields,
     )
     opening_list.insert_allowed = True
     opening_list.delete_allowed = True
     opening_list.modify_allowed = True
     opening_list.save(update_fields=['insert_allowed', 'delete_allowed', 'modify_allowed'])
+    _seed_item_journal_list_actions(opening_list)
 
-    return card, operational_list, opening_list
+    posted_list = _seed_status_filtered_list_page(
+        name='PostedInventoryAdjustmentList',
+        caption='Posted Inventory Adjustments',
+        source_table='ItemJournal',
+        card_page=card,
+        title_field='document_no',
+        control_name='PostedInventoryAdjustmentListControl',
+        filter_field='status',
+        filter_value='Posted',
+        list_fields=posted_list_fields,
+    )
+    posted_list.insert_allowed = False
+    posted_list.delete_allowed = False
+    posted_list.modify_allowed = False
+    posted_list.save(update_fields=['insert_allowed', 'delete_allowed', 'modify_allowed'])
+    # Posted list is view-only — remove any open-journal ribbon actions if re-seeded.
+    PageAction.objects.filter(
+        page=posted_list,
+        name__in=(
+            'ItemJournalListNew',
+            'ItemJournalListDelete',
+            'ItemJournalListSelectMore',
+            'preview_item_journal',
+            'post_item_journal',
+        ),
+    ).delete()
+
+    return card, operational_list, opening_list, posted_list
+
+
+def _seed_item_journal_list_actions(list_page: Page) -> None:
+    """Select More + Preview Posting + Post on inventory/opening-balance journal lists."""
+    _seed_ribbon_actions(list_page, (
+        ('ItemJournalListNew', 'New', '#new', 'Home', 'Plus'),
+        ('ItemJournalListDelete', 'Delete', '#delete', 'Home', 'Trash2'),
+        ('ItemJournalListSelectMore', 'Select More', '#select-more', 'Home', 'ListChecks'),
+    ))
+    PageAction.objects.update_or_create(
+        page=list_page,
+        name='preview_item_journal',
+        defaults={
+            'caption': 'Preview Posting',
+            'requires_confirmation': False,
+            'confirmation_message': '',
+            'tooltip': 'Preview ledger entries before posting',
+            'visible': True,
+            'ribbon_tab': 'Home',
+            'image_url': 'Eye',
+            'visible_when_field': 'status',
+            'visible_when_values': 'Open',
+        },
+    )
+    PageAction.objects.update_or_create(
+        page=list_page,
+        name='post_item_journal',
+        defaults={
+            'caption': 'Post',
+            'requires_confirmation': True,
+            'confirmation_message': 'Post the selected journal(s) to the ledger?',
+            'tooltip': 'Post journal to item ledger',
+            'visible': True,
+            'ribbon_tab': 'Home',
+            'image_url': 'CircleCheck',
+            'visible_when_field': 'status',
+            'visible_when_values': 'Open',
+        },
+    )
 
 
 def _seed_payment_journal_pages() -> tuple[Page, Page]:
@@ -3245,7 +3713,6 @@ def _seed_payment_journal_pages() -> tuple[Page, Page]:
         dict(name='status',               caption='Status',            field_type='Enum',    visible=True,  editable=False, primary_key=False, tab_index=7,
              enum_values='Open,Posted,Void,Cancelled'),
         dict(name='applies_to_object_id',  caption='Applies-to Entry',    field_type='Integer', visible=False, editable=False, primary_key=False, tab_index=8),
-        dict(name='external_document_no', caption='Ext. Document No.',  field_type='Code',   visible=True,  editable=True,  primary_key=False, tab_index=9),
     ])
 
     lines_part, _ = PageControl.objects.update_or_create(
@@ -3331,13 +3798,29 @@ def _seed_payment_journal_pages() -> tuple[Page, Page]:
         defaults={
             'caption': 'Post',
             'requires_confirmation': True,
-            'confirmation_message': 'Post this payment to the general ledger?',
+            'confirmation_message': 'Are you sure you want to post this payment? Ledger entries will be created.',
             'tooltip': 'Post payment journal',
             'visible': True,
             'ribbon_tab': 'Home',
             'image_url': 'CircleCheck',
             'visible_when_field': 'status',
             'visible_when_values': 'Open',
+        },
+    )
+    PageAction.objects.update_or_create(
+        page=payment_doc,
+        name='print_payment_journal',
+        defaults={
+            'caption': 'Print Receipt',
+            'action_relative_url': '#print-receipt',
+            'requires_confirmation': False,
+            'confirmation_message': '',
+            'tooltip': 'Print payment receipt',
+            'visible': True,
+            'ribbon_tab': 'Home',
+            'image_url': 'Printer',
+            'visible_when_field': 'status',
+            'visible_when_values': 'Posted',
         },
     )
 
@@ -4163,7 +4646,7 @@ def _seed_role_centre_pages(
         page=rc,
         cue_group=key_totals_group,
         name='RCCueTotalRevenue',
-        caption='Total Revenue (This month)',
+        caption='Sales This Month',
         tab_index=0,
         cue_source_table='SalesInvoiceLine',
         cue_aggregate='sum',
@@ -4174,7 +4657,7 @@ def _seed_role_centre_pages(
         drill_down_page=posted_sales_invoice_list,
         threshold_warning=None,
         threshold_danger=None,
-        headline_template='View posted invoices',
+        headline_template='See more',
     )
     _seed_cue(
         page=rc,
@@ -4191,14 +4674,32 @@ def _seed_role_centre_pages(
         drill_down_page=customer_ledger_page,
         threshold_warning=None,
         threshold_danger=None,
-        headline_template='View ledger',
+        headline_template='See more',
+    )
+    _seed_cue(
+        page=rc,
+        cue_group=key_totals_group,
+        name='RCCueOverdueReceivables',
+        caption='Overdue Sales Invoice Amount',
+        tab_index=2,
+        # Value computed in pages.views._compute_overdue_receivables.
+        cue_source_table='CustomerLedgerEntry',
+        cue_aggregate='sum',
+        cue_aggregate_field='amount',
+        cue_filter_field='open',
+        cue_filter_value='True',
+        cue_style='Unfavorable',
+        drill_down_page=customer_ledger_page,
+        threshold_warning=None,
+        threshold_danger=None,
+        headline_template='See more',
     )
     _seed_cue(
         page=rc,
         cue_group=key_totals_group,
         name='RCCueInventoryValue',
         caption='Inventory Value',
-        tab_index=2,
+        tab_index=3,
         # Value computed in pages.views._compute_inventory_value (G/L 2110 balance).
         cue_source_table='GeneralLedgerEntry',
         cue_aggregate='sum',
@@ -4209,7 +4710,7 @@ def _seed_role_centre_pages(
         drill_down_page=items_page,
         threshold_warning=None,
         threshold_danger=None,
-        headline_template='View items',
+        headline_template='See more',
     )
 
     # ── CueGroup: Sales Activities (Standard cues) ───────────────────────────
@@ -4262,6 +4763,24 @@ def _seed_role_centre_pages(
         threshold_danger=None,
     )
 
+    # ── Reports quick actions (generate / download financial reports) ─────────
+    reports_ctrl, _ = PageControl.objects.update_or_create(
+        page=rc,
+        name='RCReports',
+        defaults={
+            'control_type': 'Headline',
+            'caption': 'Reports',
+            'source_table': '',
+            'show_caption': True,
+            'editable': False,
+            'visible': True,
+            'tab_index': 3,
+            'headline_template': '',
+        },
+    )
+    reports_ctrl.tab_index = 3
+    reports_ctrl.save(update_fields=['tab_index'])
+
     # ── Quick Access bricks ───────────────────────────────────────────────────
     quick_access, _ = PageControl.objects.update_or_create(
         page=rc,
@@ -4273,11 +4792,11 @@ def _seed_role_centre_pages(
             'show_caption': True,
             'editable': False,
             'visible': True,
-            'tab_index': 3,
+            'tab_index': 4,
             'headline_template': '',
         },
     )
-    quick_access.tab_index = 3
+    quick_access.tab_index = 4
     quick_access.save(update_fields=['tab_index'])
 
     # ── Business Assistance (chart + recent orders) ───────────────────────────
@@ -4291,11 +4810,11 @@ def _seed_role_centre_pages(
             'show_caption': True,
             'editable': False,
             'visible': True,
-            'tab_index': 4,
+            'tab_index': 5,
             'headline_template': '',
         },
     )
-    assistance.tab_index = 4
+    assistance.tab_index = 5
     assistance.save(update_fields=['tab_index'])
 
     part_ctrl, _ = PageControl.objects.update_or_create(
@@ -4308,14 +4827,14 @@ def _seed_role_centre_pages(
             'show_caption': True,
             'editable': False,
             'visible': True,
-            'tab_index': 5,
+            'tab_index': 6,
             'part_page': sales_order_list,
             'max_records': 5,
         },
     )
     part_ctrl.part_page = sales_order_list
     part_ctrl.max_records = 5
-    part_ctrl.tab_index = 5
+    part_ctrl.tab_index = 6
     part_ctrl.save(update_fields=['part_page', 'max_records', 'tab_index'])
 
     _seed_rc_nav_actions(rc, [
@@ -4323,6 +4842,7 @@ def _seed_role_centre_pages(
         ('NavItems', 'Items', 'ItemList', 'Package', 'Inventory'),
         ('NavInventoryAdjustment', 'Inventory Adjustment', 'InventoryAdjustmentJournalList', 'PackagePlus', 'Inventory'),
         ('NavOpeningBalance', 'Opening Balance', 'OpeningBalanceJournalList', 'Scale', 'Inventory'),
+        ('NavPostedInventoryAdjustments', 'Posted Inventory Adjustments', 'PostedInventoryAdjustmentList', 'FileCheck', 'Inventory'),
         ('NavCustomers', 'Customers', 'CustomerList', 'Users', 'Sales'),
         ('NavVendors', 'Vendors', 'VendorList', 'Truck', 'Purchase'),
         ('NavSalesOrders', 'Sales Orders', 'SalesOrderList', 'Package', 'Sales'),
@@ -4333,6 +4853,72 @@ def _seed_role_centre_pages(
         ('NavPostedPurchaseInvoices', 'Posted Purchase Invoices', 'PostedPurchaseInvoiceList', 'FileCheck', 'Purchase'),
         ('NavBankAccounts', 'Bank Accounts', 'BankAccountList', 'Landmark', 'Finance'),
         ('NavChartOfAccounts', 'Chart of Accounts', 'GLAccountList', 'ListTree', 'Finance'),
+        ('NavFinancialReports', 'Financial Reports', 'FinancialReportList', 'FileChart', 'Finance'),
+        ('NavPaymentMethods', 'Payment Methods', 'PaymentMethodList', 'Wallet', 'Finance'),
+        ('NavExpenses', 'Expenses', 'ExpenseList', 'Receipt', 'Finance'),
+        ('NavPayments', 'Payments', 'PaymentJournalList', 'CreditCard', 'Finance'),
+        ('NavCashReceiptJournal', 'Cash Receipt Journal', 'CashReceiptJournal', 'BookOpen', 'Finance'),
+        ('NavGeneralJournal', 'General Journals', 'GeneralJournal', 'BookOpen', 'Finance'),
+        ('NavUsers', 'Users', 'UsersList', 'User', 'Administration'),
+        ('NavPermissionSets', 'Permission Sets', 'PermissionSetsList', 'Shield', 'Administration'),
+        ('NavUserGroups', 'User Groups', 'UserGroupsList', 'UsersRound', 'Administration'),
+        ('NavUserSettings', 'User settings', 'UserSettingsList', 'Settings', 'Setup'),
+        ('NavUserSetup', 'User Setup', 'UserSetupList', 'UserCog', 'Setup'),
+        ('NavUnitsOfMeasure', 'Units of Measure', 'UnitOfMeasureList', 'Ruler', 'Setup'),
+    ], prune=True)
+    # Advanced setup stays on Debug Admin RC only — not Business Manager.
+    PageAction.objects.filter(
+        page=rc,
+        name__in=(
+            'NavInventorySetup',
+            'NavManufacturingSetup',
+            'NavGLSetup',
+            'NavNoSeries',
+            'NavSalesCreditMemos',
+            'NavPostedSalesCreditMemos',
+        ),
+    ).delete()
+
+    _seed_business_manager_headlines(
+        rc,
+        sales_order_list=sales_order_list,
+        posted_sales_invoice_list=posted_sales_invoice_list,
+        customer_ledger_page=customer_ledger_page,
+    )
+
+    return rc
+
+
+def _seed_debug_admin_rc(
+    *,
+    sales_order_list: Page,
+    posted_sales_invoice_list: Page,
+    customer_ledger_page: Page,
+) -> Page:
+    """
+    Debug Admin Role Centre — full Business Manager nav plus advanced Setup pages
+    (Inventory / Manufacturing / G/L Setup, No. Series).
+    """
+    rc = _create_role_centre_shell('DebugAdminRC', 'Debug Admin')
+    _seed_rc_nav_actions(rc, [
+        ('NavHome', 'Home', '', 'Home', 'General'),
+        ('NavItems', 'Items', 'ItemList', 'Package', 'Inventory'),
+        ('NavInventoryAdjustment', 'Inventory Adjustment', 'InventoryAdjustmentJournalList', 'PackagePlus', 'Inventory'),
+        ('NavOpeningBalance', 'Opening Balance', 'OpeningBalanceJournalList', 'Scale', 'Inventory'),
+        ('NavPostedInventoryAdjustments', 'Posted Inventory Adjustments', 'PostedInventoryAdjustmentList', 'FileCheck', 'Inventory'),
+        ('NavCustomers', 'Customers', 'CustomerList', 'Users', 'Sales'),
+        ('NavVendors', 'Vendors', 'VendorList', 'Truck', 'Purchase'),
+        ('NavSalesOrders', 'Sales Orders', 'SalesOrderList', 'Package', 'Sales'),
+        ('NavPOS', 'Point of Sale', 'SalesPOS', 'ShoppingCart', 'Sales'),
+        ('NavSalesInvoices', 'Sales Invoices', 'SalesInvoiceList', 'FileOutput', 'Sales'),
+        ('NavPostedSalesInvoices', 'Posted Sales Invoices', 'PostedSalesInvoiceList', 'FileCheck', 'Sales'),
+        ('NavSalesCreditMemos', 'Sales Credit Memos', 'SalesCreditMemoList', 'FileOutput', 'Sales'),
+        ('NavPostedSalesCreditMemos', 'Posted Sales Credit Memos', 'PostedSalesCreditMemoList', 'FileCheck', 'Sales'),
+        ('NavPurchaseInvoices', 'Purchase Invoices', 'PurchaseInvoiceList', 'FileInput', 'Purchase'),
+        ('NavPostedPurchaseInvoices', 'Posted Purchase Invoices', 'PostedPurchaseInvoiceList', 'FileCheck', 'Purchase'),
+        ('NavBankAccounts', 'Bank Accounts', 'BankAccountList', 'Landmark', 'Finance'),
+        ('NavChartOfAccounts', 'Chart of Accounts', 'GLAccountList', 'ListTree', 'Finance'),
+        ('NavFinancialReports', 'Financial Reports', 'FinancialReportList', 'FileChart', 'Finance'),
         ('NavPaymentMethods', 'Payment Methods', 'PaymentMethodList', 'Wallet', 'Finance'),
         ('NavExpenses', 'Expenses', 'ExpenseList', 'Receipt', 'Finance'),
         ('NavPayments', 'Payments', 'PaymentJournalList', 'CreditCard', 'Finance'),
@@ -4349,14 +4935,12 @@ def _seed_role_centre_pages(
         ('NavGLSetup', 'G/L Setup', 'GeneralLedgerSetupCard', 'Layers', 'Setup'),
         ('NavNoSeries', 'No. Series', 'NoSeriesList', 'FileText', 'Setup'),
     ])
-
     _seed_business_manager_headlines(
         rc,
         sales_order_list=sales_order_list,
         posted_sales_invoice_list=posted_sales_invoice_list,
         customer_ledger_page=customer_ledger_page,
     )
-
     return rc
 
 
@@ -4545,9 +5129,9 @@ def _seed_business_manager_headlines(
     group = _seed_headline_group(rc, tab_index=0)
     _seed_headline(
         page=rc, headline_group=group, name='RCHeadlineRevenue',
-        caption='My performance',
+        caption='Insight from this month',
         tab_index=0,
-        headline_template='Revenue over the last six months is {value}.',
+        headline_template='Sales this month total {value}.',
         cue_source_table='SalesInvoiceLine',
         cue_aggregate='sum',
         cue_aggregate_field='quantity',
@@ -4566,9 +5150,21 @@ def _seed_business_manager_headlines(
         drill_down_page=customer_ledger_page,
     )
     _seed_headline(
+        page=rc, headline_group=group, name='RCHeadlineOverdue',
+        caption='Insight from collections',
+        tab_index=2,
+        headline_template='Overdue customer invoices total {value}.',
+        cue_source_table='CustomerLedgerEntry',
+        cue_aggregate='sum',
+        cue_aggregate_field='amount',
+        cue_filter_field='open',
+        cue_filter_value='True',
+        drill_down_page=customer_ledger_page,
+    )
+    _seed_headline(
         page=rc, headline_group=group, name='RCHeadlineOpenOrders',
         caption='My workday',
-        tab_index=2,
+        tab_index=3,
         headline_template='{value} sales orders still need your attention.',
         cue_source_table='SalesOrder',
         cue_aggregate='count',
@@ -4579,8 +5175,8 @@ def _seed_business_manager_headlines(
     _seed_headline(
         page=rc, headline_group=group, name='RCHeadlineWelcome',
         caption='Getting started',
-        tab_index=3,
-        headline_template='Welcome to ZentroApp — use the cues below to monitor sales, finance, and inventory.',
+        tab_index=4,
+        headline_template='Welcome to ZentroApp — use Financial Reports under Finance for P&L and more.',
         drill_down_page=None,
     )
 
@@ -4722,11 +5318,16 @@ def _delete_legacy_sales_nav_items() -> None:
     ).delete()
 
 
-def _seed_rc_nav_actions(page: Page, nav_specs: list[tuple]) -> None:
-    """Sidebar navigation links stored as NavItem PageActions on a Role Centre page."""
+def _seed_rc_nav_actions(page: Page, nav_specs: list[tuple], *, prune: bool = False) -> None:
+    """Sidebar navigation links stored as NavItem PageActions on a Role Centre page.
+
+    When prune=True, remove NavItems not in nav_specs (keeps NavSyncQueue for desktop wire-up).
+    """
+    keep_names: set[str] = set()
     for spec in nav_specs:
         name, caption, target_page_name, icon = spec[:4]
         ribbon_tab = spec[4] if len(spec) > 4 else 'Navigation'
+        keep_names.add(name)
         PageAction.objects.update_or_create(
             page=page,
             name=name,
@@ -4742,6 +5343,12 @@ def _seed_rc_nav_actions(page: Page, nav_specs: list[tuple]) -> None:
                 'ribbon_tab': ribbon_tab,
             },
         )
+    if prune:
+        keep_names.add('NavSyncQueue')
+        PageAction.objects.filter(
+            page=page,
+            action_type='NavItem',
+        ).exclude(name__in=keep_names).delete()
 
 
 def _create_role_centre_shell(name: str, caption: str) -> Page:
@@ -5154,6 +5761,8 @@ def _seed_sales_manager_rc(
         ('NavCustomers', 'Customers', 'CustomerList', 'Users', 'Sales'),
         ('NavSalesInvoices', 'Sales Invoices', 'SalesInvoiceList', 'FileOutput', 'Sales'),
         ('NavPostedSalesInvoices', 'Posted Sales Invoices', 'PostedSalesInvoiceList', 'FileCheck', 'Sales'),
+        ('NavSalesCreditMemos', 'Sales Credit Memos', 'SalesCreditMemoList', 'FileOutput', 'Sales'),
+        ('NavPostedSalesCreditMemos', 'Posted Sales Credit Memos', 'PostedSalesCreditMemoList', 'FileCheck', 'Sales'),
         ('NavItems', 'Items', 'ItemList', 'Package', 'Inventory'),
     ])
     return rc
@@ -5300,6 +5909,7 @@ def _seed_warehouse_rc(
         ('NavItems', 'Items', 'ItemList', 'Package', 'Inventory'),
         ('NavInventoryAdjustment', 'Inventory Adjustment', 'InventoryAdjustmentJournalList', 'PackagePlus', 'Inventory'),
         ('NavOpeningBalance', 'Opening Balance', 'OpeningBalanceJournalList', 'Scale', 'Inventory'),
+        ('NavPostedInventoryAdjustments', 'Posted Inventory Adjustments', 'PostedInventoryAdjustmentList', 'FileCheck', 'Inventory'),
         ('NavVendors', 'Vendors', 'VendorList', 'Truck', 'Purchase'),
         ('NavPurchaseInvoices', 'Purchase Invoices', 'PurchaseInvoiceList', 'FileInput', 'Purchase'),
         ('NavPostedPurchaseInvoices', 'Posted Purchase Invoices', 'PostedPurchaseInvoiceList', 'FileCheck', 'Purchase'),
@@ -5512,6 +6122,8 @@ def _seed_operations_manager_rc(
         ('NavPOS', 'Point of Sale', 'SalesPOS', 'ShoppingCart', 'Sales'),
         ('NavSalesInvoices', 'Sales Invoices', 'SalesInvoiceList', 'FileOutput', 'Sales'),
         ('NavPostedSalesInvoices', 'Posted Sales Invoices', 'PostedSalesInvoiceList', 'FileCheck', 'Sales'),
+        ('NavSalesCreditMemos', 'Sales Credit Memos', 'SalesCreditMemoList', 'FileOutput', 'Sales'),
+        ('NavPostedSalesCreditMemos', 'Posted Sales Credit Memos', 'PostedSalesCreditMemoList', 'FileCheck', 'Sales'),
         ('NavPurchaseInvoices', 'Purchases', 'PurchaseInvoiceList', 'ShoppingCart', 'Purchase'),
         ('NavPostedPurchaseInvoices', 'Posted Purchase Invoices', 'PostedPurchaseInvoiceList', 'FileCheck', 'Purchase'),
         ('NavUserSettings', 'User settings', 'UserSettingsList', 'Settings', 'Setup'),
@@ -5538,6 +6150,7 @@ def _seed_application_profiles(
     cashier_rc: Page,
     pharmacist_rc: Page | None = None,
     operations_manager_rc: Page | None = None,
+    debug_admin_rc: Page | None = None,
 ) -> None:
     from authentication.models import ApplicationProfile
 
@@ -5552,6 +6165,8 @@ def _seed_application_profiles(
         specs = (*specs, ('PHARMACIST', 'Pharmacist', pharmacist_rc))
     if operations_manager_rc is not None:
         specs = (*specs, ('OPERATIONS-MGR', 'Operations Manager', operations_manager_rc))
+    if debug_admin_rc is not None:
+        specs = (*specs, ('DEBUG-ADMIN', 'Debug Admin', debug_admin_rc))
     for code, description, rc_page in specs:
         ApplicationProfile.objects.update_or_create(
             code=code,
@@ -5795,7 +6410,7 @@ def _seed_item_card_drill_down_lists(item_journal_card: Page) -> tuple[Page, Pag
     """List pages opened from Item Card ribbon (filtered by current item no)."""
     uom_list = _create_drill_down_list_page(
         name='ItemUnitOfMeasureList',
-        caption='Units of Measure',
+        caption='Item Units of Measure',
         source_table='ItemUnitOfMeasure',
         context_filter_field='item__no',
         fields=[
@@ -5867,7 +6482,15 @@ def _seed_item_card_drill_down_lists(item_journal_card: Page) -> tuple[Page, Pag
     adj_by_item_list.insert_allowed = True
     adj_by_item_list.delete_allowed = True
     adj_by_item_list.modify_allowed = True
-    adj_by_item_list.save(update_fields=['insert_allowed', 'delete_allowed', 'modify_allowed'])
+    adj_by_item_list.list_exclude_field = 'status'
+    adj_by_item_list.list_exclude_values = 'Posted'
+    adj_by_item_list.save(update_fields=[
+        'insert_allowed', 'delete_allowed', 'modify_allowed',
+        'list_exclude_field', 'list_exclude_values',
+    ])
+
+    # Prefer OpeningBalanceJournalList (10204) from Item Card — drop unused by-item list.
+    Page.objects.filter(name='ItemOpeningBalanceByItemList').delete()
 
     return uom_list, adj_by_item_list
 
@@ -5877,6 +6500,13 @@ def _seed_item_card_page_actions(item_card: Page) -> None:
     actions = (
         ('OpenItemLedgerEntries', 'Item Ledger Entries', 'ItemLedgerEntryList', 'ScrollText', 'Item'),
         ('OpenItemAdjustments', 'Adjustments', 'ItemInventoryAdjustmentByItemList', 'PackagePlus', 'Item'),
+        (
+            'OpenItemOpeningBalance',
+            'Bring in Opening Balance',
+            'OpeningBalanceJournalList?mode=new',
+            'Scale',
+            'Item',
+        ),
         ('OpenItemUnitsOfMeasure', 'Units of Measure', 'ItemUnitOfMeasureList', 'Ruler', 'Item'),
         ('OpenSalesPrices', 'Sales Prices', 'ItemUnitOfMeasureList', 'Tag', 'Prices & Discounts'),
         ('OpenPurchasePrices', 'Purchase Prices', 'ItemUnitOfMeasureList', 'ShoppingCart', 'Prices & Discounts'),
@@ -5891,6 +6521,30 @@ def _seed_item_card_page_actions(item_card: Page) -> None:
             ribbon_tab=ribbon_tab,
             tooltip=caption,
         )
+
+
+def _seed_item_list_page_actions(items_page: Page) -> None:
+    """BC-style ribbon on Item List: adjust inventory, import, and export."""
+    _seed_ribbon_actions(items_page, (
+        ('ItemListNew', 'New', '#new', 'Home', 'Plus'),
+        ('ItemListDelete', 'Delete', '#delete', 'Home', 'Trash2'),
+        (
+            'ItemListAdjustInventory',
+            'Adjust Inventory',
+            'InventoryAdjustmentJournalList',
+            'Home',
+            'PackagePlus',
+        ),
+        (
+            'ItemListDownloadTemplate',
+            'Download Excel Template',
+            '#download-item-template',
+            'Home',
+            'FileSpreadsheet',
+        ),
+        ('ItemListImport', 'Import', '#import-items', 'Home', 'Upload'),
+        ('ItemListExport', 'Export', '#export-items', 'Home', 'Download'),
+    ))
 
 
 def _create_drill_down_list_page(
@@ -6801,11 +7455,11 @@ def _seed_financial_report_pages() -> dict:
             'editable': True,
             'visible': True,
             'part_page': row_lines_subform,
-            'link_field': 'row_group__name',
+            'link_field': 'row_group__system_id',
         },
     )
     row_lines_part.part_page = row_lines_subform
-    row_lines_part.link_field = 'row_group__name'
+    row_lines_part.link_field = 'row_group__system_id'
     row_lines_part.save(update_fields=['part_page', 'link_field'])
 
     row_group_list, _ = Page.objects.update_or_create(
@@ -6992,11 +7646,11 @@ def _seed_financial_report_pages() -> dict:
             'editable': True,
             'visible': True,
             'part_page': col_lines_subform,
-            'link_field': 'column_group__name',
+            'link_field': 'column_group__system_id',
         },
     )
     col_lines_part.part_page = col_lines_subform
-    col_lines_part.link_field = 'column_group__name'
+    col_lines_part.link_field = 'column_group__system_id'
     col_lines_part.save(update_fields=['part_page', 'link_field'])
 
     col_group_list, _ = Page.objects.update_or_create(

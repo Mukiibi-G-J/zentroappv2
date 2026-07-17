@@ -219,7 +219,8 @@ def create_company_task(self, data):
         # Initial status
         update_task_progress(self, 10, "Validating data...", "validating")
 
-        schema_name = data["name"].lower()
+        # Match signup validation / frontend slug: lowercase, spaces removed.
+        schema_name = "".join(str(data["name"]).lower().split())
         if not schema_name.replace("_", "").isalnum():
             raise ValueError("Schema name must be alphanumeric")
 
@@ -305,6 +306,12 @@ def create_company_task(self, data):
                     password = data.get("password") or ""
                     if not password or not str(password).strip():
                         raise ValueError("Password is required and cannot be blank")
+
+                    # Template clone copies rows but older sync missed IDENTITY sequences
+                    # (Django 5 AutoField). Without this, create_superuser reuses id=1.
+                    from company.schema_clone import sync_all_sequences
+
+                    sync_all_sequences(company.schema_name)
 
                     branch_value = ensure_branch_location(
                         address=data.get("address") or "",

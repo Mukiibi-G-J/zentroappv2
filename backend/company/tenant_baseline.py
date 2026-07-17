@@ -59,6 +59,7 @@ def tenant_has_baseline_data() -> bool:
 
     Call inside ``schema_context(tenant)``.
     """
+    from financials.models import FinancialReport
     from pages.models import Page
     from permissions.models import PermissionSet
 
@@ -69,6 +70,7 @@ def tenant_has_baseline_data() -> bool:
         and NoSeries.objects.filter(code="VENDOR").exists()
         and PurchasePayable.objects.exists()
         and SalesReceivable.objects.exists()
+        and FinancialReport.objects.filter(name="INCOME").exists()
     )
 
 
@@ -416,13 +418,35 @@ def ensure_default_user_groups() -> None:
 
 
 def assign_user_to_admin_group(user: User) -> None:
-    """Attach ``user`` to the Admin user group (tenant schema must be active)."""
-    from authentication.models import UserGroup
+    """Attach ``user`` to the Admin user group and Business Manager Role Centre."""
+    from authentication.models import ApplicationProfile, UserGroup, UserPersonalization
+    from authentication.profile_assignment import _is_debug_admin_user
 
     admin_group = UserGroup.objects.filter(code="Admin").first()
     if admin_group and user:
         user.user_groups.add(admin_group)
         logger.info("Assigned user %s to Admin user group", user.username)
+
+    if not user or _is_debug_admin_user(user):
+        return
+
+    profile = ApplicationProfile.objects.filter(code="BUSINESS-MGR").first()
+    if not profile:
+        logger.warning(
+            "BUSINESS-MGR ApplicationProfile missing; cannot assign Role Centre to %s",
+            getattr(user, "username", user),
+        )
+        return
+
+    personalization = UserPersonalization.get_or_create_for_user(user)
+    if personalization.role_id != profile.pk:
+        personalization.role = profile
+        personalization.modified_by = "assign_user_to_admin_group"
+        personalization.save(update_fields=["role", "modified_by"])
+        logger.info(
+            "Assigned user %s to Business Manager Role Centre",
+            user.username,
+        )
 
 
 def ensure_branch_location(
@@ -728,6 +752,23 @@ def run_tenant_baseline_bootstrap(
         call_command("seed_prepayment_accounts")
 
         _progress(
+            progress,
+            82.5,
+            "Seeding financial reports...",
+            "seeding_financial_reports",
+        )
+        try:
+            # After CoA import so row totaling can resolve Income Statement posting accounts.
+            call_command("seed_income_statement_row_definition", schema=schema_name)
+            logger.info("Seeded financial reports (INCOME) for %s", schema_name)
+        except Exception as fr_error:
+            logger.error("Error seeding financial reports: %s", fr_error)
+            # Template rebuild must not silently ship without reports; signup slow-path
+            # can continue and still create the company.
+            if schema_name == "_zentro_template":
+                raise
+
+        _progress(
             progress, 83, "Seeding expense categories...", "seeding_expense_categories"
         )
         try:
@@ -740,6 +781,17 @@ def run_tenant_baseline_bootstrap(
             call_command("seed_expense_types", tenant=schema_name)
         except Exception as et_error:
             logger.error("Error seeding expense types: %s", et_error)
+
+        _progress(
+            progress,
+            84.5,
+            "Seeding item tracking codes...",
+            "seeding_item_tracking_codes",
+        )
+        try:
+            call_command("seed_item_tracking_codes", tenant=schema_name)
+        except Exception as itc_error:
+            logger.error("Error seeding item tracking codes: %s", itc_error)
 
         _progress(progress, 85, "Updating inventory setup...", "importing_data")
         from dimension.setup import (

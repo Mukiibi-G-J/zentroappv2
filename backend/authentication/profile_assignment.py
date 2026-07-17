@@ -57,6 +57,7 @@ _GROUP_CODE_PRIORITY: tuple[str, ...] = (
 
 # When choosing among profile codes (from Role Centres), prefer broader admin profiles.
 _PROFILE_PRIORITY: tuple[str, ...] = (
+    'DEBUG-ADMIN',
     'BUSINESS-MGR',
     'OPERATIONS-MGR',
     'ACCOUNTANT',
@@ -84,14 +85,31 @@ def _group_priority_key(group_code: str) -> tuple[int, str]:
         return (len(_GROUP_CODE_PRIORITY), group_code)
 
 
+def _is_debug_admin_user(user: Any) -> bool:
+    from django.conf import settings
+
+    debug_username = getattr(settings, 'DEBUG_ADMIN_USERNAME', 'debug_admin')
+    debug_email = getattr(settings, 'DEBUG_ADMIN_EMAIL', '')
+    username = (getattr(user, 'username', None) or '').strip()
+    email = (getattr(user, 'email', None) or '').strip().lower()
+    if username and username == debug_username:
+        return True
+    if debug_email and email and email == debug_email.strip().lower():
+        return True
+    return False
+
+
 def resolve_application_profile_code_for_user(user: Any) -> str | None:
     """
     Pick the best ApplicationProfile.code for a user from old Role Centres / groups.
 
-    Superusers → BUSINESS-MGR.
+    debug_admin → DEBUG-ADMIN (full Setup nav).
+    Other superusers → BUSINESS-MGR.
     Prefer Role.role_center when present; otherwise UserGroup codes.
     Returns None when nothing maps (do not invent BUSINESS-MGR).
     """
+    if _is_debug_admin_user(user):
+        return 'DEBUG-ADMIN'
     if getattr(user, 'is_superuser', False):
         return 'BUSINESS-MGR'
 

@@ -30,7 +30,10 @@ from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.template.response import TemplateResponse
 from django_tenants.utils import schema_context, get_public_schema_name
 
-from .schema_clone import try_set_session_replication_role_replica
+from .schema_clone import (
+    _sync_sequences_for_table,
+    try_set_session_replication_role_replica,
+)
 from setup.admin import EmailSetupAdmin
 from setup.models import EmailSetup
 
@@ -89,42 +92,7 @@ def clone_tenant_schema_data(source_schema: str, target_schema: str):
                         f'INSERT INTO "{target_schema}"."{table}" '
                         f'SELECT * FROM "{source_schema}"."{table}";'
                     )
-
-                    cursor.execute(
-                        """
-                        SELECT column_name
-                        FROM information_schema.columns
-                        WHERE table_schema = %s
-                          AND table_name = %s
-                          AND column_default LIKE 'nextval%%'
-                        """,
-                        [target_schema, table],
-                    )
-                    sequence_columns = [row[0] for row in cursor.fetchall()]
-
-                    for column in sequence_columns:
-                        cursor.execute(
-                            "SELECT pg_get_serial_sequence(%s, %s)",
-                            [f"{target_schema}.{table}", column],
-                        )
-                        result = cursor.fetchone()
-                        if not result or not result[0]:
-                            continue
-
-                        sequence_name = result[0]
-                        cursor.execute(
-                            f"""
-                            SELECT setval(
-                                %s,
-                                COALESCE(
-                                    (SELECT MAX("{column}") FROM "{target_schema}"."{table}"),
-                                    1
-                                ),
-                                true
-                            )
-                            """,
-                            [sequence_name],
-                        )
+                    _sync_sequences_for_table(cursor, target_schema, table)
 
 
 class CopyCompanyForm(forms.Form):

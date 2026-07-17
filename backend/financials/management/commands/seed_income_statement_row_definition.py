@@ -159,6 +159,7 @@ def seed_income_statement_row_definition(*, clear: bool = False) -> dict:
             defaults={
                 "description": report_data.get("description", ""),
                 "period_type": report_data.get("period_type", "Month"),
+                "show_all_lines": bool(report_data.get("show_all_lines", False)),
                 "row_definition": row_group,
                 "column_definition": column_group,
             },

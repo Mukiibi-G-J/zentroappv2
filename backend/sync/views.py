@@ -290,6 +290,15 @@ def sync_push(request):
                     request, device_id, event_id, payload
                 )
                 results.append({"event_id": event_id, **out})
+            elif event_type == "CUSTOMER_PAYMENT_COMPLETED":
+                from sync.services.customer_payment_push import (
+                    process_customer_payment_completed,
+                )
+
+                out = process_customer_payment_completed(
+                    request, device_id, event_id, payload
+                )
+                results.append({"event_id": event_id, **out})
             else:
                 results.append(
                     {

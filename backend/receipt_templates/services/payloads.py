@@ -111,6 +111,42 @@ def build_guest_check_payload(order) -> dict[str, Any]:
     }
 
 
+def build_payment_journal_receipt_payload(journal) -> dict[str, Any]:
+    lines = []
+    for line in journal.lines.all().order_by("line_no"):
+        label = (line.description or "").strip()
+        if not label:
+            account_type = (line.account_type or "").strip()
+            account_no = (line.account_no or "").strip()
+            label = " ".join(part for part in (account_type, account_no) if part).strip() or "Payment line"
+        lines.append(
+            {
+                "itemName": label,
+                "quantity": "1",
+                "unitPrice": _decimal_str(line.amount),
+                "totalPrice": _decimal_str(line.amount),
+            }
+        )
+
+    pm = journal.payment_method
+    pm_label = ""
+    if pm:
+        pm_label = getattr(pm, "description", None) or getattr(pm, "code", None) or str(pm)
+
+    posting_date = journal.posting_date
+    if posting_date is None and getattr(journal, "created_at", None):
+        posting_date = journal.created_at.date()
+
+    return {
+        "receiptType": "payment_journal",
+        "documentNo": journal.document_no or "",
+        "documentDate": str(posting_date or timezone.now().date()),
+        "lines": lines,
+        "totalAmount": float(journal.amount or 0),
+        "paymentMethod": pm_label or None,
+    }
+
+
 def build_sales_receipt_payload(invoice, *, seller_name: str = "") -> dict[str, Any]:
     lines = []
     for line in invoice.lines.select_related("item", "resource").all():
@@ -210,5 +246,21 @@ def build_report_payload(report_id: int, request, body: dict) -> dict[str, Any]:
                 title="BAR ORDER",
             )
         return build_guest_check_payload(order)
+
+    if rid == ReceiptReportId.PAYMENT_JOURNAL:
+        from payments.enums import PaymentStatus
+        from payments.models import PaymentJournal
+
+        system_id = body.get("payment_journal_system_id") or body.get("system_id")
+        if not system_id:
+            raise ValueError("payment_journal_system_id is required")
+        journal = (
+            PaymentJournal.objects.prefetch_related("lines")
+            .select_related("payment_method")
+            .get(system_id=system_id)
+        )
+        if journal.status != PaymentStatus.POSTED.value:
+            raise ValueError("Payment must be posted before printing a receipt.")
+        return build_payment_journal_receipt_payload(journal)
 
     raise ValueError(f"Report {report_id} is not implemented yet")

@@ -133,8 +133,11 @@ def _topological_table_order(
 
 
 def _sync_sequences_for_table(cursor, dest_schema: str, table: str) -> None:
+    """Advance serial/identity sequences to MAX(column) after data is copied."""
     qi_dest = _quote_ident(dest_schema)
     qi_table = _quote_ident(table)
+
+    # Classic serial / nextval defaults
     cursor.execute(
         """
         SELECT column_name
@@ -145,27 +148,63 @@ def _sync_sequences_for_table(cursor, dest_schema: str, table: str) -> None:
         """,
         [dest_schema, table],
     )
-    sequence_columns = [row[0] for row in cursor.fetchall()]
-    for column in sequence_columns:
+    columns = {row[0] for row in cursor.fetchall()}
+
+    # GENERATED … AS IDENTITY (Django 5+ AutoField) — no nextval() default
+    cursor.execute(
+        """
+        SELECT a.attname
+        FROM pg_attribute a
+        JOIN pg_class cl ON cl.oid = a.attrelid
+        JOIN pg_namespace n ON n.oid = cl.relnamespace
+        WHERE n.nspname = %s
+          AND cl.relname = %s
+          AND a.attnum > 0
+          AND NOT a.attisdropped
+          AND a.attidentity IN ('a', 'd')
+        """,
+        [dest_schema, table],
+    )
+    columns.update(row[0] for row in cursor.fetchall())
+
+    for column in sorted(columns):
         qi_col = _quote_ident(column)
+        # format('%I.%I') quotes schema/table so names with spaces work
+        # (e.g. "Item Images").
         cursor.execute(
-            "SELECT pg_get_serial_sequence(%s, %s)",
-            [f"{dest_schema}.{table}", column],
+            "SELECT pg_get_serial_sequence(format('%%I.%%I', %s, %s), %s)",
+            [dest_schema, table, column],
         )
         result = cursor.fetchone()
         if not result or not result[0]:
             continue
         sequence_name = result[0]
-        cursor.execute(
-            f"""
-            SELECT setval(
-                %s,
-                COALESCE((SELECT MAX({qi_col}) FROM {qi_dest}.{qi_table}), 1),
-                true
+        cursor.execute("SELECT to_regclass(%s)", [sequence_name])
+        reg = cursor.fetchone()
+        if not reg or not reg[0]:
+            logger.warning(
+                "schema_clone: sequence %s for %s.%s.%s not found; skipping",
+                sequence_name,
+                dest_schema,
+                table,
+                column,
             )
-            """,
-            [sequence_name],
-        )
+            continue
+
+        cursor.execute(f"SELECT MAX({qi_col}) FROM {qi_dest}.{qi_table}")
+        max_row = cursor.fetchone()
+        max_val = max_row[0] if max_row else None
+        if max_val is None:
+            # Empty table: next nextval() should return 1
+            cursor.execute(
+                "SELECT setval(%s::regclass, 1, false)",
+                [sequence_name],
+            )
+        else:
+            cursor.execute(
+                "SELECT setval(%s::regclass, %s, true)",
+                [sequence_name, int(max_val)],
+            )
 
 
 def clone_schema(source: str, dest: str) -> None:
@@ -214,3 +253,19 @@ def clone_schema(source: str, dest: str) -> None:
                 _sync_sequences_for_table(cursor, dest, table)
 
     logger.info("schema_clone: cloned schema %s -> %s", source, dest)
+
+
+def sync_all_sequences(schema_name: str) -> None:
+    """
+    Re-align every serial/identity sequence in ``schema_name`` to MAX(column).
+
+    Safe to call after template clone or when identity sequences were skipped
+    (Django 5 uses GENERATED AS IDENTITY, which older sync logic missed).
+    """
+    with connection.cursor() as cursor:
+        if not _schema_exists(cursor, schema_name):
+            raise CloneSchemaError(f"Schema {schema_name!r} does not exist")
+        tables = _list_ordinary_tables(cursor, schema_name)
+        for table in tables:
+            _sync_sequences_for_table(cursor, schema_name, table)
+    logger.info("schema_clone: synced sequences for schema %s", schema_name)

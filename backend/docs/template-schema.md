@@ -8,6 +8,7 @@ The template is **pre-seeded** during rebuild with tenant-generic baseline data:
 - Pages engine (`seed_pages`) + Zentro page IDs (PageId == ObjectId)
 - Permission sets (`setup_page_permissions`)
 - Chart of accounts / posting groups (JSON import) and related seeds
+- Financial reports (`seed_income_statement_row_definition` — INCOME P&L + MONTHLY columns; required by `tenant_has_baseline_data`)
 - Number series + PurchasePayable / SalesReceivable setup
 
 Signup then clones that data and only adds company-specific rows (admin user, domain, location contact fields, General vendor/customer, subscription).

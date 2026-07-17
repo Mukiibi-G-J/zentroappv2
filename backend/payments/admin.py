@@ -313,6 +313,56 @@ class PaymentJournalAdmin(admin.ModelAdmin):
         js = ("admin/js/payment_journal.js",)
 
 
+def _resolve_payment_ledger_dimensions(
+    *,
+    entry,
+    request,
+    global_dimension_1_fallback=None,
+    applies_to_ledger=None,
+):
+    """Build dimension_set + global dimensions required by ledger tables."""
+    from dimension.branch_filter import get_branch_for_request
+    from dimension.models import get_posting_dimension_payload
+
+    dimension_set = entry.get("dimension_set")
+    global_dimension_1 = entry.get("global_dimension_1")
+
+    if applies_to_ledger is not None:
+        if not dimension_set and getattr(applies_to_ledger, "dimension_set_id", None):
+            dimension_set = applies_to_ledger.dimension_set
+        if not global_dimension_1 and getattr(applies_to_ledger, "global_dimension_1_id", None):
+            global_dimension_1 = applies_to_ledger.global_dimension_1
+
+    if not global_dimension_1 and request is not None:
+        global_dimension_1 = get_branch_for_request(request)
+    if not global_dimension_1:
+        global_dimension_1 = global_dimension_1_fallback
+
+    payload = get_posting_dimension_payload(
+        global_dimension_1=global_dimension_1,
+        dimension_set=dimension_set,
+    )
+    if payload["dimension_set"] is None:
+        from dimension.utils import resolve_default_branch_for_tenant
+
+        branch, dim_set, _err = resolve_default_branch_for_tenant(
+            allow_multiple_branch_values=True
+        )
+        if dim_set:
+            payload = get_posting_dimension_payload(
+                global_dimension_1=payload.get("global_dimension_1")
+                or global_dimension_1
+                or branch,
+                dimension_set=dim_set,
+            )
+    if payload["dimension_set"] is None:
+        raise ValueError(
+            "Could not resolve posting dimensions for the payment journal. "
+            "Configure General Ledger Setup branch dimensions or set the user's branch."
+        )
+    return payload
+
+
 class PaymentJournalPostingProcessor:
     def __init__(self, payment_journal, request, receipt_no):
         self.payment_journal = payment_journal
@@ -452,6 +502,13 @@ class PaymentJournalPostingProcessor:
                     from purchases.models import VendorLedger
                     from common.enums import DocumentType
 
+                    vendor_dim = _resolve_payment_ledger_dimensions(
+                        entry=vendor_entry,
+                        request=self.request,
+                        global_dimension_1_fallback=self.global_dimension_1_value,
+                        applies_to_ledger=applies_to_vendor_ledger,
+                    )
+
                     vendor_ledger = VendorLedger.objects.create(
                         posting_date=vendor_entry["posting_date"],
                         document_date=vendor_entry["document_date"],
@@ -461,7 +518,9 @@ class PaymentJournalPostingProcessor:
                             else DocumentType.Invoice.value
                         ),
                         document_no=vendor_entry["document_no"],
-                        external_document_no=vendor_entry["external_document_no"],
+                        external_document_no=vendor_entry["external_document_no"]
+                        or vendor_entry["document_no"]
+                        or "",
                         vendor=vendor_entry["vendor"],
                         description=vendor_entry["description"],
                         payment_method=vendor_entry["payment_method"],
@@ -469,8 +528,8 @@ class PaymentJournalPostingProcessor:
                         amount=float(vendor_entry["amount"]),
                         open=bool(vendor_entry.get("open", not applies_to_vendor_ledger)),
                         due_date=vendor_entry["due_date"],
-                        global_dimension_1=vendor_entry["global_dimension_1"],
-                        dimension_set=vendor_entry.get("dimension_set"),
+                        global_dimension_1=vendor_dim["global_dimension_1"],
+                        dimension_set=vendor_dim["dimension_set"],
                         transaction_no=vendor_entry["transaction_no"],
                     )
                     # Store the created vendor ledger entry
@@ -490,6 +549,13 @@ class PaymentJournalPostingProcessor:
                     from sales.models import CustomerLedgerEntry
                     from common.enums import DocumentType
 
+                    customer_dim = _resolve_payment_ledger_dimensions(
+                        entry=customer_entry,
+                        request=self.request,
+                        global_dimension_1_fallback=self.global_dimension_1_value,
+                        applies_to_ledger=applies_to_customer_ledger,
+                    )
+
                     customer_ledger = CustomerLedgerEntry.objects.create(
                         posting_date=customer_entry["posting_date"],
                         document_date=customer_entry["document_date"],
@@ -499,15 +565,17 @@ class PaymentJournalPostingProcessor:
                             else DocumentType.Invoice.value
                         ),
                         document_no=customer_entry["document_no"],
-                        external_document_no=customer_entry["external_document_no"],
+                        external_document_no=customer_entry["external_document_no"]
+                        or customer_entry["document_no"]
+                        or "",
                         customer=customer_entry["customer"],
                         description=customer_entry["description"],
                         payment_method=customer_entry["payment_method"],
                         original_amount=customer_entry["original_amount"],
                         amount=customer_entry["amount"],
                         due_date=customer_entry["due_date"],
-                        global_dimension_1=customer_entry["global_dimension_1"],
-                        dimension_set=customer_entry.get("dimension_set"),
+                        global_dimension_1=customer_dim["global_dimension_1"],
+                        dimension_set=customer_dim["dimension_set"],
                         user=customer_entry["user"],
                         transaction_no=customer_entry["transaction_no"],
                         open=bool(customer_entry.get("open", not applies_to_customer_ledger)),
@@ -547,6 +615,17 @@ class PaymentJournalPostingProcessor:
                     if vendor_ledger_entry is None:
                         continue
 
+                    vendor_detail_dim = _resolve_payment_ledger_dimensions(
+                        entry=detailed_vendor_entry,
+                        request=self.request,
+                        global_dimension_1_fallback=self.global_dimension_1_value,
+                        applies_to_ledger=(
+                            applies_to_vendor_ledger
+                            if detailed_vendor_entry["entry_type"] == "Application"
+                            else vendor_ledger_entry
+                        ),
+                    )
+
                     detailed_vendor = DetailedVendorLedgerEntry.objects.create(
                         posting_date=detailed_vendor_entry["posting_date"],
                         entry_type=(
@@ -579,8 +658,8 @@ class PaymentJournalPostingProcessor:
                             "unapplied_by_entry_no"
                         ],
                         unapplied=detailed_vendor_entry["unapplied"],
-                        global_dimension_1=detailed_vendor_entry["global_dimension_1"],
-                        dimension_set=detailed_vendor_entry.get("dimension_set"),
+                        global_dimension_1=vendor_detail_dim["global_dimension_1"],
+                        dimension_set=vendor_detail_dim["dimension_set"],
                         transaction_no=detailed_vendor_entry["transaction_no"],
                     )
 
@@ -614,6 +693,17 @@ class PaymentJournalPostingProcessor:
                     if customer_ledger_entry is None:
                         continue
 
+                    customer_detail_dim = _resolve_payment_ledger_dimensions(
+                        entry=detailed_customer_entry,
+                        request=self.request,
+                        global_dimension_1_fallback=self.global_dimension_1_value,
+                        applies_to_ledger=(
+                            applies_to_customer_ledger
+                            if detailed_customer_entry["entry_type"] == "Application"
+                            else customer_ledger_entry
+                        ),
+                    )
+
                     detailed_customer = DetailedCustomerLedgerEntry.objects.create(
                         posting_date=detailed_customer_entry["posting_date"],
                         entry_type=(
@@ -646,8 +736,8 @@ class PaymentJournalPostingProcessor:
                             "unapplied_by_entry_no"
                         ],
                         unapplied=detailed_customer_entry["unapplied"],
-                        global_dimension_1=detailed_customer_entry["global_dimension_1"],
-                        dimension_set=detailed_customer_entry.get("dimension_set"),
+                        global_dimension_1=customer_detail_dim["global_dimension_1"],
+                        dimension_set=customer_detail_dim["dimension_set"],
                         transaction_no=detailed_customer_entry["transaction_no"],
                     )
 
@@ -707,6 +797,14 @@ class PaymentJournalProcessor:
                 self.payables_account = (
                     self.vendor.vendor_posting_group.payables_account
                 )
+
+    def _resolved_external_document_no(self):
+        """Customer/vendor ledger tables require a non-null external document no."""
+        return (
+            (self.payment_journal.external_document_no or "").strip()
+            or self.payment_journal.document_no
+            or ""
+        )
 
     def _validate_payment_journal(self):
         """Validate the payment journal entry"""
@@ -780,8 +878,10 @@ class PaymentJournalProcessor:
 
     def _generate_gl_entries(self, transaction_no):
         """Generate general ledger entries"""
-        from financials.enums import BalacingAccountType
+        from financials.enums import BalacingAccountType, GeneralPostingType
         from common.enums import DocumentType
+
+        gen_posting_type = GeneralPostingType.default.name
 
         # Determine the appropriate GL account based on account type
         if self.payment_journal.account_type == "Vendor":
@@ -828,7 +928,7 @@ class PaymentJournalProcessor:
                     self.global_dimension_1_value.code if self.global_dimension_1_value else None
                 ),
                 "amount": self.payment_journal.amount,
-                "gen_posting_type": "Payment",
+                "gen_posting_type": gen_posting_type,
                 "global_dimension_1": self.global_dimension_1_value,
                 "balance_account_type": BalacingAccountType.GLAccount.value,
                 "user": self.user,
@@ -925,7 +1025,7 @@ class PaymentJournalProcessor:
                     self.global_dimension_1_value.code if self.global_dimension_1_value else None
                 ),
                 "amount": -self.payment_journal.amount,
-                "gen_posting_type": "Payment",
+                "gen_posting_type": gen_posting_type,
                 "global_dimension_1": self.global_dimension_1_value,
                 "balance_account_type": BalacingAccountType.GLAccount.value,
                 "user": self.user,
@@ -970,7 +1070,7 @@ class PaymentJournalProcessor:
                 "document_date": posting_date,
                 "document_type": DocumentType.Payment.value,
                 "document_no": self.payment_journal.document_no,
-                "external_document_no": self.payment_journal.external_document_no,
+                "external_document_no": self._resolved_external_document_no(),
                 "vendor": self.payment_journal.account_no,
                 "description": f"Payment {self.payment_journal.document_no}",
                 "payment_method": self.payment_journal.payment_method,
@@ -1076,7 +1176,7 @@ class PaymentJournalProcessor:
                 "document_date": posting_date,
                 "document_type": DocumentType.Payment.value,
                 "document_no": self.payment_journal.document_no,
-                "external_document_no": self.payment_journal.external_document_no,
+                "external_document_no": self._resolved_external_document_no(),
                 "customer": self.payment_journal.account_no,
                 "description": f"Payment {self.payment_journal.document_no}",
                 "payment_method": self.payment_journal.payment_method,

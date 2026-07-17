@@ -1068,6 +1068,18 @@ class ItemJournal(BaseModel):
         super().clean()
         from financials.models import GeneralLedgerSetup
 
+        if self.item_id:
+            item_type = getattr(self.item, "type", None)
+            if item_type in ("Service", "Non-Inventory"):
+                raise ValidationError(
+                    {
+                        "item": _(
+                            "Opening balances and inventory adjustments are not "
+                            "allowed for Service or Non-Inventory items."
+                        )
+                    }
+                )
+
         if not self.location_code_id:
             raise ValidationError({"location_code": _("Location is required.")})
 
@@ -1164,6 +1176,10 @@ class ItemJournal(BaseModel):
                 },
             )
 
+            # Validate required fields before burning a document number.
+            if not self.item_id:
+                raise ValidationError({"item": _("This field cannot be null.")})
+
             # Handle document number generation
             if not self.pk and not self.document_no:
                 try:
@@ -1226,6 +1242,7 @@ class ItemJournal(BaseModel):
 
         except Exception as e:
             print(f"Error saving ItemJournal: {e}")
+            raise
 
     class Meta:
         ordering = ["-created_at"]

@@ -39,7 +39,8 @@
   "financial_report": {
     "name": "INCOME",
     "description": "Profit & Loss Report",
-    "period_type": "Month"
+    "period_type": "Month",
+    "show_all_lines": true
   },
   "row_lines": [
     {
@@ -185,100 +186,15 @@
     {
       "line_no": 14100,
       "row_no": "14100",
-      "description": "Rent, Cleaning & Repairs",
+      "description": "Expenses",
       "row_type": "Posting",
       "totaling_type": "Posting Accounts",
-      "totaling": "8110|8190",
+      "totaling": "8110|8995",
       "amount_type": "Net Amount",
       "show_opposite_sign": false,
       "bold": false,
       "indentation": 1,
-      "account_category": "Expense",
-      "account_prefix": "81"
-    },
-    {
-      "line_no": 14200,
-      "row_no": "14200",
-      "description": "Office Costs",
-      "row_type": "Posting",
-      "totaling_type": "Posting Accounts",
-      "totaling": "8210|8240",
-      "amount_type": "Net Amount",
-      "show_opposite_sign": false,
-      "bold": false,
-      "indentation": 1,
-      "account_category": "Expense",
-      "account_prefix": "82"
-    },
-    {
-      "line_no": 14300,
-      "row_no": "14300",
-      "description": "Computer & Internet",
-      "row_type": "Posting",
-      "totaling_type": "Posting Accounts",
-      "totaling": "8310|8390",
-      "amount_type": "Net Amount",
-      "show_opposite_sign": false,
-      "bold": false,
-      "indentation": 1,
-      "account_category": "Expense",
-      "account_prefix": "83"
-    },
-    {
-      "line_no": 14400,
-      "row_no": "14400",
-      "description": "Advertising & Delivery",
-      "row_type": "Posting",
-      "totaling_type": "Posting Accounts",
-      "totaling": "8410|8490",
-      "amount_type": "Net Amount",
-      "show_opposite_sign": false,
-      "bold": false,
-      "indentation": 1,
-      "account_category": "Expense",
-      "account_prefix": "84"
-    },
-    {
-      "line_no": 14500,
-      "row_no": "14500",
-      "description": "Other Running Costs",
-      "row_type": "Posting",
-      "totaling_type": "Posting Accounts",
-      "totaling": "8610|8695",
-      "amount_type": "Net Amount",
-      "show_opposite_sign": false,
-      "bold": false,
-      "indentation": 1,
-      "account_category": "Expense",
-      "account_prefix": "86"
-    },
-    {
-      "line_no": 14600,
-      "row_no": "14600",
-      "description": "Staff Pay (Salaries & Wages)",
-      "row_type": "Posting",
-      "totaling_type": "Posting Accounts",
-      "totaling": "8710|8790",
-      "amount_type": "Net Amount",
-      "show_opposite_sign": false,
-      "bold": false,
-      "indentation": 1,
-      "account_category": "Expense",
-      "account_prefix": "87"
-    },
-    {
-      "line_no": 14700,
-      "row_no": "14700",
-      "description": "Other Business Costs",
-      "row_type": "Posting",
-      "totaling_type": "Posting Accounts",
-      "totaling": "8910",
-      "amount_type": "Net Amount",
-      "show_opposite_sign": false,
-      "bold": false,
-      "indentation": 1,
-      "account_category": "Expense",
-      "account_prefix": "89"
+      "account_category": "Expense"
     },
     {
       "line_no": 14999,

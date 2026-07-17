@@ -199,6 +199,30 @@ def ensure_debug_admin_for_schema(schema_name: str) -> str:
                 exc,
             )
 
+        # Full-access Debug Admin Role Centre (advanced Setup pages)
+        try:
+            from authentication.models import ApplicationProfile, UserPersonalization
+
+            debug_profile = ApplicationProfile.objects.filter(code="DEBUG-ADMIN").first()
+            if debug_profile:
+                personalization = UserPersonalization.get_or_create_for_user(debug_user)
+                if personalization.role_id != debug_profile.pk:
+                    personalization.role = debug_profile
+                    personalization.modified_by = "ensure_debug_admin_for_schema"
+                    personalization.save(update_fields=["role", "modified_by"])
+                    changed = True
+            else:
+                logger.warning(
+                    "DEBUG-ADMIN ApplicationProfile missing in schema %s; "
+                    "run seed_pages to create DebugAdminRC",
+                    schema_name,
+                )
+        except Exception as exc:
+            logger.warning(
+                "Could not assign debug admin Role Centre: %s",
+                exc,
+            )
+
         # Default branch for branch-filtered APIs (matches signup admin user)
         if not debug_user.global_dimension_1_id:
             try:

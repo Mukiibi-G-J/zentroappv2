@@ -1370,15 +1370,19 @@ class ItemsModalViewSet(viewsets.ModelViewSet):
             {"header": "Item Name", "width": 30, "required": True},
             {"header": "Type", "width": 18, "required": True},
             {"header": "Unit of Measure", "width": 20, "required": True},
-            {"header": "Unit Price", "width": 15, "required": True},
+            {
+                "header": "Unit Price (Selling)" if include_opening_balance else "Unit Price",
+                "width": 18 if include_opening_balance else 15,
+                "required": True,
+            },
         ]
         if include_opening_balance:
             columns.extend(
                 [
                     {"header": "Quantity", "width": 12, "required": False},
                     {
-                        "header": "Unit Cost",
-                        "width": 14,
+                        "header": "Unit Cost (Purchase)",
+                        "width": 18,
                         "required": False,
                     },
                 ]
@@ -1419,9 +1423,9 @@ class ItemsModalViewSet(viewsets.ModelViewSet):
                     "Sugar 1kg",
                     "Inventory",
                     uom_codes[0] if uom_codes else "PCS",
-                    5000,
-                    100,
-                    4200,
+                    5000,  # Unit Price (Selling)
+                    100,   # Quantity → creates opening-balance journal
+                    4200,  # Unit Cost (Purchase)
                     category_codes[0] if category_codes else "",
                     "",
                     "White sugar 1kg bag",
@@ -1432,6 +1436,7 @@ class ItemsModalViewSet(viewsets.ModelViewSet):
                     "Service",
                     uom_codes[0] if uom_codes else "PCS",
                     25000,
+                    "",  # no qty for services
                     "",
                     "",
                     "",
@@ -1533,8 +1538,8 @@ class ItemsModalViewSet(viewsets.ModelViewSet):
             ["Type", "Inventory = physical stock, Service = labour/service, Non-Inventory = consumable"],
             ["Unit of Measure", "The base unit (e.g. PCS, KG, LTR). Must already exist in the system."],
             [
-                "Unit Price",
-                "Selling price on the item card (retail/list price).",
+                "Unit Price (Selling)" if include_opening_balance else "Unit Price",
+                "Selling / retail price stored on the item card.",
             ],
         ]
         if include_opening_balance:
@@ -1544,13 +1549,12 @@ class ItemsModalViewSet(viewsets.ModelViewSet):
                         "Quantity",
                         "Optional initial on-hand qty for Inventory items only. "
                         "Blank or zero = item created without a journal. "
-                        "After import, review journals on Opening Balance Adjustment.",
+                        "When filled, an opening-balance journal is created for review before posting.",
                     ],
                     [
-                        "Unit Cost",
-                        "Buying/cost per unit for the opening balance journal (maps to "
-                        "Buying Price / Unit Amount on the journal). If blank, Unit Price "
-                        "is used, then the item's calculated unit cost if available.",
+                        "Unit Cost (Purchase)",
+                        "Purchase / cost price per unit for the opening-balance journal "
+                        "(Buying Price / Unit Amount). If blank, Unit Price (Selling) is used.",
                     ],
                 ]
             )

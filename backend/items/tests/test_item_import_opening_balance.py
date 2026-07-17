@@ -61,7 +61,14 @@ class ItemImportTemplateTests(SimpleTestCase):
         wb = load_workbook(BytesIO(response.content))
         headers = [cell.value for cell in wb["Items"][1]]
         self.assertIn("Quantity", headers)
-        self.assertIn("Unit Cost", headers)
+        self.assertTrue(
+            any(h and "Unit Cost" in str(h) for h in headers),
+            f"Expected Unit Cost column in {headers}",
+        )
+        self.assertTrue(
+            any(h and "Unit Price" in str(h) for h in headers),
+            f"Expected Unit Price column in {headers}",
+        )
         self.assertIn(
             "item_import_template_opening_balance.xlsx",
             response["Content-Disposition"],

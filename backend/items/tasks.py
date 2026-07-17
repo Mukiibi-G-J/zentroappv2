@@ -304,13 +304,40 @@ def _resolve_import_dim_payload(user, branch_id):
 
 
 def _parse_row_quantity(row):
-    raw_qty = row.get("Quantity", row.get("quantity", ""))
+    raw_qty = _row_value(
+        row,
+        "Quantity",
+        "quantity",
+        "Qty",
+        "Opening Quantity",
+    )
     if raw_qty is None or (isinstance(raw_qty, str) and not str(raw_qty).strip()):
         return 0
     try:
         return int(float(raw_qty))
     except (TypeError, ValueError):
         return 0
+
+
+def _row_value(row, *keys):
+    """Return the first non-empty value for any of the given column headers."""
+    for key in keys:
+        if key in row.index if hasattr(row, "index") else key in row:
+            val = row.get(key)
+            if val is not None and not (isinstance(val, float) and pd.isna(val)):
+                if isinstance(val, str) and not val.strip():
+                    continue
+                return val
+        # Case-insensitive fallback for renamed template headers
+        if hasattr(row, "index"):
+            for col in row.index:
+                if str(col).strip().lower() == str(key).strip().lower():
+                    val = row.get(col)
+                    if val is not None and not (isinstance(val, float) and pd.isna(val)):
+                        if isinstance(val, str) and not val.strip():
+                            continue
+                        return val
+    return None
 
 
 def _create_opening_balance_journal_from_item_import(
@@ -378,9 +405,26 @@ def _create_opening_balance_journal_from_item_import(
     qty_per_uom = int(getattr(item_uom, "quantity_per_unit", 1) or 1) if item_uom else 1
     required_base_qty = int(quantity) * qty_per_uom
     posting_date = datetime.now().date()
-    desc = str(row.get("Description", row.get("description", ""))).strip()
-    unit_cost_raw = row.get("Unit Cost", row.get("unit_cost", ""))
-    unit_price_raw = row.get("Unit Price", row.get("unit_price", ""))
+    desc = str(
+        _row_value(row, "Description", "description") or ""
+    ).strip()
+    unit_cost_raw = _row_value(
+        row,
+        "Unit Cost",
+        "unit_cost",
+        "Unit Cost (Purchase)",
+        "Purchase Price",
+        "Cost Price",
+        "Buying Price",
+    )
+    unit_price_raw = _row_value(
+        row,
+        "Unit Price",
+        "unit_price",
+        "Unit Price (Selling)",
+        "Selling Price",
+        "Sale Price",
+    )
     raw_unit_amount = (
         unit_cost_raw
         if unit_cost_raw is not None and str(unit_cost_raw).strip() != ""
@@ -666,7 +710,24 @@ def _process_single_item(row, stats):
     uom_raw = str(row.get("Unit of Measure", row.get("Unit Of Measure", ""))).strip()
     category_raw = str(row.get("Item Category", row.get("item_category", ""))).strip()
     type_raw = str(row.get("Type", row.get("type", ""))).strip() or "Inventory"
-    unit_price_raw = row.get("Unit Price", row.get("unit_price", 0))
+    unit_price_raw = _row_value(
+        row,
+        "Unit Price",
+        "unit_price",
+        "Unit Price (Selling)",
+        "Selling Price",
+        "Sale Price",
+    )
+    # Optional purchase/cost on the item card when provided in the template
+    unit_cost_item_raw = _row_value(
+        row,
+        "Unit Cost",
+        "unit_cost",
+        "Unit Cost (Purchase)",
+        "Purchase Price",
+        "Cost Price",
+        "Buying Price",
+    )
     bar_code_raw = str(row.get("Bar Code No", row.get("bar_code_no", ""))).strip()
     description_raw = str(row.get("Description", row.get("description", ""))).strip()
     shelf_no_raw = str(row.get("Shelf No", row.get("shelf_no", row.get("Self No", "")))).strip()
@@ -727,6 +788,13 @@ def _process_single_item(row, stats):
         "description": description_raw,
         "shelf_no": shelf_no_raw,
     }
+    if unit_cost_item_raw is not None and str(unit_cost_item_raw).strip() != "":
+        try:
+            from items.models import money_decimal
+
+            item_data["manual_unit_cost"] = money_decimal(unit_cost_item_raw)
+        except (TypeError, ValueError):
+            pass
     if bar_code_raw:
         item_data["bar_code_no"] = bar_code_raw
     if gen_prod_posting:
