@@ -20,7 +20,7 @@ Restoring V1 dump + migrating is **not enough** for V2 UI. These failed in produ
 | 1 | No `seed_pages` | Empty pages / no Role Centre | `seed_pages --schema=TENANT` |
 | 2 | `ApplicationProfile.role_centre_page` FK → `public.page_engine_page` | Seed/RC broken | Recreate FK → `TENANT.page_engine_page` |
 | 3 | Missing `page_engine_field` columns on tenant | Seed crashes | Add `relation_lookup_footer`, `relation_part_control_name` |
-| 4 | No `UserPersonalization` | No Role Centre for user | Backfill default `BUSINESS-MGR` |
+| 4 | No `UserPersonalization` | No Role Centre for user | `assign_application_profiles` from old roles/groups (not blanket BUSINESS-MGR) |
 | 5 | Subscription expired | `/api/pages/` → **402**; empty UI | Extend / renew subscription |
 | 6 | Nginx header buffers 16k | Admin JWT ~19KB → **400 Request Header Or Cookie Too Large** | Buffers **64k** + slim JWT for super users |
 | 7 | Apex API login (no tenant Host) | Same email logs into **public** user, not tenant | `TenantJWTMiddleware` resolves tenant from **Origin** |
@@ -91,7 +91,9 @@ python manage.py repair_token_valid_after_all_schemas
 
 ### 4. Page engine DDL gaps (common after restore)
 
-Tenant `page_engine_*` tables may exist but miss newer columns. Before `seed_pages`:
+Tenant `page_engine_*` tables may exist but miss newer columns. Before `seed_pages`,
+`ensure_page_engine_schema` / `pages/schema_ddl.py` `DDL_ALTER` should add them. If seed
+still fails, run:
 
 ```sql
 ALTER TABLE TENANT.page_engine_field
@@ -147,32 +149,36 @@ python manage.py tenant_command align_zentro_page_ids --schema=TENANT
 python manage.py tenant_command setup_page_permissions --schema=TENANT
 ```
 
-### 7. Backfill UserPersonalization (Role Centre profile)
+### 7. Backfill UserPersonalization (Role Centre from old access)
+
+**Do not** assign every user `BUSINESS-MGR`. Map from legacy `Role.role_center` / `UserGroup`:
+
+```bash
+python manage.py tenant_command assign_application_profiles --schema=TENANT --force
+```
+
+Mapping (see `authentication/profile_assignment.py`):
+
+| Old RoleCenter / UserGroup | ApplicationProfile |
+|----------------------------|--------------------|
+| ADMIN_CENTER / ADMIN | BUSINESS-MGR |
+| CASHIER_CENTER / DISPENSER | CASHIER |
+| MANAGER_CENTER / MANAGER | OPERATIONS-MGR |
+| INVENTORY_CENTER / PHARCIST | PHARMACIST |
+| INVENTORY_MANAGER | WAREHOUSE |
+
+Optional verify:
 
 ```bash
 python manage.py shell --settings=core.settingsprod <<'PY'
 from django_tenants.utils import schema_context
-from authentication.models import CustomUser, UserPersonalization, ApplicationProfile
+from authentication.models import CustomUser, UserPersonalization
 
-SCHEMA = 'primewise'  # change me
+SCHEMA = 'primewise'
 with schema_context(SCHEMA):
-    default = ApplicationProfile.objects.filter(code='BUSINESS-MGR').first()
-    assert default and default.role_centre_page_id, 'seed_pages / profiles missing'
-    for u in CustomUser.objects.all():
-        p, _ = UserPersonalization.objects.get_or_create(
-            user=u,
-            defaults={
-                'role': default,
-                'created_by': u.email,
-                'modified_by': u.email,
-            },
-        )
-        if not p.role_id:
-            p.role = default
-            p.save(update_fields=['role'])
-    print('users', CustomUser.objects.count(),
-          'personalizations', UserPersonalization.objects.count(),
-          'RC', default.role_centre_page.name)
+    for u in CustomUser.objects.all().order_by('username'):
+        p = UserPersonalization.objects.filter(user=u).select_related('role').first()
+        print(u.username, '->', p.role.code if p and p.role_id else None)
 PY
 ```
 

@@ -107,22 +107,8 @@ python manage.py tenant_command setup_page_permissions --schema=primewise
 python manage.py clear_invalid_ledger_applies_to_ids --schema=primewise
 python manage.py tenant_command backfill_entry_dimensions --schema=primewise --first-branch
 
-# 5) Role Centre — personalization + verify subscription active for /api/pages/
-python manage.py shell --settings=core.settingsprod <<'PY'
-from django_tenants.utils import schema_context
-from authentication.models import CustomUser, UserPersonalization, ApplicationProfile
-with schema_context('primewise'):
-    default = ApplicationProfile.objects.filter(code='BUSINESS-MGR').first()
-    for u in CustomUser.objects.all():
-        p, _ = UserPersonalization.objects.get_or_create(
-            user=u,
-            defaults={'role': default, 'created_by': u.email, 'modified_by': u.email},
-        )
-        if not p.role_id and default:
-            p.role, p.modified_by = default, u.email
-            p.save(update_fields=['role', 'modified_by'])
-    print('personalizations', UserPersonalization.objects.count())
-PY
+# 5) Role Centre — from old roles/groups (NOT blanket BUSINESS-MGR)
+python manage.py tenant_command assign_application_profiles --schema=primewise --force
 
 # 6) Verify
 python scripts/_assess_primewise_v2.py

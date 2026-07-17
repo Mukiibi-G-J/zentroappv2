@@ -106,6 +106,8 @@ ALTER TABLE page_engine_control ADD COLUMN IF NOT EXISTS cue_style VARCHAR(20) N
 ALTER TABLE page_engine_control ADD COLUMN IF NOT EXISTS headline_template VARCHAR(500) NOT NULL DEFAULT '';
 ALTER TABLE page_engine_field ADD COLUMN IF NOT EXISTS threshold_warning INTEGER;
 ALTER TABLE page_engine_field ADD COLUMN IF NOT EXISTS threshold_danger INTEGER;
+ALTER TABLE page_engine_field ADD COLUMN IF NOT EXISTS relation_lookup_footer BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE page_engine_field ADD COLUMN IF NOT EXISTS relation_part_control_name VARCHAR(200) NULL;
 ALTER TABLE page_engine_action ADD COLUMN IF NOT EXISTS action_type VARCHAR(20) NOT NULL DEFAULT 'Ribbon';
 ALTER TABLE page_engine_page ADD COLUMN IF NOT EXISTS list_filter_field VARCHAR(200) NOT NULL DEFAULT '';
 ALTER TABLE page_engine_page ADD COLUMN IF NOT EXISTS list_filter_value VARCHAR(200) NOT NULL DEFAULT '';

@@ -159,3 +159,29 @@ SystemExit: 1
   warnings.warn(
 /root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
   warnings.warn(
+[2026-07-16 17:20:35 +0000] [199846] [INFO] Handling signal: term
+[2026-07-16 20:20:35 +0300] [199847] [INFO] Worker exiting (pid: 199847)
+[2026-07-16 20:20:35 +0300] [199848] [INFO] Worker exiting (pid: 199848)
+[2026-07-16 17:20:40 +0000] [199846] [INFO] Shutting down: Master
+[2026-07-16 17:42:36 +0000] [205038] [INFO] Starting gunicorn 23.0.0
+[2026-07-16 17:42:36 +0000] [205038] [INFO] Listening at: http://127.0.0.1:8002 (205038)
+[2026-07-16 17:42:36 +0000] [205038] [INFO] Using worker: sync
+[2026-07-16 17:42:36 +0000] [205039] [INFO] Booting worker with pid: 205039
+[2026-07-16 17:42:36 +0000] [205040] [INFO] Booting worker with pid: 205040
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+[2026-07-16 17:59:03 +0000] [205038] [INFO] Handling signal: term
+[2026-07-16 20:59:03 +0300] [205039] [INFO] Worker exiting (pid: 205039)
+[2026-07-16 20:59:03 +0300] [205040] [INFO] Worker exiting (pid: 205040)
+[2026-07-16 17:59:09 +0000] [205038] [INFO] Shutting down: Master
+[2026-07-16 17:59:10 +0000] [207603] [INFO] Starting gunicorn 23.0.0
+[2026-07-16 17:59:10 +0000] [207603] [INFO] Listening at: http://127.0.0.1:8002 (207603)
+[2026-07-16 17:59:10 +0000] [207603] [INFO] Using worker: sync
+[2026-07-16 17:59:10 +0000] [207604] [INFO] Booting worker with pid: 207604
+[2026-07-16 17:59:10 +0000] [207605] [INFO] Booting worker with pid: 207605
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(

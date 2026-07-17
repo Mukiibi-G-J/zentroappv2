@@ -62,3 +62,12 @@ Error loading user setup: relation "authentication_usersetup" does not exist
 LINE 1: ...r_sales", "authentication_usersetup"."notes" FROM "authentic...
                                                              ^
 
+DEBUG: Creating sales invoice with data: {'customer': <Customer: General>, 'document_date': datetime.date(2026, 7, 16), 'status': 'Open', 'amount_received': 4000, 'change_amount': 0, 'payment_method': <PaymentMethod: CASH - Cash Cust.>, 'invoice_discount_type': None, 'invoice_discount_amount': Decimal('0.00'), 'invoice_discount_percentage': Decimal('0.00'), 'global_dimension_1': <DimensionValue: MWANJARI>, 'dimension_set': <DimensionSet: DimensionSet object (2)>}
+DEBUG: Status in validated_data: Open
+DEBUG: Lines data: [{'id': 1, 'item': 'ITM-000300', 'item_no': 'ITM-000300', 'item_name': 'Enat caps', 'quantity': '2', 'unit_price': '2000.00', 'total_amount': '4000', 'line_discount_amount': '0', 'unit_of_measure': 'PCS', 'tracking_code': 'IMP-000300-20260507-0092', 'description': ''}]
+being called
+SIN-000001
+DEBUG: Saving SalesInvoice with status: Open
+being called
+DEBUG: Saving SalesInvoice with status: Posted
+PSIN-000001

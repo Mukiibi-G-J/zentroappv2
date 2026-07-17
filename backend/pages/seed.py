@@ -5563,14 +5563,13 @@ def _seed_application_profiles(
 
 
 def _assign_default_application_profiles() -> None:
-    """Ensure existing personalization rows get the default BUSINESS-MGR profile."""
-    from authentication.models import ApplicationProfile, UserPersonalization
+    """Assign Role Centres from legacy Role / UserGroup access (not blanket BUSINESS-MGR)."""
+    from authentication.profile_assignment import assign_application_profiles
 
-    default_profile = ApplicationProfile.objects.filter(code='BUSINESS-MGR').first()
-    if not default_profile:
-        return
-    UserPersonalization.objects.filter(role__isnull=True).update(
-        role=default_profile,
+    stats = assign_application_profiles(force=True)
+    print(
+        f"Application profiles assigned: updated={stats['updated']} "
+        f"unmapped={stats['unmapped']} users={stats['users']}"
     )
 
 

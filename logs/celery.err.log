@@ -4920,3 +4920,24 @@ User information: uid=0 euid=0 gid=0 egid=0
 [2026-07-16 09:20:16,521: INFO/MainProcess] mingle: all alone
 [2026-07-16 09:20:16,545: INFO/MainProcess] celery@ubuntu-s-1vcpu-2gb-fra1-01 ready.
 [2026-07-16 09:20:21,383: INFO/MainProcess] Events of group {task} enabled by remote.
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/celery/platforms.py:829: SecurityWarning: You're running the worker with superuser privileges: this is
+absolutely not recommended!
+
+Please specify a different user using the --uid option.
+
+User information: uid=0 euid=0 gid=0 egid=0
+
+  warnings.warn(SecurityWarning(ROOT_DISCOURAGED.format(
+[2026-07-16 20:43:12,637: INFO/MainProcess] Connected to redis://127.0.0.1:6379/4
+[2026-07-16 20:43:12,663: INFO/MainProcess] mingle: searching for neighbors
+[2026-07-16 20:43:13,710: INFO/MainProcess] mingle: all alone
+[2026-07-16 20:43:13,731: INFO/MainProcess] celery@ubuntu-s-1vcpu-2gb-fra1-01 ready.
+[2026-07-16 20:43:18,301: INFO/MainProcess] Events of group {task} enabled by remote.
+[2026-07-17 02:00:01,319: INFO/MainProcess] Task base.tasks.database_backup_task[909ded75-b7e5-4002-aaf2-22be3f1df6b6] received
+[2026-07-17 02:01:12,704: INFO/MainProcess] base.tasks.database_backup_task[909ded75-b7e5-4002-aaf2-22be3f1df6b6]: Database backup uploaded: s3://zentroapp-bucket/backups/daily/backup_2026-07-16_23-00-02.dump (59074011 bytes, tier=daily)
+[2026-07-17 02:01:13,269: INFO/MainProcess] base.tasks.database_backup_task[909ded75-b7e5-4002-aaf2-22be3f1df6b6]: Pruned 1 S3 backup object(s) under 'backups/daily/' (older than 7 days)
+[2026-07-17 02:01:14,020: INFO/MainProcess] Task base.tasks.database_backup_task[909ded75-b7e5-4002-aaf2-22be3f1df6b6] succeeded in 72.5799974091351s: {'bucket': 'zentroapp-bucket', 'key': 'backups/daily/backup_2026-07-16_23-00-02.dump', 'bytes': 59074011, 'tier': 'daily'}
+[2026-07-17 04:00:00,051: INFO/MainProcess] Task celery.backend_cleanup[184ccc89-5fc1-4f95-aff6-b22c80f0d1f6] received
+[2026-07-17 04:00:00,356: INFO/MainProcess] Task celery.backend_cleanup[184ccc89-5fc1-4f95-aff6-b22c80f0d1f6] succeeded in 0.28688446059823036s: None

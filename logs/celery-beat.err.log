@@ -12,3 +12,8 @@
 /root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
   warnings.warn(
 [2026-07-16 09:20:15,948: INFO/MainProcess] beat: Starting...
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+[2026-07-16 20:43:12,966: INFO/MainProcess] beat: Starting...
+[2026-07-17 02:00:00,804: INFO/MainProcess] Scheduler: Sending due task database-backup-daily-utc (base.tasks.database_backup_task)
+[2026-07-17 04:00:00,011: INFO/MainProcess] Scheduler: Sending due task celery.backend_cleanup (celery.backend_cleanup)

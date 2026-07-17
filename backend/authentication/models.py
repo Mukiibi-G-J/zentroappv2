@@ -758,9 +758,11 @@ class UserPersonalization(BaseModel):
 
     @classmethod
     def get_or_create_for_user(cls, user):
-        """Get or create personalization defaults for a user."""
+        """Get or create personalization; Role Centre from legacy groups/roles when possible."""
+        from authentication.profile_assignment import resolve_application_profile_for_user
+
         audit_name = user.full_name or user.username or user.email
-        default_profile = ApplicationProfile.objects.filter(code='BUSINESS-MGR').first()
+        default_profile = resolve_application_profile_for_user(user)
         personalization, _created = cls.objects.get_or_create(
             user=user,
             defaults={
