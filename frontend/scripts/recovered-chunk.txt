@@ -1,0 +1,67 @@
+        ) : (
+          <div className="flex flex-col lg:flex-row gap-6 items-start">
+            <div className="flex-1 min-w-0 space-y-4">
+              {groups.map((group) => (
+                <HeaderGroupSection
+                  key={group.PageControlId}
+                  page={page}
+                  pageId={pageId}
+                  control={group}
+                  data={currentData}
+                  readOnly={headerReadOnly}
+                  isNew={isNew}
+                  systemId={pendingId}
+                  onFieldBlur={(field, value) => handleFieldBlur(group, field, value)}
+                />
+              ))}
+
+              {partControl && partPage && repeaterControl ? (
+                <DocumentLinesSection
+                  caption={partControl.Caption}
+                  partPage={partPage}
+                  repeaterControl={repeaterControl}
+                  lines={lines}
+                  recordReady={recordCreated}
+                  linesReadOnly={isPosted}
+                  saveFirstHint={
+                    page?.Caption
+                      ? `Save ${page.Caption.toLowerCase()} fields first to add lines`
+                      : 'Save header fields first to add lines'
+                  }
+                  applyEntriesEnabled={
+                    page?.Name === 'PaymentJournalCard'
+                    && (!!applyVendorEntriesPage || !!applyCustomerEntriesPage)
+                  }
+                  applyVendorEntriesPage={applyVendorEntriesPage}
+                  applyCustomerEntriesPage={applyCustomerEntriesPage}
+                  paymentHeader={page?.Name === 'PaymentJournalCard' ? currentData : undefined}
+                  documentHeader={page?.Name === 'PurchaseInvoice' ? currentData : undefined}
+                  onHeaderRefresh={() => void refetchRecord()}
+                />
+              ) : partControl ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-6 py-8 text-center text-sm text-amber-900">
+                  <p className="font-medium">Lines subform is not configured for this document.</p>
+                  <p className="mt-1 text-amber-800">
+                    {partControl.PartPageId
+                      ? `Subform page #${partControl.PartPageId} could not be loaded.`
+                      : 'Part control has no linked subform page.'}{' '}
+                    Re-run:{' '}
+                    <code className="text-xs">python manage.py seed_pages --schema &lt;tenant&gt;</code>
+                  </p>
+                </div>
+              ) : null}
+            </div>
+
+            <FactBoxAside
+              controls={factBoxes}
+              data={currentData}
+              recordReady={recordCreated}
+              readOnly={headerReadOnly}
+              saveFirstHint={
+                page?.Caption
+                  ? `Save the ${page.Caption.toLowerCase()} first`
+                  : 'Save the document first'
+              }
+            />
+          </div>
+        )}
