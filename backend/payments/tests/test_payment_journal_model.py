@@ -4,8 +4,8 @@ from django.core.exceptions import ValidationError
 from decimal import Decimal
 import unittest
 
-from .models import PaymentJournal
-from .enums import DocumentType, AccountType, PaymentStatus, ApplicationStatus
+from payments.models import PaymentJournal
+from payments.enums import DocumentType, AccountType, PaymentStatus, ApplicationStatus
 from financials.models import PaymentMethod, G_LAccount
 from sales.models import Customer
 from purchases.models import Vendor
