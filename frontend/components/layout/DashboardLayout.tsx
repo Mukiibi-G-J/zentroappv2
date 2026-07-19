@@ -4,6 +4,7 @@ import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Sidebar } from './Sidebar'
 import { DashboardHeader } from './DashboardHeader'
+import { ImpersonationBanner } from './ImpersonationBanner'
 import { POSFullscreenShell } from '@/components/pos/POSFullscreenShell'
 import { BranchSelectModal } from '@/components/auth/BranchSelectModal'
 import { usePages } from '@/hooks/usePage'
@@ -85,6 +86,7 @@ function StandardDashboardLayout({ children, title }: DashboardLayoutProps) {
       </div>
 
       <div className="flex flex-1 flex-col overflow-hidden">
+        <ImpersonationBanner />
         <DashboardHeader title={title} onMenuToggle={() => setMobileOpen((o) => !o)} />
         <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-6">{children}</div>

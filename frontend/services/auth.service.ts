@@ -1,5 +1,12 @@
-import api from '@/lib/api'
-import type { AuthSession, OtpChannel } from '@/types/auth'
+import api, { setAccessTokenCookie, clearAccessTokenCookie } from '@/lib/api'
+import type { AuthSession, AuthImpersonation, OtpChannel } from '@/types/auth'
+import {
+  clearImpersonationStash,
+  restoreAdminSession,
+  stashAdminSession,
+  type ImpersonationMeta,
+} from '@/lib/impersonation'
+import { writeStoredSession, clearStoredSession } from '@/lib/session'
 
 export async function fetchAuthSession(): Promise<AuthSession> {
   const res = await api.get<AuthSession>('/api/auth/me/')
@@ -48,4 +55,60 @@ export async function resetPassword(
     new_password: newPassword,
   })
   return res.data
+}
+
+export type ImpersonateResponse = {
+  access: string
+  refresh: string
+  session: AuthSession
+  impersonation: AuthImpersonation
+}
+
+export async function impersonateUser(userId: number): Promise<ImpersonateResponse> {
+  const res = await api.post<ImpersonateResponse>(`/api/users/${userId}/impersonate/`)
+  return res.data
+}
+
+export async function exitImpersonationAudit(): Promise<void> {
+  try {
+    await api.post('/api/auth/exit-impersonation/')
+  } catch {
+    // Best-effort audit; client still restores admin tokens.
+  }
+}
+
+/** Swap into target user session; stashes current (debug_admin) tokens. */
+export async function startImpersonation(userId: number): Promise<AuthSession> {
+  const data = await impersonateUser(userId)
+  const meta: ImpersonationMeta = data.impersonation
+  stashAdminSession(meta)
+  localStorage.setItem('access_token', data.access)
+  localStorage.setItem('refresh_token', data.refresh)
+  setAccessTokenCookie(data.access)
+  writeStoredSession(data.session)
+  return data.session
+}
+
+/** Restore stashed debug_admin session and notify backend for audit. */
+export async function stopImpersonation(): Promise<void> {
+  await exitImpersonationAudit()
+  const restored = restoreAdminSession()
+  if (!restored) {
+    clearImpersonationStash()
+    localStorage.removeItem('access_token')
+    localStorage.removeItem('refresh_token')
+    clearAccessTokenCookie()
+    clearStoredSession()
+    return
+  }
+  setAccessTokenCookie(localStorage.getItem('access_token') || '')
+}
+
+/** Full logout: drop target tokens and any stashed admin session. */
+export function clearAllAuthIncludingImpersonation(): void {
+  clearImpersonationStash()
+  localStorage.removeItem('access_token')
+  localStorage.removeItem('refresh_token')
+  clearAccessTokenCookie()
+  clearStoredSession()
 }

@@ -822,3 +822,25 @@ class Profile(BaseModel):
     location = models.CharField(max_length=30, blank=True)
     birth_date = models.DateField(null=True, blank=True)
     phone_number = models.CharField(max_length=20, blank=True)
+
+
+class ImpersonationAuditLog(BaseModel):
+    """Audit trail for debug_admin Login-as-user sessions (public schema)."""
+
+    schema_name = models.CharField(max_length=63, db_index=True, default="")
+    actor_id = models.IntegerField(db_index=True)
+    actor_username = models.CharField(max_length=255)
+    target_id = models.IntegerField(db_index=True)
+    target_username = models.CharField(max_length=255)
+    started_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    ended_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=512, blank=True, default="")
+
+    class Meta:
+        verbose_name = "Impersonation Audit Log"
+        verbose_name_plural = "Impersonation Audit Logs"
+        ordering = ["-started_at"]
+
+    def __str__(self):
+        return f"{self.schema_name}: {self.actor_username} → {self.target_username} @ {self.started_at}"

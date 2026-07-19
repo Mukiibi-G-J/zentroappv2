@@ -89,6 +89,11 @@ urlpatterns += [
     ),
     path("api/auth/token/", views.AuthTokenView.as_view(), name="token_obtain_pair"),
     path("api/auth/me/", views.AuthMeView.as_view(), name="auth-me"),
+    path(
+        "api/auth/exit-impersonation/",
+        views.ExitImpersonationView.as_view(),
+        name="exit-impersonation",
+    ),
     path("api/auth/verify-otp/", VerifyOTPView.as_view(), name="verify-otp"),
     path(
         "api/auth/forgot-password/",

@@ -137,6 +137,7 @@ def _company_module_context(company) -> dict:
 
 
 def build_auth_session_payload(user, request=None) -> dict:
+    from authentication.impersonation import impersonation_from_request
     from authentication.models import UserPersonalization
     from utils.page_access import filter_nav_items_by_user_permissions
 
@@ -160,7 +161,7 @@ def build_auth_session_payload(user, request=None) -> dict:
         except (ValueError, AttributeError):
             avatar_url = None
 
-    return {
+    payload = {
         'user': {
             'id': user.id,
             'email': user.email,
@@ -189,6 +190,12 @@ def build_auth_session_payload(user, request=None) -> dict:
         'branch': _branch_config_for_user(user),
         **module_ctx,
     }
+
+    impersonation = impersonation_from_request(request, user)
+    if impersonation:
+        payload['impersonation'] = impersonation
+
+    return payload
 
 
 def _filter_nav_by_modules(nav_items, enabled_modules):

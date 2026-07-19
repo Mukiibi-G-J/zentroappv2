@@ -3,9 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Loader2, Plus, RefreshCw, ArrowLeft, MoreVertical, ExternalLink, Trash2, X, Printer, ChevronRight, ListChecks, Eye, Pencil, Check, Search } from 'lucide-react'
+import { Loader2, Plus, RefreshCw, ArrowLeft, MoreVertical, ExternalLink, Trash2, X, Printer, ChevronRight, ListChecks, Eye, Pencil, Check, Search, UserRound } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { useSession } from '@/context/SessionContext'
+import { startImpersonation } from '@/services/auth.service'
+import { resolvePostLoginPath } from '@/lib/postLoginRedirect'
+import { writeStoredSession } from '@/lib/session'
 import { usePage, usePages } from '@/hooks/usePage'
 import {
   usePageDataInfinite,
@@ -152,6 +156,7 @@ export default function DynamicListPage({ pageId }: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const { session } = useSession()
   const { data: page, isLoading: pageLoading } = usePage(pageId)
   const listReturnPath = useMemo(
     () =>
@@ -188,6 +193,8 @@ export default function DynamicListPage({ pageId }: Props) {
   const [reportStartDate, setReportStartDate] = useState(defaultReportDates.startDate)
   const [reportEndDate, setReportEndDate] = useState(defaultReportDates.endDate)
   const [rowMenu, setRowMenu] = useState<RowMenu | null>(null)
+  const [pendingImpersonate, setPendingImpersonate] = useState<DataRecord | null>(null)
+  const [impersonateLoading, setImpersonateLoading] = useState(false)
   const [lookupModal, setLookupModal] = useState<{
     field: PageControlField
     record: DataRecord
@@ -309,6 +316,31 @@ export default function DynamicListPage({ pageId }: Props) {
     () => records.find((r) => String(r.SystemId) === selectedId) ?? null,
     [records, selectedId],
   )
+
+  const isUsersList = page?.Name === 'UsersList'
+  const isDebugAdmin = session?.user?.username === 'debug_admin'
+  const canImpersonateUsers = isUsersList && isDebugAdmin && !session?.impersonation?.active
+
+  const handleConfirmImpersonate = useCallback(async () => {
+    if (!pendingImpersonate) return
+    const userId = Number(pendingImpersonate.id)
+    if (!Number.isFinite(userId) || userId <= 0) {
+      toast.error('Cannot determine user id for this row')
+      setPendingImpersonate(null)
+      return
+    }
+    setImpersonateLoading(true)
+    try {
+      const sessionData = await startImpersonation(userId)
+      const access = localStorage.getItem('access_token') || ''
+      writeStoredSession(sessionData)
+      window.location.replace(resolvePostLoginPath(access))
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err) || 'Failed to login as user')
+      setImpersonateLoading(false)
+      setPendingImpersonate(null)
+    }
+  }, [pendingImpersonate])
 
   const isItemJournalList = isItemJournalListPage(page)
 
@@ -1386,6 +1418,7 @@ export default function DynamicListPage({ pageId }: Props) {
     || rowMenuActions.length > 0
     || Boolean(page?.DeleteAllowed)
     || isItemJournalList
+    || canImpersonateUsers
   const scopeActions = (page?.PageActions ?? []).filter(
     (a) => a.Visible && a.RibbonTab === 'Scope' && (a.ActionRelativeUrl || '').trim(),
   )
@@ -1567,6 +1600,17 @@ export default function DynamicListPage({ pageId }: Props) {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {canImpersonateUsers && selectedRecord && String(selectedRecord.username ?? '') !== 'debug_admin' && (
+            <button
+              type="button"
+              onClick={() => setPendingImpersonate(selectedRecord)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-amber-300 bg-amber-50 rounded-lg hover:bg-amber-100 text-amber-950 transition"
+              title="View the system as this user"
+            >
+              <UserRound size={14} />
+              Login as
+            </button>
+          )}
           {hasColumnState && (
             <button
               type="button"
@@ -2125,6 +2169,25 @@ export default function DynamicListPage({ pageId }: Props) {
               </>
             ) : (
               <>
+                {canImpersonateUsers && (() => {
+                  const rec = records.find((r) => r.SystemId === rowMenu.systemId)
+                  if (!rec || String(rec.username ?? '') === 'debug_admin') return null
+                  return (
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setPendingImpersonate(rec)
+                        setRowMenu(null)
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-amber-50 text-amber-950"
+                    >
+                      <UserRound size={13} />
+                      Login as
+                    </button>
+                  )
+                })()}
                 {page?.CardPageId && (
                   <button
                     type="button"
@@ -2305,6 +2368,24 @@ export default function DynamicListPage({ pageId }: Props) {
             return
           }
           void postItemJournals(action, openIds)
+        }}
+      />
+
+      <ConfirmDialog
+        open={pendingImpersonate != null}
+        title="Login as user"
+        message={
+          pendingImpersonate
+            ? `View the system as ${String(pendingImpersonate.full_name || pendingImpersonate.username || 'this user')}? Your debug_admin session will be paused until you exit.`
+            : ''
+        }
+        confirmLabel={impersonateLoading ? 'Starting…' : 'Login as'}
+        onCancel={() => {
+          if (impersonateLoading) return
+          setPendingImpersonate(null)
+        }}
+        onConfirm={() => {
+          void handleConfirmImpersonate()
         }}
       />
 

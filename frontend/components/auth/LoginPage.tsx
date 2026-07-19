@@ -4,7 +4,9 @@ import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Building2, Lock, Eye, EyeOff, ArrowRight, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import axios from 'axios';
 import api, { setAccessTokenCookie } from '@/lib/api';
+import { clearCookiesThatCause431 } from '@/lib/clearBloatedCookies';
 import { fetchAuthSession, type TokenLoginResponse } from '@/services/auth.service';
 import { writeStoredSession } from '@/lib/session';
 import { applyLoginBranchState } from '@/lib/loginBranch'
@@ -19,6 +21,8 @@ function LoginForm() {
   const [workspacePickerUrl, setWorkspacePickerUrl] = useState('/workspace');
 
   useEffect(() => {
+    // Oversized Cookie headers on *.localhost make /api/auth/token/ return 431.
+    clearCookiesThatCause431();
     setWorkspaceSlug(tenantSlugFromHostname(window.location.hostname));
     setWorkspacePickerUrl(buildMainAppUrl('/workspace'));
   }, []);
@@ -71,8 +75,16 @@ function LoginForm() {
       })
       // Full navigation so middleware receives the session cookie on the first dashboard request.
       window.location.replace(destination)
-    } catch {
-      setError('Invalid username or password. Please try again.');
+    } catch (err) {
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined
+      if (status === 431) {
+        clearCookiesThatCause431()
+        setError(
+          'Login blocked by oversized browser cookies (HTTP 431). Cookies were cleared — try Sign In again.',
+        )
+      } else {
+        setError('Invalid username or password. Please try again.')
+      }
     } finally {
       setIsSubmitting(false);
     }

@@ -6121,15 +6121,22 @@ def _seed_operations_manager_rc(
         ('NavSalesOrders', 'Sales Orders', 'SalesOrderList', 'Package', 'Sales'),
         ('NavPOS', 'Point of Sale', 'SalesPOS', 'ShoppingCart', 'Sales'),
         ('NavSalesInvoices', 'Sales Invoices', 'SalesInvoiceList', 'FileOutput', 'Sales'),
-        ('NavPostedSalesInvoices', 'Posted Sales Invoices', 'PostedSalesInvoiceList', 'FileCheck', 'Sales'),
-        ('NavSalesCreditMemos', 'Sales Credit Memos', 'SalesCreditMemoList', 'FileOutput', 'Sales'),
-        ('NavPostedSalesCreditMemos', 'Posted Sales Credit Memos', 'PostedSalesCreditMemoList', 'FileCheck', 'Sales'),
         ('NavPurchaseInvoices', 'Purchases', 'PurchaseInvoiceList', 'ShoppingCart', 'Purchase'),
         ('NavPostedPurchaseInvoices', 'Posted Purchase Invoices', 'PostedPurchaseInvoiceList', 'FileCheck', 'Purchase'),
         ('NavUserSettings', 'User settings', 'UserSettingsList', 'Settings', 'Setup'),
         ('NavUserSetup', 'User Setup', 'UserSetupList', 'UserCog', 'Setup'),
     ]
-    PageAction.objects.filter(page=rc, name__in=('NavUsers', 'NavUserGroups')).delete()
+    # Hide posted sales / credit-memo history from Operations Manager.
+    PageAction.objects.filter(
+        page=rc,
+        name__in=(
+            'NavUsers',
+            'NavUserGroups',
+            'NavPostedSalesInvoices',
+            'NavSalesCreditMemos',
+            'NavPostedSalesCreditMemos',
+        ),
+    ).delete()
     if payment_method_list:
         nav_specs.insert(-2, ('NavPaymentMethods', 'Payment Methods', 'PaymentMethodList', 'Wallet', 'Payments'))
     if expense_list:

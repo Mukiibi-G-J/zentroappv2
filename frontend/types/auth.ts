@@ -56,4 +56,19 @@ export interface AuthSession {
   enabledModules?: string[]
   planName?: string | null
   planBranches?: string | null
+  impersonation?: AuthImpersonation
+}
+
+export interface AuthImpersonation {
+  active: boolean
+  target: {
+    id: number
+    fullName: string
+    username: string
+    email: string
+  }
+  impersonator: {
+    id: number
+    username: string
+  }
 }

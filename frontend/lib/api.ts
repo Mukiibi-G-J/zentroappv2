@@ -51,6 +51,10 @@ api.interceptors.response.use(
   async (err) => {
     if (err.response?.status === 401 && typeof window !== 'undefined') {
       localStorage.removeItem('access_token')
+      localStorage.removeItem('refresh_token')
+      localStorage.removeItem('impersonation_admin_access')
+      localStorage.removeItem('impersonation_admin_refresh')
+      localStorage.removeItem('impersonation_meta')
       clearBranchSession()
       clearAccessTokenCookie()
       window.location.href = '/login'

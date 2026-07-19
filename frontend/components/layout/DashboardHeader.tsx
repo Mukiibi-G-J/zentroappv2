@@ -3,9 +3,8 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Menu, Bell, User, LogOut, Building2, MapPin } from 'lucide-react'
-import { clearAccessTokenCookie } from '@/lib/api'
-import { clearStoredSession } from '@/lib/session'
 import { clearBranchSession } from '@/lib/branchSession'
+import { clearAllAuthIncludingImpersonation } from '@/services/auth.service'
 import { useSession } from '@/context/SessionContext'
 import { useBranch } from '@/context/BranchContext'
 import { usePageNavigation } from '@/hooks/usePageNavigation'
@@ -66,12 +65,9 @@ export function DashboardHeader({ title, onMenuToggle, className }: DashboardHea
   }, [])
 
   const handleLogout = () => {
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
-    clearAccessTokenCookie()
+    clearAllAuthIncludingImpersonation()
     clearBranchSession()
     clearSession()
-    clearStoredSession()
     router.push('/login')
   }
 

@@ -151,6 +151,72 @@ class AuthMeView(APIView):
             )
 
 
+class ExitImpersonationView(APIView):
+    """POST /api/auth/exit-impersonation/ — audit exit; client restores stashed admin tokens."""
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from authentication.impersonation import (
+            close_open_impersonation_audits,
+            is_impersonating,
+        )
+
+        if not is_impersonating(request):
+            return Response(
+                {
+                    "error": "Not impersonating",
+                    "detail": "Current session is not an impersonation session",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        auth = request.auth
+        try:
+            actor_id = auth.get("impersonator_id")
+            schema_name = auth.get("schema_name")
+        except (AttributeError, TypeError):
+            actor_id = None
+            schema_name = None
+
+        if actor_id is None:
+            return Response(
+                {"error": "Invalid impersonation token"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if schema_name:
+            try:
+                from company.models import Company
+
+                tenant = Company.objects.get(schema_name=schema_name)
+                with schema_context(schema_name):
+                    db_connection.set_tenant(tenant)
+                    closed = close_open_impersonation_audits(
+                        actor_id=int(actor_id),
+                        target_id=request.user.id,
+                    )
+            except Company.DoesNotExist:
+                closed = close_open_impersonation_audits(
+                    actor_id=int(actor_id),
+                    target_id=request.user.id,
+                )
+        else:
+            closed = close_open_impersonation_audits(
+                actor_id=int(actor_id),
+                target_id=request.user.id,
+            )
+
+        return Response(
+            {
+                "message": "Impersonation ended",
+                "closed_count": closed,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 @authentication_classes([JWTAuthentication, SessionAuthentication])
@@ -357,6 +423,14 @@ def change_password(request):
     Change user's password
     """
     try:
+        from authentication.impersonation import (
+            impersonation_forbidden_response,
+            is_impersonating,
+        )
+
+        if is_impersonating(request):
+            return impersonation_forbidden_response()
+
         user = request.user
         current_password = request.data.get("current_password")
         new_password = request.data.get("new_password")

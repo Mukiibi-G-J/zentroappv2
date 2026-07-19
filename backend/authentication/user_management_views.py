@@ -16,6 +16,15 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 
 from authentication.models import UserGroup, Role, RoleCenter, RestaurantStaffDevice
+from authentication.impersonation import (
+    create_impersonation_audit,
+    impersonation_forbidden_response,
+    impersonation_meta_for_tokens,
+    is_impersonating,
+    mint_impersonation_tokens,
+)
+from authentication.profile_assignment import _is_debug_admin_user
+from authentication.session_context import build_auth_session_payload
 from permissions.models import PermissionSet
 from base.models import Objects
 from authentication.user_management_serializers import (
@@ -100,6 +109,8 @@ class UserManagementViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         """Create user - requires INSERT permission"""
+        if is_impersonating(request):
+            return impersonation_forbidden_response()
         has_permission, source = request.user.check_object_permission(10801, "insert")
         if not has_permission:
             return Response(
@@ -136,6 +147,8 @@ class UserManagementViewSet(viewsets.ModelViewSet):
 
     def update(self, request, *args, **kwargs):
         """Update user - requires MODIFY permission"""
+        if is_impersonating(request):
+            return impersonation_forbidden_response()
         has_permission, source = request.user.check_object_permission(10801, "modify")
         if not has_permission:
             return Response(
@@ -149,6 +162,8 @@ class UserManagementViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         """Delete user - requires DELETE permission (soft delete)"""
+        if is_impersonating(request):
+            return impersonation_forbidden_response()
         has_permission, source = request.user.check_object_permission(10801, "delete")
         if not has_permission:
             return Response(
@@ -173,6 +188,8 @@ class UserManagementViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def reset_password(self, request, pk=None):
         """Reset user password"""
+        if is_impersonating(request):
+            return impersonation_forbidden_response()
         has_permission, source = request.user.check_object_permission(10801, "modify")
         if not has_permission:
             return Response(
@@ -199,6 +216,8 @@ class UserManagementViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def force_logout(self, request, pk=None):
         """Invalidate all active sessions for a user."""
+        if is_impersonating(request):
+            return impersonation_forbidden_response()
         has_permission, source = request.user.check_object_permission(10801, "modify")
         if not has_permission:
             return Response(
@@ -224,6 +243,8 @@ class UserManagementViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["post"])
     def bulk_force_logout(self, request):
         """Invalidate active sessions for multiple users."""
+        if is_impersonating(request):
+            return impersonation_forbidden_response()
         has_permission, source = request.user.check_object_permission(10801, "modify")
         if not has_permission:
             return Response(
@@ -254,9 +275,74 @@ class UserManagementViewSet(viewsets.ModelViewSet):
             }
         )
 
+    @action(detail=True, methods=["post"])
+    def impersonate(self, request, pk=None):
+        """Mint a JWT session for the target user (debug_admin only)."""
+        if not _is_debug_admin_user(request.user):
+            return Response(
+                {
+                    "error": "Insufficient permissions",
+                    "detail": "Only debug_admin can impersonate users",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if is_impersonating(request):
+            return Response(
+                {
+                    "error": "Already impersonating",
+                    "detail": "Exit the current impersonation session first",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        target = self.get_object()
+
+        if _is_debug_admin_user(target):
+            return Response(
+                {
+                    "error": "Invalid target",
+                    "detail": "Cannot impersonate debug_admin",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not target.is_active or getattr(target, "terminated", False):
+            return Response(
+                {
+                    "error": "Invalid target",
+                    "detail": "Cannot impersonate inactive or terminated users",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        refresh, access = mint_impersonation_tokens(
+            target=target, impersonator=request.user
+        )
+        create_impersonation_audit(
+            actor=request.user, target=target, request=request
+        )
+        session = build_auth_session_payload(target, request)
+        impersonation = impersonation_meta_for_tokens(
+            target=target, impersonator=request.user
+        )
+        session["impersonation"] = impersonation
+
+        return Response(
+            {
+                "access": str(access),
+                "refresh": str(refresh),
+                "session": session,
+                "impersonation": impersonation,
+            },
+            status=status.HTTP_200_OK,
+        )
+
     @action(detail=False, methods=["post"], url_path="revoke-restaurant-device")
     def revoke_restaurant_device(self, request):
         """Revoke restaurant quick-login registration for a device (e.g. lost tablet)."""
+        if is_impersonating(request):
+            return impersonation_forbidden_response()
         has_permission, _source = request.user.check_object_permission(10801, "modify")
         if not has_permission:
             return Response(
