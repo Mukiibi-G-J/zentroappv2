@@ -11,6 +11,7 @@ import {
 } from 'react'
 import { fetchAuthSession } from '@/services/auth.service'
 import { readStoredSession, writeStoredSession, clearStoredSession } from '@/lib/session'
+import { ensureTenantWorkspaceExists } from '@/lib/ensureTenantWorkspace'
 import type { AuthSession } from '@/types/auth'
 
 interface SessionContextValue {
@@ -54,7 +55,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // Apply cached session only after mount so SSR HTML ("User") matches
     // the first client render before localStorage is read.
     setSession(readStoredSession())
-    void refreshSession()
+    void (async () => {
+      const ok = await ensureTenantWorkspaceExists()
+      if (!ok) return
+      await refreshSession()
+    })()
   }, [refreshSession])
 
   const value = useMemo(

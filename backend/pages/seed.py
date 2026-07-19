@@ -6113,6 +6113,7 @@ def _seed_operations_manager_rc(
         name__startswith='RCCue',
     ).delete()
 
+    # No posted sales invoices / credit memos — ops managers should not see those.
     nav_specs = [
         ('NavHome', 'Home', '', 'Home', 'General'),
         ('NavItems', 'Items', 'ItemList', 'Package', 'Inventory'),
@@ -6126,17 +6127,6 @@ def _seed_operations_manager_rc(
         ('NavUserSettings', 'User settings', 'UserSettingsList', 'Settings', 'Setup'),
         ('NavUserSetup', 'User Setup', 'UserSetupList', 'UserCog', 'Setup'),
     ]
-    # Hide posted sales / credit-memo history from Operations Manager.
-    PageAction.objects.filter(
-        page=rc,
-        name__in=(
-            'NavUsers',
-            'NavUserGroups',
-            'NavPostedSalesInvoices',
-            'NavSalesCreditMemos',
-            'NavPostedSalesCreditMemos',
-        ),
-    ).delete()
     if payment_method_list:
         nav_specs.insert(-2, ('NavPaymentMethods', 'Payment Methods', 'PaymentMethodList', 'Wallet', 'Payments'))
     if expense_list:
@@ -6144,7 +6134,8 @@ def _seed_operations_manager_rc(
     if payment_list:
         nav_specs.insert(-2, ('NavPayments', 'Payments', 'PaymentJournalList', 'CreditCard', 'Finance'))
 
-    _seed_rc_nav_actions(rc, nav_specs)
+    # prune=True drops leftovers (credit memos, posted sales invoices, admin users, etc.).
+    _seed_rc_nav_actions(rc, nav_specs, prune=True)
     return rc
 
 

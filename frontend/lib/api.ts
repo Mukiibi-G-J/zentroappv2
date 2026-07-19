@@ -1,6 +1,10 @@
 import axios from 'axios'
-import { clearBranchSession } from '@/lib/branchSession'
 import { applyBranchHeadersToRequest } from '@/lib/branchHeaders'
+import {
+  clearClientAuthState,
+  isUnknownTenantApiError,
+  redirectToWorkspacePicker,
+} from '@/lib/ensureTenantWorkspace'
 
 function getApiBaseUrl(): string {
   if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL
@@ -49,13 +53,16 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   async (err) => {
-    if (err.response?.status === 401 && typeof window !== 'undefined') {
-      localStorage.removeItem('access_token')
-      localStorage.removeItem('refresh_token')
-      localStorage.removeItem('impersonation_admin_access')
-      localStorage.removeItem('impersonation_admin_refresh')
-      localStorage.removeItem('impersonation_meta')
-      clearBranchSession()
+    if (typeof window === 'undefined') return Promise.reject(err)
+
+    // Missing / invalid tenant → company workspace picker (not tenant /login).
+    if (isUnknownTenantApiError(err)) {
+      redirectToWorkspacePicker()
+      return Promise.reject(err)
+    }
+
+    if (err.response?.status === 401) {
+      clearClientAuthState()
       clearAccessTokenCookie()
       window.location.href = '/login'
     }

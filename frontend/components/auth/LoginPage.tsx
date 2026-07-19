@@ -12,6 +12,7 @@ import { writeStoredSession } from '@/lib/session';
 import { applyLoginBranchState } from '@/lib/loginBranch'
 import { resolvePostLoginPath } from '@/lib/postLoginRedirect'
 import { buildMainAppUrl, tenantSlugFromHostname } from '@/lib/tenantUrl';
+import { ensureTenantWorkspaceExists } from '@/lib/ensureTenantWorkspace';
 
 function LoginForm() {
   const searchParams = useSearchParams();
@@ -25,6 +26,7 @@ function LoginForm() {
     clearCookiesThatCause431();
     setWorkspaceSlug(tenantSlugFromHostname(window.location.hostname));
     setWorkspacePickerUrl(buildMainAppUrl('/workspace'));
+    void ensureTenantWorkspaceExists();
   }, []);
 
   const [formData, setFormData] = useState({ email: emailFromQuery, password: '' });
