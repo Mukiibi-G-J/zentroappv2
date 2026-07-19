@@ -192,3 +192,4 @@ jobs:
             echo "=== Remaining tenant migrations ==="
             python manage.py migrate_schemas
             echo "Deploy complete"
+ 
