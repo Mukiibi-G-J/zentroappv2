@@ -157,6 +157,9 @@ jobs:
             uv pip install -r backend/requirements.txt
             cd backend
             export DJANGO_SETTINGS_MODULE=core.settingsprod
+            # Avoid atexit template rebuild during bulk migrate (seed_pages can fail
+            # on restored schemas and is not required for API boot).
+            export DISABLE_TEMPLATE_REBUILD=1
             python manage.py migrate_schemas --shared
             python manage.py migrate_schemas
             python manage.py collectstatic --noinput
@@ -166,7 +169,7 @@ jobs:
             supervisorctl restart zentrov2 zentrov2-celery zentrov2-celery-beat
             supervisorctl status zentrov2 zentrov2-celery zentrov2-celery-beat
             for i in 1 2 3 4 5; do
-              if curl -fsS -H "Host: zentroapp-api.uncodedsolutions.com" http://127.0.0.1:8002/admin/login/ -o /dev/null; then
+              if curl -fsS -H "Host: zentroapp-backend.com" http://127.0.0.1:8002/admin/login/ -o /dev/null; then
                 echo "API is healthy"
                 exit 0
               fi
