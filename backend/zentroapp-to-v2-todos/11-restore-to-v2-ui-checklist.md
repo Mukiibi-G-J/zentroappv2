@@ -19,19 +19,26 @@ Restoring V1 dump + migrating is **not enough** for V2 UI. These failed in produ
 |---|---------|--------------|-----|
 | 1 | No `seed_pages` | Empty pages / no Role Centre | `seed_pages --schema=TENANT` |
 | 2 | `ApplicationProfile.role_centre_page` FK → `public.page_engine_page` | Seed/RC broken | Recreate FK → `TENANT.page_engine_page` |
-| 3 | Missing `page_engine_field` columns on tenant | Seed crashes | Add `relation_lookup_footer`, `relation_part_control_name` |
-| 4 | No `UserPersonalization` | No Role Centre for user | `assign_application_profiles` from old roles/groups (not blanket BUSINESS-MGR) |
+| 3 | Missing `page_engine_field` columns on tenant | Seed crashes on `relation_lookup_footer` | `pages/schema_ddl.py` `DDL_ALTER` + SQL below |
+| 4 | Blanket `BUSINESS-MGR` for every user | All users same Role Centre | `assign_application_profiles --force` from old roles/groups |
 | 5 | Subscription expired | `/api/pages/` → **402**; empty UI | Extend / renew subscription |
 | 6 | Nginx header buffers 16k | Admin JWT ~19KB → **400 Request Header Or Cookie Too Large** | Buffers **64k** + slim JWT for super users |
 | 7 | Apex API login (no tenant Host) | Same email logs into **public** user, not tenant | `TenantJWTMiddleware` resolves tenant from **Origin** |
-| 8 | Domains still `*.zentroapp-backend.com` | Wrong Host / SSL | Remap to `*.zentroapp-api.uncodedsolutions.com` |
+| 8 | Domains / nginx hosts | Wrong API host after cutover | **V2** = `*.zentroapp-backend.com`; **V1** parked on `zentroapp-api.uncodedsolutions.com` |
+
 | 9 | V2 deploy overwrites V1 supervisor | V1 **502** | Keep V2 as `zentrov2-*.conf` only |
+| 10 | `zentrov2` left **STOPPED** after restore | Login shows CORS / “Invalid password”; API **502** | `supervisorctl start zentrov2` (and celery) before smoke |
+| 11 | Document URL uses **Sales Invoice** SystemId on Posted page | Posted Sales Invoice **404** | Backend resolves linked posted doc (`pages/views.py`) |
 
 Code fixes that should already be in the repo (verify after pull):
 
 - `utils/tenant_middleware.py` — Origin/Referer → tenant schema  
 - `authentication/serializers.py` — no full `page_permissions` in JWT for super users  
 - `authentication/views.py` — login response includes session (`navItems`, `roleCentrePageId`)  
+- `authentication/profile_assignment.py` — Role Centre from legacy Role / UserGroup  
+- `pages/schema_ddl.py` — `relation_lookup_footer` / `relation_part_control_name` in `DDL_ALTER`  
+- `pages/bc_page_ids.py` + `align_zentro_page_ids` — PageId == ObjectId (Zentro 10xxx)  
+- `pages/views.py` — PostedSalesInvoice lookup via linked SalesInvoice SystemId  
 - `deploy/nginx/zentro-api.conf` — `large_client_header_buffers 4 64k`
 
 ---
@@ -41,20 +48,28 @@ Code fixes that should already be in the repo (verify after pull):
 ### 0. Infra (once per server)
 
 - [ ] V2 gunicorn on its own port (e.g. `:8002`) — **do not** overwrite V1 `zentro-*.conf`
-- [ ] Nginx site for `zentroapp-api.uncodedsolutions.com` with:
-
-```nginx
-client_header_buffer_size 64k;
-large_client_header_buffers 4 64k;
-```
-
+- [ ] Nginx site for **V2**: `.zentroapp-backend.com` → `:8002` (64k header buffers)
+- [ ] Nginx site for **V1** (parked): `zentroapp-api.uncodedsolutions.com` → `:8000`
 - [ ] Reload nginx: `nginx -t && systemctl reload nginx`
-- [ ] Frontend env: `NEXT_PUBLIC_API_URL` / base URL → `https://zentroapp-api.uncodedsolutions.com`
-- [ ] Optional later: wildcard SSL for `*.zentroapp-api.uncodedsolutions.com`
+- [ ] Frontend env: `NEXT_PUBLIC_API_URL` / base URL → `https://zentroapp-backend.com`
+- [ ] Optional: wildcard SSL already on `*.zentroapp-backend.com`; V1 api host is apex-only unless you add `*.zentroapp-api...`
 
 ### 1. Restore + migrate
 
 ```bash
+# Stop V2 before restore (reconnects will fail otherwise)
+supervisorctl stop zentrov2 zentrov2-celery zentrov2-celery-beat zentrov2-flower
+
+# Recreate target DB (jom often cannot CREATE DATABASE — use postgres)
+sudo -u postgres psql -v ON_ERROR_STOP=1 <<'SQL'
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+WHERE datname = 'zentroapp_v2_db' AND pid <> pg_backend_pid();
+DROP DATABASE IF EXISTS zentroapp_v2_db;
+CREATE DATABASE zentroapp_v2_db OWNER jom;
+SQL
+
+pg_restore -h 127.0.0.1 -U jom -d zentroapp_v2_db --no-owner --no-acl -j 2 /path/to/dump.dump
+
 cd /root/projects/zentro-appv2/backend
 source ../env/bin/activate
 export DJANGO_SETTINGS_MODULE=core.settingsprod
@@ -62,15 +77,37 @@ export PYTHONPATH=$(pwd)
 export PYTHONIOENCODING=utf-8
 
 # After pg_restore into zentroapp_v2_db (or your DB):
-python scripts/_fix_primewise_sequences.py   # or fix_all_pg_sequences.py
+python scripts/fix_all_pg_sequences.py
 python manage.py migrate_schemas --shared
+# Pilot first (faster) — migrate other tenants later the same way:
 python manage.py migrate_schemas --schema=TENANT --tenant
 ```
 
-### 2. Remap domains (V1 host → V2 API host)
+**Do not leave V2 stopped** — start it again after migrate (or at latest before login smoke):
+
+```bash
+supervisorctl start zentrov2 zentrov2-celery zentrov2-celery-beat zentrov2-flower
+```
+
+### 2. Remap domains (match nginx cutover)
+
+**V2 DB** (`zentroapp_v2_db`) — production API host:
 
 ```sql
--- Run against restored DB
+UPDATE company_domain
+SET domain = replace(domain, '.zentroapp-api.uncodedsolutions.com', '.zentroapp-backend.com')
+WHERE domain LIKE '%.zentroapp-api.uncodedsolutions.com';
+
+UPDATE company_company
+SET domain_url = replace(domain_url, '.zentroapp-api.uncodedsolutions.com', '.zentroapp-backend.com')
+WHERE domain_url LIKE '%.zentroapp-api.uncodedsolutions.com';
+```
+
+Expect: `TENANT.zentroapp-backend.com`
+
+**V1 DB** (`zentroapp_db`) — parked:
+
+```sql
 UPDATE company_domain
 SET domain = replace(domain, '.zentroapp-backend.com', '.zentroapp-api.uncodedsolutions.com')
 WHERE domain LIKE '%.zentroapp-backend.com';
@@ -79,8 +116,6 @@ UPDATE company_company
 SET domain_url = replace(domain_url, '.zentroapp-backend.com', '.zentroapp-api.uncodedsolutions.com')
 WHERE domain_url LIKE '%.zentroapp-backend.com';
 ```
-
-Expect tenant API domain like: `TENANT.zentroapp-api.uncodedsolutions.com`
 
 ### 3. Auth column repairs
 
@@ -216,6 +251,7 @@ Verify (with a token issued **after** Origin middleware is live, from the tenant
 | Check | Expected |
 |-------|----------|
 | Login Origin `https://TENANT.zentroapp.uncodedsolutions.com` | Authenticates **tenant** user, not `public` user with same email |
+| API base URL | `https://zentroapp-backend.com` (V2) |
 | JWT `schema_name` | `TENANT` (not `public`) |
 | JWT size (Admin) | ≲ ~5KB after slim `page_permissions` |
 | `GET /api/auth/me/` | `roleCentrePageId` set, `navItems.length > 0`, `user.fullName` correct |
@@ -246,15 +282,19 @@ After any middleware fix: users **must sign out and sign in** so JWT `schema_nam
 ## Empty UI decision tree
 
 ```
-Sidebar empty / cards show "—"
+Sidebar empty / cards show "—" / login "Invalid password" + CORS
+├─ Network: /api/auth/token/ → CORS / 502
+│    → zentrov2 STOPPED? supervisorctl start zentrov2; re-login
 ├─ Network: /api/auth/me/ or /api/pages/ → 400 "Header Too Large"
 │    → nginx 64k buffers + slim JWT; re-login
 ├─ Network: /api/pages/ → 402 subscription_expired
 │    → renew / extend subscription; re-login
 ├─ /api/auth/me/ → navItems=[] or roleCentrePageId=null
-│    → seed_pages + ApplicationProfile FK + UserPersonalization
+│    → seed_pages + ApplicationProfile FK + assign_application_profiles
 ├─ me/ shows wrong name / "User" / public user
 │    → Origin tenant middleware; clear tokens; re-login on tenant subdomain
+├─ Posted document 404 (PageId ok, SystemId is open Sales Invoice)
+│    → backend linked-invoice resolve (already in pages/views.py); re-try
 └─ me/ has nav but UI still empty
      → confirm frontend calls /api/pages/rolecentre/?PageId=<rc>
 ```
@@ -266,6 +306,7 @@ Sidebar empty / cards show "—"
 - Playbook: [00-restore-production-db-playbook.md](./00-restore-production-db-playbook.md)  
 - Pilot: [08-primewise-v2-readiness.md](./08-primewise-v2-readiness.md)  
 - **Zentro page IDs (PageId == ObjectId):** [12-page-id-vs-object-id.md](./12-page-id-vs-object-id.md)  
+- Profile mapping: [`../authentication/profile_assignment.py`](../authentication/profile_assignment.py)  
 - Sequences: [03-pg-sequence-reset-after-restore.md](./03-pg-sequence-reset-after-restore.md)  
 - Deploy: [../../deploy/DEPLOY.md](../../deploy/DEPLOY.md)  
 - Nginx template: [../../deploy/nginx/zentro-api.conf](../../deploy/nginx/zentro-api.conf)

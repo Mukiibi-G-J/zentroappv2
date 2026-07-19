@@ -22,7 +22,7 @@ Tick items per environment: **staging first**, then **production**.
 
 
 
-**[11-restore-to-v2-ui-checklist.md](./11-restore-to-v2-ui-checklist.md)** — Role Centre, domains, Origin login, nginx JWT, subscription. **Required** if the Next.js frontend should work after restore (empty sidebar / wrong user without this).
+**[11-restore-to-v2-ui-checklist.md](./11-restore-to-v2-ui-checklist.md)** — Role Centre, domains, Origin login, nginx JWT, subscription, profile assignment, restart V2. **Required** if the Next.js frontend should work after restore (empty sidebar / wrong user / CORS-on-502 without this).
 
 
 
@@ -63,6 +63,8 @@ Tick items per environment: **staging first**, then **production**.
 
 | 12 | **Zentro page IDs** (PageId == ObjectId, 10xxx bands) | 📖 Reference | [12-page-id-vs-object-id.md](./12-page-id-vs-object-id.md) |
 
+| 13 | **Domain cutover** V2 → `zentroapp-backend.com`, V1 → `zentroapp-api...` | ✅ Server | [13-domain-cutover-backend-com.md](./13-domain-cutover-backend-com.md) |
+
 
 
 Add new todos as `13-….md` in **this folder** and link them in the table above.
@@ -83,7 +85,7 @@ Add new todos as `13-….md` in **this folder** and link them in the table above
 
 3. **Pilot tenant** (e.g. `primewise`): [08-primewise-v2-readiness.md](./08-primewise-v2-readiness.md) — includes `seed_pages` + page permissions (required for V2 UI).
 
-4. **V2 web UI after restore** (Role Centre, domains, Origin login, nginx JWT, subscription): [11-restore-to-v2-ui-checklist.md](./11-restore-to-v2-ui-checklist.md) — **required** whenever you restore into another DB and expect the frontend to work.
+4. **V2 web UI after restore** (Role Centre, domains, Origin login, nginx JWT, subscription, **assign_application_profiles**): [11-restore-to-v2-ui-checklist.md](./11-restore-to-v2-ui-checklist.md) — **required** whenever you restore into another DB and expect the frontend to work. Includes Jul 2026 lessons (V2 stopped → fake CORS, no blanket BUSINESS-MGR, Zentro page IDs).
 
 5. Complete data todos (01, ledger cleanup) + remaining tenants the same way as 08 + 11.
 

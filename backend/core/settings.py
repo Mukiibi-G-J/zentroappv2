@@ -244,6 +244,10 @@ PUBLIC_SCHEMA_URLCONF = "core.urls-public"
 
 DOMAIN = "zentroapp.app"
 BACKEND_DOMAIN = "zentroapp-backend.com"
+FRONTEND_DOMAINS = (
+    "zentroapp.app",
+    "zentroapp.uncodedsolutions.com",
+)
 # ------------------- End of Tenant Configuration -------------------
 
 

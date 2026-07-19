@@ -5,7 +5,7 @@ Resolves the tenant when the Host header has no tenant subdomain (apex API).
 
 Sources (in order):
 1. X-Tenant header (mobile / explicit)
-2. Frontend Origin/Referer workspace slug (e.g. primewise.zentroapp.uncodedsolutions.com)
+2. Frontend Origin/Referer workspace slug (e.g. primewise.zentroapp.app)
 3. JWT schema_name claim
 
 This runs BEFORE TenantMainMiddleware and rewrites Host to the tenant API domain
@@ -42,6 +42,15 @@ def _is_main_domain_route(path: str) -> bool:
     return any(route in path for route in MAIN_DOMAIN_ROUTES)
 
 
+def _frontend_domains() -> tuple[str, ...]:
+    """App hosts that may appear in Origin/Referer (never the API host)."""
+    configured = getattr(settings, "FRONTEND_DOMAINS", None)
+    if configured:
+        return tuple(configured)
+    main = getattr(settings, "DOMAIN", "zentroapp.app")
+    return (main,)
+
+
 def _request_has_tenant_subdomain(host: str) -> bool:
     parsed_host = urlparse(f"//{host}")
     domain_parts = parsed_host.netloc.split(".")
@@ -55,13 +64,13 @@ def _request_has_tenant_subdomain(host: str) -> bool:
                 return True
         return False
 
-    main_domain = getattr(settings, "DOMAIN", "zentroapp.app")
     backend_domain = getattr(settings, "BACKEND_DOMAIN", "zentroapp-backend.com")
     host_suffix = ".".join(domain_parts[1:])
+    known = set(_frontend_domains()) | {backend_domain}
     return (
         len(domain_parts) > 2
         and domain_parts[0] != "www"
-        and host_suffix in (main_domain, backend_domain)
+        and host_suffix in known
     )
 
 
@@ -69,14 +78,14 @@ def _schema_from_frontend_origin(request) -> str | None:
     """
     Map browser Origin/Referer to a tenant schema.
 
-    Frontend calls the apex API (zentroapp-api...) from
-    {slug}.zentroapp.uncodedsolutions.com — without this, login hits the
-    public schema and authenticates the wrong user.
+    Frontend calls the apex API (`zentroapp-backend.com`) from
+    {slug}.zentroapp.app (or legacy {slug}.zentroapp.uncodedsolutions.com).
+    Without this, login hits the public schema and authenticates the wrong user.
 
     Local Next rewrites also hit Django via LAN IP (Host has no tenant);
     Origin {slug}.localhost must map to schema {slug}.
     """
-    main_domain = getattr(settings, "DOMAIN", "zentroapp.uncodedsolutions.com")
+    frontend_domains = _frontend_domains()
     for header in ("HTTP_ORIGIN", "HTTP_REFERER"):
         raw = (request.META.get(header) or "").strip()
         if not raw:
@@ -86,7 +95,11 @@ def _schema_from_frontend_origin(request) -> str | None:
         except Exception:
             continue
         hostname = hostname.lower().strip(".")
-        if not hostname or hostname == main_domain or hostname == f"www.{main_domain}":
+        if not hostname:
+            continue
+        if any(
+            hostname == apex or hostname == f"www.{apex}" for apex in frontend_domains
+        ):
             continue
 
         # Dev: primewise.localhost → primewise
@@ -99,11 +112,12 @@ def _schema_from_frontend_origin(request) -> str | None:
             ):
                 return parts[0]
 
-        suffix = f".{main_domain}"
-        if hostname.endswith(suffix):
-            slug = hostname[: -len(suffix)]
-            if slug and "." not in slug and slug not in ("www", "api"):
-                return slug
+        for apex in frontend_domains:
+            suffix = f".{apex}"
+            if hostname.endswith(suffix):
+                slug = hostname[: -len(suffix)]
+                if slug and "." not in slug and slug not in ("www", "api"):
+                    return slug
     return None
 
 

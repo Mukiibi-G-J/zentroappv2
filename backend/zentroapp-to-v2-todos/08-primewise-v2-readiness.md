@@ -45,7 +45,7 @@ Required for V2 web UI (`/api/auth/me/` → `navItems`, `/api/pages/` → resolv
 - [x] `seed_pages` creates Role Centre pages (`BusinessManagerRC`, etc.) + `NavItem` actions
 - [x] `authentication_applicationprofile.role_centre_page_id` points at **tenant** `page_engine_page` (not `public`)
   - After restore: drop/re-add FK if it references `public.page_engine_page`
-- [x] Backfill `UserPersonalization` for every user (default profile `BUSINESS-MGR`)
+- [x] Backfill `UserPersonalization` via `assign_application_profiles` (from old roles/groups, not blanket BUSINESS-MGR)
 - [x] `setup_page_permissions` (nav is filtered by page access for non-superusers)
 - [x] Tenant subscription **active** (`SubscriptionCheckMiddleware` blocks `/api/pages/` with **402** when expired — sidebar shows *“No navigation for your role”* even when `auth/me` returns nav)
 - [x] Nginx `large_client_header_buffers` ≥ **64k** — Admin JWTs with embedded `page_permissions` were ~19KB and nginx returned **400 Request Header Or Cookie Too Large** (empty sidebar / “User”)
@@ -54,29 +54,10 @@ Required for V2 web UI (`/api/auth/me/` → `navItems`, `/api/pages/` → resolv
 - [x] Login response includes `build_auth_session_payload` (navItems + roleCentrePageId)
 - [ ] Smoke: **Sign out + sign in** on `primewise.zentroapp.uncodedsolutions.com` as `mukiibijoseph19@gmail.com` → sidebar nav + Business Manager Role Centre (not public-schema “User”)
 
-**Backfill personalization (bash, from `backend/`):**
+**Backfill personalization (from `backend/`):**
 
 ```bash
-python manage.py shell --settings=core.settingsprod <<'PY'
-from django_tenants.utils import schema_context
-from authentication.models import CustomUser, UserPersonalization, ApplicationProfile
-
-with schema_context('primewise'):
-    default = ApplicationProfile.objects.filter(code='BUSINESS-MGR').first()
-    for u in CustomUser.objects.all():
-        p, created = UserPersonalization.objects.get_or_create(
-            user=u,
-            defaults={
-                'role': default,
-                'created_by': u.full_name or u.username or u.email,
-                'modified_by': u.full_name or u.username or u.email,
-            },
-        )
-        if not created and not p.role_id and default:
-            p.role = default
-            p.save(update_fields=['role'])
-    print('personalizations', UserPersonalization.objects.count())
-PY
+python manage.py tenant_command assign_application_profiles --schema=primewise --force
 ```
 
 ---
@@ -128,7 +109,7 @@ python scripts/_assess_primewise_v2.py
 | Payment rows with `applies_to_id` set | **0** |
 | Page permission sets | updated via `setup_page_permissions` |
 | `ApplicationProfile` → RC page | all profiles have `role_centre_page_id` on tenant `page_engine_page` |
-| `UserPersonalization` rows | **one per user** (default `BUSINESS-MGR`) |
+| `UserPersonalization` rows | **one per user** with profile from `assign_application_profiles` |
 | `GET /api/auth/me/` (authenticated) | `roleCentrePageId` set, `navItems` non-empty for Admin/Business Manager |
 | `GET /api/pages/` (authenticated) | **200** — subscription must be active (not 402) |
 

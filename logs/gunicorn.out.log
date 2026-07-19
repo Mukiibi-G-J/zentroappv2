@@ -71,3 +71,158 @@ DEBUG: Saving SalesInvoice with status: Open
 being called
 DEBUG: Saving SalesInvoice with status: Posted
 PSIN-000001
+being called
+PAY-000001
+PAY-000001
+Vendor account type found
+Customer account type found
+Vendor account type found
+Vendor account type found
+Vendor account type found
+being called
+DEBUG: Saving SalesInvoice with status: Posted
+PSIN-000001
+DEBUG: Creating sales invoice with data: {'customer': <Customer: General>, 'document_date': datetime.date(2026, 7, 16), 'status': 'Open', 'amount_received': 1000, 'change_amount': 500, 'payment_method': <PaymentMethod: CASH - Cash Cust.>, 'invoice_discount_type': None, 'invoice_discount_amount': Decimal('0.00'), 'invoice_discount_percentage': Decimal('0.00'), 'global_dimension_1': <DimensionValue: CENTRAL>, 'dimension_set': <DimensionSet: DimensionSet object (1)>}
+DEBUG: Status in validated_data: Open
+DEBUG: Lines data: [{'id': 1, 'item': 'ITM-000572', 'item_no': 'ITM-000572', 'item_name': 'Paracetamol 500mg tabs', 'quantity': '10', 'unit_price': '50.00', 'total_amount': '500', 'line_discount_amount': '0', 'unit_of_measure': 'PCS', 'tracking_code': '678iuy', 'description': ''}]
+being called
+SIN-000001
+DEBUG: Saving SalesInvoice with status: Open
+DEBUG: Creating sales invoice with data: {'customer': <Customer: General>, 'document_date': datetime.date(2026, 7, 16), 'status': 'Open', 'amount_received': 1000, 'change_amount': 500, 'payment_method': <PaymentMethod: CASH - Cash Cust.>, 'invoice_discount_type': None, 'invoice_discount_amount': Decimal('0.00'), 'invoice_discount_percentage': Decimal('0.00'), 'global_dimension_1': <DimensionValue: CENTRAL>, 'dimension_set': <DimensionSet: DimensionSet object (1)>}
+DEBUG: Status in validated_data: Open
+DEBUG: Lines data: [{'id': 1, 'item': 'ITM-000572', 'item_no': 'ITM-000572', 'item_name': 'Paracetamol 500mg tabs', 'quantity': '10', 'unit_price': '50.00', 'total_amount': '500', 'line_discount_amount': '0', 'unit_of_measure': 'PCS', 'tracking_code': '678iuy', 'description': ''}]
+being called
+SIN-000001
+DEBUG: Saving SalesInvoice with status: Open
+being called
+DEBUG: Saving SalesInvoice with status: Posted
+PSIN-000001
+Error loading permission sets: Cannot resolve keyword 'linked_role' into field. Choices are: code, created_at, created_by, created_by_id, description, id, is_active, name, permissionsetline, updated_at, user_groups
+DEBUG: Creating sales invoice with data: {'customer': <Customer: General>, 'document_date': datetime.date(2026, 7, 16), 'status': 'Open', 'amount_received': 14000, 'change_amount': 0, 'payment_method': <PaymentMethod: CASH - Cash Cust.>, 'invoice_discount_type': None, 'invoice_discount_amount': Decimal('0.00'), 'invoice_discount_percentage': Decimal('0.00'), 'global_dimension_1': <DimensionValue: MWANJARI>, 'dimension_set': <DimensionSet: DimensionSet object (2)>}
+DEBUG: Status in validated_data: Open
+DEBUG: Lines data: [{'id': 1, 'item': 'ITM-000728', 'item_no': 'ITM-000728', 'item_name': 'Zaha syrup', 'quantity': '2', 'unit_price': '7000.00', 'total_amount': '14000', 'line_discount_amount': '0', 'unit_of_measure': 'PCS', 'tracking_code': 'CK02795', 'description': ''}]
+being called
+SIN-000001
+DEBUG: Saving SalesInvoice with status: Open
+being called
+DEBUG: Saving SalesInvoice with status: Posted
+PSIN-000001
+being called
+INV-000001
+Line 2587: Total tracking quantity: 5, Expected quantity: 5
+Line 2587: Total tracking quantity: 5, Expected quantity: 5
+Line 2588: Total tracking quantity: 3, Expected quantity: 3
+Line 2588: Total tracking quantity: 3, Expected quantity: 3
+Line 2589: Total tracking quantity: 3, Expected quantity: 3
+Line 2589: Total tracking quantity: 3, Expected quantity: 3
+payables_account Vendors, Domestic - 5410
+{'serial_no': False, 'lot_no': True, 'expiry_date': True}
+{'serial_no': False, 'lot_no': True, 'expiry_date': True}
+{'serial_no': False, 'lot_no': True, 'expiry_date': True}
+Processing 3 item lines with total amount: 7980.00
+adfadsf Direct Cost Applied, Retail - 7191
+5
+Generated item entry with lot_no: 9999, expiry_date: 2026-07-16
+adfadsf Direct Cost Applied, Retail - 7191
+3
+Generated item entry with lot_no: 66666, expiry_date: 2026-07-30
+adfadsf Direct Cost Applied, Retail - 7191
+3
+Generated item entry with lot_no: 6666, expiry_date: 2026-07-16
+Generated entries - GL: 12, Vendor: 2, Item: 3, Value: 3
+Line 2587: Total tracking quantity: 5, Expected quantity: 5
+Line 2587: Total tracking quantity: 5, Expected quantity: 5
+Line 2588: Total tracking quantity: 3, Expected quantity: 3
+Line 2588: Total tracking quantity: 3, Expected quantity: 3
+Line 2589: Total tracking quantity: 3, Expected quantity: 3
+Line 2589: Total tracking quantity: 3, Expected quantity: 3
+payables_account Vendors, Domestic - 5410
+{'serial_no': False, 'lot_no': True, 'expiry_date': True}
+{'serial_no': False, 'lot_no': True, 'expiry_date': True}
+{'serial_no': False, 'lot_no': True, 'expiry_date': True}
+Processing 3 item lines with total amount: 7980.00
+adfadsf Direct Cost Applied, Retail - 7191
+5
+Generated item entry with lot_no: 9999, expiry_date: 2026-07-16
+adfadsf Direct Cost Applied, Retail - 7191
+3
+Generated item entry with lot_no: 66666, expiry_date: 2026-07-30
+adfadsf Direct Cost Applied, Retail - 7191
+3
+Generated item entry with lot_no: 6666, expiry_date: 2026-07-16
+Generated entries - GL: 12, Vendor: 2, Item: 3, Value: 3
+Line 2587: Total tracking quantity: 5, Expected quantity: 5
+Line 2587: Total tracking quantity: 5, Expected quantity: 5
+Line 2588: Total tracking quantity: 3, Expected quantity: 3
+Line 2588: Total tracking quantity: 3, Expected quantity: 3
+Line 2589: Total tracking quantity: 3, Expected quantity: 3
+Line 2589: Total tracking quantity: 3, Expected quantity: 3
+payables_account Vendors, Domestic - 5410
+{'serial_no': False, 'lot_no': True, 'expiry_date': True}
+{'serial_no': False, 'lot_no': True, 'expiry_date': True}
+{'serial_no': False, 'lot_no': True, 'expiry_date': True}
+Processing 3 item lines with total amount: 7980.00
+adfadsf Direct Cost Applied, Retail - 7191
+5
+Generated item entry with lot_no: 9999, expiry_date: 2026-07-16
+adfadsf Direct Cost Applied, Retail - 7191
+3
+Generated item entry with lot_no: 66666, expiry_date: 2026-07-30
+adfadsf Direct Cost Applied, Retail - 7191
+3
+Generated item entry with lot_no: 6666, expiry_date: 2026-07-16
+Generated entries - GL: 12, Vendor: 2, Item: 3, Value: 3
+Error loading permission sets: Cannot resolve keyword 'linked_role' into field. Choices are: code, created_at, created_by, created_by_id, description, id, is_active, name, permissionsetline, updated_at, user_groups
+Vendor account type found
+Vendor account type found
+Vendor account type found
+Vendor account type found
+Getting account_name for PaymentJournal 4
+account_content_type_id: None
+account_object_id: None
+account_no: None
+No account_no found, returning Unknown Account
+Vendor account type found
+DEBUG: Creating sales invoice with data: {'customer': <Customer: General>, 'document_date': datetime.date(2026, 7, 16), 'status': 'Open', 'amount_received': 6000, 'change_amount': 2000, 'payment_method': <PaymentMethod: CASH - Cash Cust.>, 'invoice_discount_type': None, 'invoice_discount_amount': Decimal('0.00'), 'invoice_discount_percentage': Decimal('0.00'), 'global_dimension_1': <DimensionValue: CENTRAL>, 'dimension_set': <DimensionSet: DimensionSet object (1)>}
+DEBUG: Status in validated_data: Open
+DEBUG: Lines data: [{'id': 1, 'item': 'ITM-000863', 'item_no': 'ITM-000863', 'item_name': 'DOMIPAN ENTERIC COATED CAPS', 'quantity': '4', 'unit_price': '1000.00', 'total_amount': '4000', 'line_discount_amount': '0', 'unit_of_measure': 'PCS', 'tracking_code': '13453hgj', 'description': ''}]
+being called
+SIN-000001
+DEBUG: Saving SalesInvoice with status: Open
+DEBUG: Creating sales invoice with data: {'customer': <Customer: General>, 'document_date': datetime.date(2026, 7, 16), 'status': 'Open', 'amount_received': 1500, 'change_amount': 0, 'payment_method': <PaymentMethod: CASH - Cash Cust.>, 'invoice_discount_type': None, 'invoice_discount_amount': Decimal('0.00'), 'invoice_discount_percentage': Decimal('0.00'), 'global_dimension_1': <DimensionValue: CENTRAL>, 'dimension_set': <DimensionSet: DimensionSet object (1)>}
+DEBUG: Status in validated_data: Open
+DEBUG: Lines data: [{'id': 1, 'item': 'ITM-000567', 'item_no': 'ITM-000567', 'item_name': 'Pan- D caps', 'quantity': '1', 'unit_price': '1500.00', 'total_amount': '1500', 'line_discount_amount': '0', 'unit_of_measure': 'PCS', 'tracking_code': '200089', 'description': ''}]
+being called
+SIN-000001
+DEBUG: Saving SalesInvoice with status: Open
+being called
+DEBUG: Saving SalesInvoice with status: Posted
+PSIN-000001
+being called
+DEBUG: Saving SalesInvoice with status: Posted
+PSIN-000001
+DEBUG: Creating sales invoice with data: {'customer': <Customer: General>, 'document_date': datetime.date(2026, 7, 16), 'status': 'Open', 'amount_received': 1000, 'change_amount': 500, 'payment_method': <PaymentMethod: CASH - Cash Cust.>, 'invoice_discount_type': None, 'invoice_discount_amount': Decimal('0.00'), 'invoice_discount_percentage': Decimal('0.00'), 'global_dimension_1': <DimensionValue: CENTRAL>, 'dimension_set': <DimensionSet: DimensionSet object (1)>}
+DEBUG: Status in validated_data: Open
+DEBUG: Lines data: [{'id': 1, 'item': 'ITM-000572', 'item_no': 'ITM-000572', 'item_name': 'Paracetamol 500mg tabs', 'quantity': '10', 'unit_price': '50.00', 'total_amount': '500', 'line_discount_amount': '0', 'unit_of_measure': 'PCS', 'tracking_code': '678iuy', 'description': ''}]
+being called
+SIN-000001
+DEBUG: Saving SalesInvoice with status: Open
+being called
+DEBUG: Saving SalesInvoice with status: Posted
+PSIN-000001
+Error loading user groups: relation "authentication_usergroup" does not exist
+LINE 1: ..._id", "authentication_usergroup"."is_active" FROM "authentic...
+                                                             ^
+
+Error loading permission sets: relation "authentication_usergroup" does not exist
+LINE 1: ..._id", "authentication_usergroup"."is_active" FROM "authentic...
+                                                             ^
+
+Error loading roles and role center modules: relation "authentication_usergroup" does not exist
+LINE 1: ..._id", "authentication_usergroup"."is_active" FROM "authentic...
+                                                             ^
+
+Error loading user setup: relation "authentication_usersetup" does not exist
+LINE 1: ...r_sales", "authentication_usersetup"."notes" FROM "authentic...
+                                                             ^
+

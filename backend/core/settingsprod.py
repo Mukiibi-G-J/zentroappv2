@@ -43,6 +43,9 @@ ALLOWED_HOSTS = [
     "127.0.0.1",
     "[::1]",
     "*",
+    "zentroapp-backend.com",
+    "*.zentroapp-backend.com",
+    # Keep old pilot host during transition
     "zentroapp-api.uncodedsolutions.com",
     "*.zentroapp-api.uncodedsolutions.com",
     # site_domain,
@@ -50,12 +53,17 @@ ALLOWED_HOSTS = [
 
 CSRF_TRUSTED_ORIGINS = [
     # "https://backend-production-42041.up.railway.app",
+    "https://zentroapp.app",
+    "https://www.zentroapp.app",
+    "https://*.zentroapp.app",
     "https://zentroapp.uncodedsolutions.com",
     "https://*.zentroapp.uncodedsolutions.com",
     "http://localhost:8000",
     "http://localhost:8002",
     "http://127.0.0.1:8000",
     "http://127.0.0.1:8002",
+    "https://zentroapp-backend.com",
+    "https://*.zentroapp-backend.com",
     "https://zentroapp-api.uncodedsolutions.com",
     "https://*.zentroapp-api.uncodedsolutions.com",
     "http://localhost:5173",
@@ -204,8 +212,14 @@ SHOW_PUBLIC_IF_NO_TENANT_FOUND = True
 ROOT_URLCONF = "core.urls"
 PUBLIC_SCHEMA_URLCONF = "core.urls-public"
 
-DOMAIN = "zentroapp.uncodedsolutions.com"
-BACKEND_DOMAIN = "zentroapp-api.uncodedsolutions.com"
+# Primary frontend apex (tenant app URLs = {slug}.{DOMAIN})
+DOMAIN = "zentroapp.app"
+BACKEND_DOMAIN = "zentroapp-backend.com"
+# Extra marketing/app hosts accepted for Origin → tenant mapping (login /me).
+FRONTEND_DOMAINS = (
+    "zentroapp.app",
+    "zentroapp.uncodedsolutions.com",
+)
 # ------------------- End of Tenant Configuration -------------------
 
 
@@ -544,8 +558,12 @@ if ENVIRONMENT == "production":
 # Add these settings after your ALLOWED_HOSTS configuration
 
 CORS_ALLOWED_ORIGINS = [
+    "https://zentroapp.app",
+    "https://www.zentroapp.app",
     "https://zentroapp.uncodedsolutions.com",
     "https://www.zentroapp.uncodedsolutions.com",
+    "https://zentroapp-backend.com",
+    "https://*.zentroapp-backend.com",
     "https://zentroapp-api.uncodedsolutions.com",
     "https://*.zentroapp-api.uncodedsolutions.com",
     "http://localhost:5173",  # React development server
@@ -559,6 +577,9 @@ CORS_ALLOWED_ORIGINS = [
 ]
 
 CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://zentroapp\.app$",
+    r"^https://www\.zentroapp\.app$",
+    r"^https://([a-zA-Z0-9-]+)\.zentroapp\.app$",
     r"^https://zentroapp\.uncodedsolutions\.com$",
     r"^https://www\.zentroapp\.uncodedsolutions\.com$",
     r"^https://([a-zA-Z0-9-]+)\.zentroapp\.uncodedsolutions\.com$",
