@@ -24,16 +24,40 @@ function isPublicAsset(pathname: string): boolean {
   )
 }
 
-const APP_HOST = process.env.NEXT_PUBLIC_APP_HOST ?? 'zentroapp.uncodedsolutions.com'
+const KNOWN_APP_APICES = ['zentroapp.app', 'zentroapp.uncodedsolutions.com'] as const
+
+function stripWww(hostname: string): string {
+  return hostname.replace(/^www\./, '')
+}
+
+function resolveAppHost(hostname: string): string {
+  const h = stripWww(hostname)
+  for (const apex of KNOWN_APP_APICES) {
+    if (h === apex || h.endsWith(`.${apex}`)) return apex
+  }
+  const fromEnv = process.env.NEXT_PUBLIC_APP_HOST?.trim()
+  if (
+    fromEnv &&
+    fromEnv !== 'zentroapp-backend.com' &&
+    !fromEnv.includes('zentroapp-api') &&
+    !fromEnv.includes('backend.com')
+  ) {
+    return stripWww(fromEnv)
+  }
+  return 'zentroapp.app'
+}
 
 function isTenantSubdomain(hostname: string): boolean {
   const parts = hostname.split('.')
   if (parts.length >= 2 && parts[1] === 'localhost') {
     return parts[0] !== 'localhost' && parts[0] !== 'www'
   }
-  if (hostname.endsWith(`.${APP_HOST}`) && hostname !== `www.${APP_HOST}`) {
-    return true
+  const h = stripWww(hostname)
+  for (const apex of KNOWN_APP_APICES) {
+    if (h.endsWith(`.${apex}`) && h !== `www.${apex}`) return true
   }
+  const appHost = resolveAppHost(hostname)
+  if (h.endsWith(`.${appHost}`) && h !== `www.${appHost}`) return true
   return (
     parts.length > 2 &&
     parts[0] !== 'www' &&
@@ -48,7 +72,8 @@ function isMainAppHost(hostname: string): boolean {
 
 function buildMainDomainUrl(request: NextRequest, path: string): string {
   const isDev = process.env.NODE_ENV === 'development'
-  const domain = isDev ? 'localhost' : APP_HOST
+  const hostname = request.headers.get('host')?.split(':')[0] ?? ''
+  const domain = isDev ? 'localhost' : resolveAppHost(hostname)
   const port = isDev ? ':3000' : ''
   const { protocol } = request.nextUrl
   return `${protocol}//${domain}${port}${path}`

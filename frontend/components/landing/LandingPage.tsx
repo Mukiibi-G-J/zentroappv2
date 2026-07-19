@@ -251,9 +251,14 @@ export function LandingPage() {
     if (isSubdomain) {
       const domain = isDevelopment
         ? "localhost"
-        : process.env.NEXT_PUBLIC_APP_HOST ?? "zentroapp.uncodedsolutions.com";
+        : process.env.NEXT_PUBLIC_APP_HOST ?? "zentroapp.app";
+      // Never treat the API host as the marketing app host
+      const safeDomain =
+        domain.includes("backend.com") || domain.includes("zentroapp-api")
+          ? "zentroapp.app"
+          : domain;
       const port = isDevelopment ? ':3000' : ''
-      window.location.href = `${window.location.protocol}//${domain}${port}/`;
+      window.location.href = `${window.location.protocol}//${safeDomain}${port}/`;
     }
   }, []);
 

@@ -1,8 +1,50 @@
 const DEV_FRONTEND_PORT = process.env.NEXT_PUBLIC_DEV_FRONT_PORT ?? '3000'
-/** V2 live frontend apex (tenant URLs are `{slug}.{APP_HOST}`). */
-const PROD_APP_HOST = process.env.NEXT_PUBLIC_APP_HOST ?? 'zentroapp.uncodedsolutions.com'
-/** V2 live API apex (tenant API is `{slug}.{API_HOST}`). */
-const PROD_API_HOST = process.env.NEXT_PUBLIC_API_HOST ?? 'zentroapp-api.uncodedsolutions.com'
+
+/** Known Next.js marketing / tenant apices (never the API host). */
+const KNOWN_APP_APICES = ['zentroapp.app', 'zentroapp.uncodedsolutions.com'] as const
+
+/** API hosts — must never be used as APP_HOST for login redirects. */
+const KNOWN_API_APICES = [
+  'zentroapp-backend.com',
+  'zentroapp-api.uncodedsolutions.com',
+] as const
+
+function stripWww(hostname: string): string {
+  return hostname.replace(/^www\./, '')
+}
+
+function isApiHost(hostname: string): boolean {
+  const h = stripWww(hostname)
+  return KNOWN_API_APICES.some((api) => h === api || h.endsWith(`.${api}`))
+}
+
+/**
+ * Frontend apex for `{slug}.{host}/login`.
+ * Prefer the page the user is on; ignore mis-set NEXT_PUBLIC_APP_HOST when it points at the API.
+ */
+export function getProdAppHost(): string {
+  if (typeof window !== 'undefined') {
+    const h = stripWww(window.location.hostname)
+    for (const apex of KNOWN_APP_APICES) {
+      if (h === apex || h.endsWith(`.${apex}`)) return apex
+    }
+  }
+
+  const fromEnv = process.env.NEXT_PUBLIC_APP_HOST?.trim()
+  if (fromEnv && !isApiHost(fromEnv)) {
+    return stripWww(fromEnv)
+  }
+
+  return 'zentroapp.app'
+}
+
+export function getProdApiHost(): string {
+  const fromEnv = process.env.NEXT_PUBLIC_API_HOST?.trim()
+  if (fromEnv) return stripWww(fromEnv)
+  return 'zentroapp-backend.com'
+}
+
+const ENV_APP_HOST = process.env.NEXT_PUBLIC_APP_HOST ?? 'zentroapp.app'
 
 /** Normalize user input to a tenant subdomain slug (schema name). */
 export function slugifyCompanyInput(raw: string): string {
@@ -18,8 +60,12 @@ export function isMainAppHost(hostname: string): boolean {
   const parts = hostname.split('.')
   if (parts.length === 1) return true
   if (parts.length === 2 && parts[0] === 'localhost' && parts[1] === 'localhost') return true
-  if (hostname === PROD_APP_HOST || hostname === `www.${PROD_APP_HOST}`) return true
-  return false
+
+  const h = stripWww(hostname)
+  const appHost =
+    typeof window !== 'undefined' ? getProdAppHost() : stripWww(ENV_APP_HOST)
+  if (h === appHost) return true
+  return KNOWN_APP_APICES.some((apex) => h === apex)
 }
 
 export function isTenantSubdomain(hostname: string): boolean {
@@ -28,9 +74,16 @@ export function isTenantSubdomain(hostname: string): boolean {
   if (parts.length >= 2 && parts[1] === 'localhost') {
     return parts[0] !== 'www' && parts[0] !== 'localhost'
   }
-  if (hostname.endsWith(`.${PROD_APP_HOST}`) && hostname !== `www.${PROD_APP_HOST}`) {
-    return true
+
+  const h = stripWww(hostname)
+  for (const apex of KNOWN_APP_APICES) {
+    if (h.endsWith(`.${apex}`) && h !== `www.${apex}`) return true
   }
+
+  const appHost =
+    typeof window !== 'undefined' ? getProdAppHost() : stripWww(ENV_APP_HOST)
+  if (h.endsWith(`.${appHost}`) && h !== `www.${appHost}`) return true
+
   // Legacy V1 host pattern (kept for local/docs samples).
   return (
     parts.length > 2 &&
@@ -66,7 +119,8 @@ export function buildTenantAppUrl(
     (typeof window !== 'undefined' ? window.location.protocol : 'http:')
   const port = opts?.port ?? (isDev ? getFrontendPort() : '')
   const portSuffix = port ? `:${port}` : ''
-  const host = isDev ? `${normalized}.localhost` : `${normalized}.${PROD_APP_HOST}`
+  const appHost = isDev ? 'localhost' : getProdAppHost()
+  const host = isDev ? `${normalized}.localhost` : `${normalized}.${appHost}`
 
   return `${protocol}//${host}${portSuffix}${path.startsWith('/') ? path : `/${path}`}`
 }
@@ -75,7 +129,7 @@ export function buildMainAppUrl(path = '/'): string {
   const isDev = process.env.NODE_ENV === 'development'
   const port = isDev ? getFrontendPort() : ''
   const portSuffix = port ? `:${port}` : ''
-  const host = isDev ? 'localhost' : PROD_APP_HOST
+  const host = isDev ? 'localhost' : getProdAppHost()
   const protocol = typeof window !== 'undefined' ? window.location.protocol : 'http:'
   return `${protocol}//${host}${portSuffix}${path.startsWith('/') ? path : `/${path}`}`
 }
@@ -89,7 +143,7 @@ export function buildTenantApiBaseUrl(slug: string): string {
   if (isDev) {
     return `http://${normalized}.localhost:${port}/api`
   }
-  return `https://${normalized}.${PROD_API_HOST}/api`
+  return `https://${normalized}.${getProdApiHost()}/api`
 }
 
 export function buildTenantPreviewHost(slug: string): string {
@@ -101,5 +155,5 @@ export function buildTenantPreviewHost(slug: string): string {
   const portSuffix = port ? `:${port}` : ''
   return isDev
     ? `${normalized}.localhost${portSuffix}`
-    : `${normalized}.${PROD_APP_HOST}`
+    : `${normalized}.${getProdAppHost()}`
 }

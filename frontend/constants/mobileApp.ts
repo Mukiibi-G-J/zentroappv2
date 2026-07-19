@@ -6,7 +6,7 @@ function publicApiOrigin(): string {
     return `http://localhost:${port}`
   }
   const apiHost =
-    process.env.NEXT_PUBLIC_API_HOST ?? 'zentroapp-api.uncodedsolutions.com'
+    process.env.NEXT_PUBLIC_API_HOST ?? 'zentroapp-backend.com'
   return `https://${apiHost}`
 }
 
