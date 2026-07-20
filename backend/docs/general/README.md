@@ -30,6 +30,10 @@ General fixes, updates, and miscellaneous documentation for the ZentroApp backen
 
 - [SSL_TLS_NGINX_RELOAD_AFTER_CERTBOT_RUNBOOK.md](./SSL_TLS_NGINX_RELOAD_AFTER_CERTBOT_RUNBOOK.md) - Wildcard backend cert: stale nginx TLS after renewal, reload fix, deploy hook  
   (First-time wildcard setup with Cloudflare DNS-01: repo root [`hosting.md`](../../../hosting.md).)
+- [MUST_CHANGE_PASSWORD_SCHEMA_DRIFT_RUNBOOK.md](./MUST_CHANGE_PASSWORD_SCHEMA_DRIFT_RUNBOOK.md) - Login 500: missing `must_change_password` on tenant `authentication_customuser` (fake `0019` if needed, then migrate `0020`–`0026`)
+- [THESTORMSCAFE_V2_SEED_RUNBOOK.md](./THESTORMSCAFE_V2_SEED_RUNBOOK.md) - Seed pages/permissions/menu for restored tenant UI (`thestormscafe` / V2 Role Centre)
+- [TOKEN_VALID_AFTER_PRODUCTION_RUNBOOK.md](./TOKEN_VALID_AFTER_PRODUCTION_RUNBOOK.md) - Auth column drift for `token_valid_after`
+- [MIGRATION_STATE_DRIFT_RUNBOOK.md](./MIGRATION_STATE_DRIFT_RUNBOOK.md) - General django-tenants migration history vs schema drift
 
 ### Module Setup
 

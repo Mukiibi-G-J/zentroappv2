@@ -25,6 +25,7 @@ BYPASS_PATTERNS = [
     re.compile(r"^/api/company/pricing-plans"),  # subscription page needs plans
     re.compile(r"^/api/company/add-ons"),
     re.compile(r"^/api/company/starter-"),  # starter pack flow
+    re.compile(r"^/api/restaurant/public-menu"),  # guest QR digital menu
     re.compile(r"^/admin/"),
     re.compile(r"^/static/"),
     re.compile(r"^/media/"),

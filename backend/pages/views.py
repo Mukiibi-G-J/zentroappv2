@@ -299,14 +299,18 @@ class TableRelationsView(APIView):
 
                 target_user = request.user
                 if source_table == 'UserPersonalization':
-                    target_user_id = record_values.get('user_id')
-                    if target_user_id:
+                    # user_id is serialized as username (Code), not numeric PK.
+                    target_user_ref = record_values.get('user_id')
+                    if target_user_ref:
                         from authentication.models import CustomUser
 
-                        target_user = (
-                            CustomUser.objects.filter(pk=target_user_id).first()
-                            or request.user
-                        )
+                        ref = str(target_user_ref).strip()
+                        resolved = CustomUser.objects.filter(username=ref).first()
+                        if resolved is None and ref.isdigit():
+                            resolved = CustomUser.objects.filter(pk=int(ref)).first()
+                        if resolved is None:
+                            resolved = CustomUser.objects.filter(system_id=ref).first()
+                        target_user = resolved or request.user
 
                 current_profile_id = None
                 role_code = record_values.get('role')

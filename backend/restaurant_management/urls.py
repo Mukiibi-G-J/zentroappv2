@@ -1,5 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
+from .public_menu_views import PublicDigitalMenuView
 from .views import (
     FloorViewSet,
     FloorSectionViewSet,
@@ -62,6 +63,16 @@ router.register(
 router.register(r"action-logs", OrderActionLogViewSet, basename="order-action-log")
 
 urlpatterns = [
+    path(
+        "api/restaurant/public-menu/",
+        PublicDigitalMenuView.as_view(),
+        name="public-digital-menu",
+    ),
+    path(
+        "api/restaurant/public-menu/<slug:slug>/",
+        PublicDigitalMenuView.as_view(),
+        name="public-digital-menu-slug",
+    ),
     path("api/restaurant/", include(router.urls)),
 ]
 

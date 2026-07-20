@@ -207,3 +207,39 @@ class OrderActionLogAdmin(admin.ModelAdmin):
     list_display = ["created_at", "order", "action_type", "actor"]
     list_filter = ["action_type"]
 
+
+class DigitalMenuLineInline(admin.TabularInline):
+    model = models.DigitalMenuLine
+    extra = 0
+    fields = [
+        "name",
+        "price",
+        "price_note",
+        "description",
+        "is_featured",
+        "display_order",
+    ]
+
+
+class DigitalMenuSectionInline(admin.TabularInline):
+    model = models.DigitalMenuSection
+    extra = 0
+    fields = ["name", "subtitle", "accent_color", "image_url", "display_order"]
+    show_change_link = True
+
+
+@admin.register(models.DigitalMenuPublication)
+class DigitalMenuPublicationAdmin(admin.ModelAdmin):
+    list_display = ["title", "slug", "is_published", "updated_at"]
+    list_filter = ["is_published"]
+    search_fields = ["title", "slug"]
+    prepopulated_fields = {"slug": ("title",)}
+    inlines = [DigitalMenuSectionInline]
+
+
+@admin.register(models.DigitalMenuSection)
+class DigitalMenuSectionAdmin(admin.ModelAdmin):
+    list_display = ["name", "publication", "display_order"]
+    list_filter = ["publication"]
+    inlines = [DigitalMenuLineInline]
+

@@ -1105,3 +1105,94 @@ class OrderActionLog(BaseModel):
     class Meta:
         ordering = ["-created_at"]
 
+
+class DigitalMenuPublication(BaseModel):
+    """
+    Customer-facing menu (QR / public link). Not linked to POS Menu model.
+    """
+
+    slug = models.SlugField(
+        _("Slug"),
+        max_length=64,
+        unique=True,
+        default="main",
+        help_text=_("URL segment, e.g. /menu or /menu/{slug}"),
+    )
+    title = models.CharField(_("Title"), max_length=200)
+    tagline = models.CharField(_("Tagline"), max_length=300, blank=True, default="")
+    phones = models.JSONField(_("Phone numbers"), default=list, blank=True)
+    social_links = models.JSONField(_("Social links"), default=dict, blank=True)
+    brand_primary = models.CharField(_("Brand primary"), max_length=20, default="#3B1614")
+    brand_accent = models.CharField(_("Brand accent"), max_length=20, default="#E86E25")
+    currency_code = models.CharField(_("Currency"), max_length=8, default="UGX")
+    is_published = models.BooleanField(_("Published"), default=True)
+    logo_url = models.CharField(_("Logo URL"), max_length=500, blank=True, default="")
+    cover_image_url = models.CharField(
+        _("Cover image URL"), max_length=500, blank=True, default=""
+    )
+    gallery_images = models.JSONField(_("Gallery images"), default=list, blank=True)
+
+    class Meta:
+        verbose_name = _("Digital menu publication")
+        verbose_name_plural = _("Digital menu publications")
+        ordering = ["title"]
+
+    def __str__(self):
+        return f"{self.title} ({self.slug})"
+
+
+class DigitalMenuSection(BaseModel):
+    publication = models.ForeignKey(
+        DigitalMenuPublication,
+        on_delete=models.CASCADE,
+        related_name="sections",
+    )
+    name = models.CharField(_("Section name"), max_length=120)
+    subtitle = models.CharField(_("Subtitle"), max_length=300, blank=True, default="")
+    display_order = models.PositiveIntegerField(_("Display order"), default=0)
+    accent_color = models.CharField(
+        _("Accent color"), max_length=20, blank=True, default="#FACC15"
+    )
+    image_url = models.CharField(
+        _("Section image URL"), max_length=500, blank=True, default=""
+    )
+
+    class Meta:
+        verbose_name = _("Digital menu section")
+        verbose_name_plural = _("Digital menu sections")
+        ordering = ["display_order", "name"]
+        unique_together = [("publication", "name")]
+
+    def __str__(self):
+        return self.name
+
+
+class DigitalMenuLine(BaseModel):
+    section = models.ForeignKey(
+        DigitalMenuSection,
+        on_delete=models.CASCADE,
+        related_name="lines",
+    )
+    name = models.CharField(_("Item name"), max_length=200)
+    description = models.CharField(
+        _("Description"), max_length=500, blank=True, default=""
+    )
+    price = models.DecimalField(_("Price"), max_digits=12, decimal_places=2)
+    price_note = models.CharField(
+        _("Price note"),
+        max_length=80,
+        blank=True,
+        default="",
+        help_text=_('e.g. "@" for per-piece pricing'),
+    )
+    is_featured = models.BooleanField(_("Featured"), default=False)
+    display_order = models.PositiveIntegerField(_("Display order"), default=0)
+
+    class Meta:
+        verbose_name = _("Digital menu line")
+        verbose_name_plural = _("Digital menu lines")
+        ordering = ["display_order", "name"]
+
+    def __str__(self):
+        return self.name
+
