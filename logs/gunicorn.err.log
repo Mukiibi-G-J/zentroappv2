@@ -428,3 +428,16 @@ TenantJWTMiddleware: tenant 'pimewise' not found (Origin/Referer)
 TenantJWTMiddleware: tenant 'pimewise' not found (Origin/Referer)
 TenantJWTMiddleware: tenant 'pimewise' not found (Origin/Referer)
 TenantJWTMiddleware: tenant 'pimewise' not found (Origin/Referer)
+[2026-07-19 13:45:23 +0000] [456985] [INFO] Handling signal: term
+[2026-07-19 16:45:23 +0300] [459893] [INFO] Worker exiting (pid: 459893)
+[2026-07-19 16:45:23 +0300] [456988] [INFO] Worker exiting (pid: 456988)
+[2026-07-19 13:45:29 +0000] [456985] [INFO] Shutting down: Master
+[2026-07-19 13:45:51 +0000] [476671] [INFO] Starting gunicorn 23.0.0
+[2026-07-19 13:45:51 +0000] [476671] [INFO] Listening at: http://127.0.0.1:8002 (476671)
+[2026-07-19 13:45:51 +0000] [476671] [INFO] Using worker: sync
+[2026-07-19 13:45:51 +0000] [476672] [INFO] Booting worker with pid: 476672
+[2026-07-19 13:45:51 +0000] [476673] [INFO] Booting worker with pid: 476673
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(

@@ -146,7 +146,9 @@ jobs:
           username: ${{ secrets.DO_USER }}
           key: ${{ secrets.DO_SSH_KEY }}
           script_stop: true
-          command_timeout: 20m
+          # Full migrate_schemas across ~30+ restored tenants often exceeds 20m
+          # (e.g. sales.0023 ALTER on large ledger tables). Keep API boot first.
+          command_timeout: 90m
           script: |
             set -euo pipefail
             export PATH="/root/.local/bin:${PATH}"
@@ -157,21 +159,37 @@ jobs:
             uv pip install -r backend/requirements.txt
             cd backend
             export DJANGO_SETTINGS_MODULE=core.settingsprod
+            # Avoid atexit template rebuild during bulk migrate (seed_pages can fail
+            # on restored schemas and is not required for API boot).
+            export DISABLE_TEMPLATE_REBUILD=1
+
+            echo "=== Shared migrations ==="
             python manage.py migrate_schemas --shared
-            python manage.py migrate_schemas
+
+            echo "=== Pilot tenant (primewise) ==="
+            python manage.py migrate_schemas --schema=primewise --tenant
+
             python manage.py collectstatic --noinput
             cp /root/projects/zentro-appv2/deploy/supervisor/*.conf /etc/supervisor/conf.d/
-            supervisorctl reread
-            supervisorctl update
+            supervisorctl reread || true
+            supervisorctl update || true
             supervisorctl restart zentrov2 zentrov2-celery zentrov2-celery-beat
             supervisorctl status zentrov2 zentrov2-celery zentrov2-celery-beat
+
             for i in 1 2 3 4 5; do
-              if curl -fsS -H "Host: zentroapp-api.uncodedsolutions.com" http://127.0.0.1:8002/admin/login/ -o /dev/null; then
+              if curl -fsS -H "Host: zentroapp-backend.com" http://127.0.0.1:8002/admin/login/ -o /dev/null; then
                 echo "API is healthy"
-                exit 0
+                break
               fi
               echo "Waiting for API... ($i/5)"
               sleep 5
+              if [ "$i" -eq 5 ]; then
+                echo "Health check failed"
+                exit 1
+              fi
             done
-            echo "Health check failed"
-            exit 1
+
+            echo "=== Remaining tenant migrations ==="
+            python manage.py migrate_schemas
+            echo "Deploy complete"
+ 
