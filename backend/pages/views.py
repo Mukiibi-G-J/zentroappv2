@@ -8,7 +8,7 @@ import re
 import uuid
 import urllib.parse
 
-from django.db.models import Sum, Avg, Max, Min, Value
+from django.db.models import Sum, Avg, Max, Min, Value, OuterRef, Subquery, Q
 from django.db.models.functions import TruncMonth, Coalesce
 from django.utils import timezone
 from django_tenants.utils import schema_context
@@ -338,6 +338,12 @@ class TableRelationsView(APIView):
                 source_table=source_table,
                 field_name=field.name,
                 record_values=record_values,
+            )
+            qs = _filter_sales_item_relation_qs(
+                qs,
+                source_table=source_table,
+                model=model,
+                request=request,
             )
 
             results = []
@@ -2186,6 +2192,108 @@ def _filter_payment_method_relation_qs(qs, *, source_table: str | None, field_na
     return qs.exclude(code='NOT_PAID')
 
 
+_SALES_LINE_ITEM_SOURCE_TABLES = frozenset({
+    'SalesInvoiceLine',
+    'SalesOrderLine',
+})
+
+
+def _item_on_hand_for_sales(item, request) -> Decimal | None:
+    """Branch-aware on-hand qty for Inventory items; None for Service / Non-Inventory."""
+    from items.enums import InventoryType
+    from items.models import ItemLedgerEntries
+
+    if getattr(item, 'type', None) in (
+        InventoryType.Service.value,
+        InventoryType.NonInventory.value,
+    ):
+        return None
+
+    ile = ItemLedgerEntries.objects.filter(item=item)
+    try:
+        from financials.models import GeneralLedgerSetup
+
+        gl_setup = GeneralLedgerSetup.objects.first()
+        if gl_setup and getattr(gl_setup, 'enable_multiple_branches', False) and request:
+            from dimension.branch_filter import get_branch_for_request
+
+            branch = None
+            try:
+                branch = get_branch_for_request(request)
+            except Exception:
+                branch = None
+            if not branch:
+                branch = getattr(getattr(request, 'user', None), 'global_dimension_1', None)
+            if branch:
+                ile = ile.filter(global_dimension_1=branch)
+    except Exception:
+        pass
+    return ile.aggregate(total=Sum('remaining_quantity'))['total'] or 0
+
+
+def _validate_sales_line_item_in_stock(item, request, *, previous_item=None) -> None:
+    """Block assigning blocked or out-of-stock inventory items on sales lines."""
+    if item is None:
+        return
+    if previous_item is not None and getattr(previous_item, 'pk', None) == getattr(item, 'pk', None):
+        return
+    name = getattr(item, 'item_name', None) or getattr(item, 'no', 'Item')
+    if getattr(item, 'blocked', False):
+        raise ValueError(f'{name} is blocked and cannot be sold.')
+    on_hand = _item_on_hand_for_sales(item, request)
+    if on_hand is not None and on_hand <= 0:
+        raise ValueError(f'{name} is out of stock and cannot be selected.')
+
+
+def _filter_sales_item_relation_qs(qs, *, source_table: str | None, model, request):
+    """Hide blocked / out-of-stock Inventory items from sales line Item pickers."""
+    if model.__name__ != 'Item':
+        return qs
+    if source_table not in _SALES_LINE_ITEM_SOURCE_TABLES:
+        return qs
+
+    from items.enums import InventoryType
+    from items.models import ItemLedgerEntries
+
+    qs = qs.filter(blocked=False)
+
+    ile_qs = ItemLedgerEntries.objects.filter(item=OuterRef('pk'))
+    try:
+        from financials.models import GeneralLedgerSetup
+
+        gl_setup = GeneralLedgerSetup.objects.first()
+        if gl_setup and getattr(gl_setup, 'enable_multiple_branches', False) and request:
+            from dimension.branch_filter import get_branch_for_request
+
+            branch = get_branch_for_request(request)
+            if not branch:
+                branch = getattr(request.user, 'global_dimension_1', None)
+            if branch:
+                ile_qs = ile_qs.filter(global_dimension_1=branch)
+    except Exception:
+        pass
+
+    on_hand = (
+        ile_qs.values('item')
+        .annotate(total=Sum('remaining_quantity'))
+        .values('total')
+    )
+    on_hand_field = django_models.DecimalField(max_digits=28, decimal_places=5)
+    qs = qs.annotate(
+        _sales_on_hand=Coalesce(
+            Subquery(on_hand, output_field=on_hand_field),
+            Value(0, output_field=on_hand_field),
+        ),
+    )
+    non_stock = [
+        InventoryType.Service.value,
+        InventoryType.NonInventory.value,
+    ]
+    return qs.filter(
+        Q(type__in=non_stock) | Q(_sales_on_hand__gt=0),
+    )
+
+
 def _validate_purchase_invoice_payment_method(vendor, payment_method) -> None:
     if payment_method is None:
         return
@@ -3531,7 +3639,7 @@ class PageDataView(APIView):
                     'location_code',
                 ).order_by('id')
             elif source_table == 'PurchaseInvoice':
-                qs = qs.select_related('vendor').order_by('-document_date', '-id')
+                qs = qs.select_related('vendor').order_by('-posting_date', '-id')
             elif source_table == 'PostedPurchaseInvoice':
                 qs = qs.select_related('vendor').order_by('-posting_date', '-id')
             elif source_table == 'ItemLedgerEntries':
@@ -3972,6 +4080,10 @@ class PageDataRecordView(APIView):
                         defaults = _apply_item_line_defaults_to_payload(defaults, model=model)
                         if model.__name__ in ('SalesInvoiceLine', 'SalesOrderLine'):
                             defaults = _apply_sales_line_item_price_defaults(defaults)
+                        if model.__name__ in _SALES_LINE_ITEM_SOURCE_TABLES:
+                            _validate_sales_line_item_in_stock(
+                                defaults.get('item', value), request,
+                            )
                     if model.__name__ in (
                         'PaymentLine', 'CashReceiptJournalLine', 'GeneralJournalLine',
                     ):
@@ -4101,6 +4213,15 @@ class PageDataRecordView(APIView):
                             ):
                                 _validate_purchase_invoice_payment_method(
                                     getattr(obj, 'vendor', None), value,
+                                )
+                            if (
+                                field_name == 'item'
+                                and model.__name__ in _SALES_LINE_ITEM_SOURCE_TABLES
+                            ):
+                                _validate_sales_line_item_in_stock(
+                                    value,
+                                    request,
+                                    previous_item=getattr(obj, 'item', None),
                                 )
                             setattr(obj, field_name, value)
                             extra_fields = None
