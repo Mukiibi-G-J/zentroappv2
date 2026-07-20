@@ -12,6 +12,7 @@ from permissions.table_permissions import SOURCE_TABLE_PAGE_ALIASES
 NAV_PAGE_ALIASES: dict[str, list[str]] = {
     'PostedPurchaseInvoiceList': ['PurchaseInvoiceList', 'PostedPurchaseInvoice'],
     'PostedSalesInvoiceList': ['SalesInvoiceList', 'PostedSalesInvoice'],
+    'PaymentHistoryList': ['ExpenseList', 'ExpenseCard'],
 }
 
 

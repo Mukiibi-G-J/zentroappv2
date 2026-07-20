@@ -16,6 +16,7 @@ import {
   type QuickRangeKey,
   type SalesUserSummaryRow,
 } from '@/lib/postedSalesHistory'
+import { useLocalCurrencyCode } from '@/hooks/useLocalCurrencyCode'
 
 interface Props {
   pageId: number
@@ -43,6 +44,7 @@ export default function PostedSalesHistoryPanel({
 }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const currencyCode = useLocalCurrencyCode()
 
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -220,7 +222,7 @@ export default function PostedSalesHistoryPanel({
       <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-gray-100">
         <StatPill
           label="Sales"
-          value={loadingSummary ? '…' : formatSalesCurrency(totals.total_sales)}
+          value={loadingSummary ? '…' : formatSalesCurrency(totals.total_sales, currencyCode)}
           tone="green"
         />
         <StatPill
@@ -264,7 +266,7 @@ export default function PostedSalesHistoryPanel({
                 userSummaries.map((row, i) => (
                   <tr key={`${row.user_id ?? 'u'}-${i}`}>
                     <td className="px-3 py-1.5 text-mainTextColor">{row.user_name}</td>
-                    <td className="px-3 py-1.5 text-right font-medium">{formatSalesCurrency(row.total_sales)}</td>
+                    <td className="px-3 py-1.5 text-right font-medium">{formatSalesCurrency(row.total_sales, currencyCode)}</td>
                     <td className="px-3 py-1.5 text-right text-bodyText">{row.total_invoices}</td>
                   </tr>
                 ))

@@ -173,7 +173,7 @@ class Command(BaseCommand):
                 10402,
                 "Payment History",
                 "payments",
-                "Posted payment history and transaction records",
+                "Posted expenses (payment history)",
                 "/app/payments/payment-history",
             ),
             (

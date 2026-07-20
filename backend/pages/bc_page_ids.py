@@ -106,6 +106,7 @@ ZENTRO_PAGE_REGISTRY: dict[str, tuple[int, str]] = {
     'AccountingRC': (10518, 'financials'),
     'ExpenseList': (10520, 'expenses'),
     'ExpenseCard': (10521, 'expenses'),
+    'PaymentHistoryList': (10522, 'expenses'),
     # ── Bank / dimensions / no. series (10600) ────────────────────────────────
     'BankAccountList': (10601, 'bankAccount'),
     'BankAccountCard': (10602, 'bankAccount'),

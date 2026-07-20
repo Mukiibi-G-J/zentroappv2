@@ -202,6 +202,7 @@ export default function CompanyModulesPanel() {
       const response = await updateCompanyLocalCurrency(localCurrencyCode)
       const saved = response.settings?.localCurrencyCode ?? localCurrencyCode
       setLocalCurrencyCode(saved)
+      await refreshSession()
       toast.success('Local currency saved')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to save currency')

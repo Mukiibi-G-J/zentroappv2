@@ -30,11 +30,11 @@ export interface SalesUserSummaryRow {
   total_invoices: number
 }
 
-export function formatSalesCurrency(value: number): string {
+export function formatSalesCurrency(value: number, currencyCode?: string | null): string {
   const n = Number(value) || 0
-  if (n >= 1_000_000) return `UGX ${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `UGX ${Math.round(n / 1_000).toLocaleString()}K`
-  return `UGX ${Math.round(n).toLocaleString()}`
+  const code = (currencyCode || '').trim().toUpperCase()
+  const amount = Math.round(n).toLocaleString()
+  return code ? `${code} ${amount}` : amount
 }
 
 /** Map page-engine list scope filters to /api/sales/summary/ query params. */

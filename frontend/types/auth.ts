@@ -53,6 +53,8 @@ export interface AuthSession {
   roleCentrePageId: number | null
   navItems: AuthNavItem[]
   branch?: AuthSessionBranchConfig
+  /** From General Ledger Setup local currency (LCY). */
+  localCurrencyCode?: string
   enabledModules?: string[]
   planName?: string | null
   planBranches?: string | null

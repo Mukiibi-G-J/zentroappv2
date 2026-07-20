@@ -161,6 +161,14 @@ def build_auth_session_payload(user, request=None) -> dict:
         except (ValueError, AttributeError):
             avatar_url = None
 
+    local_currency_code = 'UGX'
+    try:
+        from financials.currency import DEFAULT_LOCAL_CURRENCY_CODE, get_local_currency_code
+
+        local_currency_code = get_local_currency_code() or DEFAULT_LOCAL_CURRENCY_CODE
+    except Exception:
+        pass
+
     payload = {
         'user': {
             'id': user.id,
@@ -188,6 +196,7 @@ def build_auth_session_payload(user, request=None) -> dict:
             user,
         ),
         'branch': _branch_config_for_user(user),
+        'localCurrencyCode': local_currency_code,
         **module_ctx,
     }
 

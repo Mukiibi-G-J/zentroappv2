@@ -697,6 +697,7 @@ def seed():
         drill_down_page=posted_sales_invoice_list,
     )
     expense_card, expense_list = _seed_expense_pages()
+    payment_history_list = _seed_payment_history_list(expense_card)
     item_journal_card, inventory_adj_list, opening_balance_list, _posted_inv_adj_list = (
         _seed_item_journal_pages()
     )
@@ -728,7 +729,7 @@ def seed():
         sales_invoice_list,
         posted_sales_invoice_list,
     )
-    rc_accounting = _seed_accounting_rc(expense_list, payment_list)
+    rc_accounting = _seed_accounting_rc(expense_list, payment_list, payment_history_list)
     rc_warehouse = _seed_warehouse_rc(
         posted_purchase_invoice_list,
         inventory_adj_list,
@@ -747,6 +748,7 @@ def seed():
         payment_method_list,
         expense_list,
         payment_list,
+        payment_history_list,
     )
     rc_debug_admin = _seed_debug_admin_rc(
         sales_order_list=sales_order_list,
@@ -3283,10 +3285,14 @@ def _seed_expense_pages() -> tuple[Page, Page]:
             'modify_allowed': True,
             'card_page': expense_card,
             'title_field': 'document_no',
+            'list_filter_field': 'status',
+            'list_filter_value': 'Open',
         },
     )
     expense_list.card_page = expense_card
-    expense_list.save(update_fields=['card_page'])
+    expense_list.list_filter_field = 'status'
+    expense_list.list_filter_value = 'Open'
+    expense_list.save(update_fields=['card_page', 'list_filter_field', 'list_filter_value'])
 
     list_ctrl, _ = PageControl.objects.get_or_create(
         page=expense_list,
@@ -3329,6 +3335,39 @@ def _seed_expense_pages() -> tuple[Page, Page]:
     )
 
     return expense_card, expense_list
+
+
+def _seed_payment_history_list(expense_card: Page) -> Page:
+    """Payment History — posted expenses (Expense status=Posted)."""
+    return _seed_status_filtered_list_page(
+        name='PaymentHistoryList',
+        caption='Payment History',
+        source_table='Expense',
+        card_page=expense_card,
+        title_field='document_no',
+        control_name='PaymentHistoryListControl',
+        filter_field='status',
+        filter_value='Posted',
+        list_fields=[
+            dict(name='document_no', caption='Document No.', field_type='Code', visible=True,
+                 editable=False, primary_key=True, tab_index=0, freeze_column=True),
+            dict(name='posting_date', caption='Posting Date', field_type='Date', visible=True,
+                 editable=False, primary_key=False, tab_index=1),
+            dict(name='expense_type__name', caption='Expense Type', field_type='Text', visible=True,
+                 editable=False, primary_key=False, tab_index=2),
+            dict(name='description', caption='Description', field_type='Text', visible=True,
+                 editable=False, primary_key=False, tab_index=3),
+            dict(name='amount', caption='Amount', field_type='Integer', visible=True,
+                 editable=False, primary_key=False, tab_index=4),
+            dict(name='payment_method', caption='Payment Method', field_type='Code', visible=True,
+                 editable=False, primary_key=False, tab_index=5,
+                 has_table_relation=True, related_table='PaymentMethod', related_field='code',
+                 related_display_field='description'),
+            dict(name='status', caption='Status', field_type='Enum', visible=True,
+                 editable=False, primary_key=False, tab_index=6,
+                 enum_values='Open,Posted,Reversed'),
+        ],
+    )
 
 
 def _seed_item_journal_pages() -> tuple[Page, Page, Page, Page]:
@@ -4857,6 +4896,7 @@ def _seed_role_centre_pages(
         ('NavFinancialReports', 'Financial Reports', 'FinancialReportList', 'FileChart', 'Finance'),
         ('NavPaymentMethods', 'Payment Methods', 'PaymentMethodList', 'Wallet', 'Finance'),
         ('NavExpenses', 'Expenses', 'ExpenseList', 'Receipt', 'Finance'),
+        ('NavPaymentHistory', 'Payment History', 'PaymentHistoryList', 'FileCheck', 'Finance'),
         ('NavPayments', 'Payments', 'PaymentJournalList', 'CreditCard', 'Finance'),
         ('NavCashReceiptJournal', 'Cash Receipt Journal', 'CashReceiptJournal', 'BookOpen', 'Finance'),
         ('NavGeneralJournal', 'General Journals', 'GeneralJournal', 'BookOpen', 'Finance'),
@@ -4922,6 +4962,7 @@ def _seed_debug_admin_rc(
         ('NavFinancialReports', 'Financial Reports', 'FinancialReportList', 'FileChart', 'Finance'),
         ('NavPaymentMethods', 'Payment Methods', 'PaymentMethodList', 'Wallet', 'Finance'),
         ('NavExpenses', 'Expenses', 'ExpenseList', 'Receipt', 'Finance'),
+        ('NavPaymentHistory', 'Payment History', 'PaymentHistoryList', 'FileCheck', 'Finance'),
         ('NavPayments', 'Payments', 'PaymentJournalList', 'CreditCard', 'Finance'),
         ('NavCashReceiptJournal', 'Cash Receipt Journal', 'CashReceiptJournal', 'BookOpen', 'Finance'),
         ('NavGeneralJournal', 'General Journals', 'GeneralJournal', 'BookOpen', 'Finance'),
@@ -5769,7 +5810,11 @@ def _seed_sales_manager_rc(
     return rc
 
 
-def _seed_accounting_rc(expense_list: Page, payment_list: Page) -> Page:
+def _seed_accounting_rc(
+    expense_list: Page,
+    payment_list: Page,
+    payment_history_list: Page | None = None,
+) -> Page:
     rc = _create_role_centre_shell('AccountingRC', 'Accounting')
 
     _seed_accounting_headlines(rc, expense_list=expense_list)
@@ -5799,10 +5844,11 @@ def _seed_accounting_rc(expense_list: Page, payment_list: Page) -> Page:
     )
     _seed_cue(
         page=rc, cue_group=expense_cue_group, name='RCCuePostedExpenses',
-        caption='Posted Expenses', tab_index=1,
+        caption='Payment History', tab_index=1,
         cue_source_table='Expense', cue_aggregate='count',
         cue_filter_field='status', cue_filter_value='Posted',
-        cue_style='Favorable', drill_down_page=expense_list,
+        cue_style='Favorable',
+        drill_down_page=payment_history_list or expense_list,
         threshold_warning=None, threshold_danger=None,
     )
 
@@ -5829,6 +5875,7 @@ def _seed_accounting_rc(expense_list: Page, payment_list: Page) -> Page:
     _seed_rc_nav_actions(rc, [
         ('NavHome', 'Home', '', 'Home', 'General'),
         ('NavExpenses', 'Expenses', 'ExpenseList', 'Receipt', 'Finance'),
+        ('NavPaymentHistory', 'Payment History', 'PaymentHistoryList', 'FileCheck', 'Finance'),
         ('NavPayments', 'Payments', 'PaymentJournalList', 'CreditCard', 'Finance'),
         ('NavBankAccounts', 'Bank Accounts', 'BankAccountList', 'Landmark', 'Finance'),
         ('NavChartOfAccounts', 'Chart of Accounts', 'GLAccountList', 'ListTree', 'Finance'),
@@ -6093,6 +6140,7 @@ def _seed_operations_manager_rc(
     payment_method_list: Page | None = None,
     expense_list: Page | None = None,
     payment_list: Page | None = None,
+    payment_history_list: Page | None = None,
 ) -> Page:
     """Operations Manager Role Centre — nav-only home (no financial/sales dashboard cues)."""
     rc = _create_role_centre_shell('OperationsManagerRC', 'Operations Manager')
@@ -6133,6 +6181,8 @@ def _seed_operations_manager_rc(
         nav_specs.insert(-2, ('NavPaymentMethods', 'Payment Methods', 'PaymentMethodList', 'Wallet', 'Payments'))
     if expense_list:
         nav_specs.insert(-2, ('NavExpenses', 'Expenses', 'ExpenseList', 'Receipt', 'Finance'))
+    if payment_history_list:
+        nav_specs.insert(-2, ('NavPaymentHistory', 'Payment History', 'PaymentHistoryList', 'FileCheck', 'Finance'))
     if payment_list:
         nav_specs.insert(-2, ('NavPayments', 'Payments', 'PaymentJournalList', 'CreditCard', 'Finance'))
 

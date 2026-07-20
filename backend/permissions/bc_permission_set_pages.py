@@ -232,6 +232,7 @@ BC_PERMISSION_SET_PAGES: list[tuple[str, str, str, list[tuple[str, str]]]] = [
         [
             ('ExpenseList', 'RIMD'),
             ('ExpenseCard', 'RIMD'),
+            ('PaymentHistoryList', 'R'),
         ],
     ),
     (
@@ -241,6 +242,7 @@ BC_PERMISSION_SET_PAGES: list[tuple[str, str, str, list[tuple[str, str]]]] = [
         [
             ('ExpenseList', 'RI'),
             ('ExpenseCard', 'RI'),
+            ('PaymentHistoryList', 'R'),
         ],
     ),
     (

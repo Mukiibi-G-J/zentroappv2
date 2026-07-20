@@ -42,6 +42,7 @@ _PAGE_NAME_MODULE_OVERRIDES: dict[str, str | None] = {
     "PaymentCard": "payments",
     "ExpenseList": "expenses",
     "ExpenseCard": "expenses",
+    "PaymentHistoryList": "expenses",
     "BankAccountList": "bank_accounts",
     "BankAccountCard": "bank_accounts",
     "GLAccountList": "financials",

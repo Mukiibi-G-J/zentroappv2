@@ -79,8 +79,9 @@ function ProductTile({
   onSelect: (p: POSProduct) => void
   compact?: boolean
 }) {
-  const outOfStock =
-    product.type === 'Inventory' && product.inventory != null && product.inventory <= 0
+  const isInventory = product.type === 'Inventory' || product.type == null
+  const qty = product.inventory
+  const outOfStock = isInventory && qty != null && qty <= 0
 
   return (
     <button
@@ -93,10 +94,20 @@ function ProductTile({
     >
       <span className="line-clamp-2 text-sm font-medium text-mainTextColor">{product.item_name}</span>
       <span className="mt-1 text-xs text-bodyText">{product.no}</span>
-      <span className="mt-auto pt-2 text-sm font-semibold text-primary">
-        {formatDecimalDisplay(product.unit_price)}
-      </span>
-      {outOfStock && <span className="text-xs text-red-600">Out of stock</span>}
+      <div className="mt-auto flex items-end justify-between gap-2 pt-2">
+        <span className="text-sm font-semibold text-primary">
+          {formatDecimalDisplay(product.unit_price)}
+        </span>
+        {isInventory && qty != null ? (
+          <span
+            className={`shrink-0 text-xs font-medium ${
+              outOfStock ? 'text-red-600' : qty <= 5 ? 'text-amber-600' : 'text-bodyText'
+            }`}
+          >
+            {outOfStock ? 'Out of stock' : `Qty ${formatDecimalDisplay(qty)}`}
+          </span>
+        ) : null}
+      </div>
     </button>
   )
 }
