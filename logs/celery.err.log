@@ -4999,3 +4999,17 @@ User information: uid=0 euid=0 gid=0 egid=0
 [2026-07-19 16:46:20,069: INFO/MainProcess] mingle: searching for neighbors
 [2026-07-19 16:46:21,126: INFO/MainProcess] mingle: all alone
 [2026-07-19 16:46:21,162: INFO/MainProcess] celery@ubuntu-s-1vcpu-2gb-fra1-01 ready.
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/celery/platforms.py:829: SecurityWarning: You're running the worker with superuser privileges: this is
+absolutely not recommended!
+
+Please specify a different user using the --uid option.
+
+User information: uid=0 euid=0 gid=0 egid=0
+
+  warnings.warn(SecurityWarning(ROOT_DISCOURAGED.format(
+[2026-07-20 20:10:15,179: INFO/MainProcess] Connected to redis://127.0.0.1:6379/4
+[2026-07-20 20:10:15,207: INFO/MainProcess] mingle: searching for neighbors
+[2026-07-20 20:10:16,306: INFO/MainProcess] mingle: all alone
+[2026-07-20 20:10:16,356: INFO/MainProcess] celery@ubuntu-s-1vcpu-2gb-fra1-01 ready.

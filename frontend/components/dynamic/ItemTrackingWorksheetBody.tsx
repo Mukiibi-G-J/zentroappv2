@@ -190,10 +190,17 @@ export default function ItemTrackingWorksheetBody({
     () => ({
       purchase_invoice_line: context.purchaseInvoiceLineId,
       purchase_invoice: context.purchaseInvoiceId,
+      // Keep item in sync with the invoice line (backend also enforces this on save).
+      item: context.itemNo,
       quantity_base: summary.remaining_quantity > 0 ? summary.remaining_quantity : 1,
       description: '',
     }),
-    [context.purchaseInvoiceId, context.purchaseInvoiceLineId, summary.remaining_quantity],
+    [
+      context.itemNo,
+      context.purchaseInvoiceId,
+      context.purchaseInvoiceLineId,
+      summary.remaining_quantity,
+    ],
   )
 
   return (

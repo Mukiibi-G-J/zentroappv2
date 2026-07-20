@@ -402,13 +402,11 @@ class PurchaseInvoiceLine(BaseModel):
 
     @property
     def tracking_specifications(self):
-        """Get tracking specifications for this line"""
+        """Tracking specs for this line (linked by line FK; item is synced on save)."""
         from items.models import TrackingSpecification
 
         return TrackingSpecification.objects.filter(
-            purchase_invoice=self.purchase_invoice,
             purchase_invoice_line=self,
-            item=self.item,
         )
 
     # def __str__(self):

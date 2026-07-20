@@ -339,3 +339,30 @@ DEBUG: Saving SalesInvoice with status: Open
 being called
 DEBUG: Saving SalesInvoice with status: Posted
 PSIN-000001
+payables_account Vendors, Domestic - 5410
+{'serial_no': False, 'lot_no': True, 'expiry_date': True}
+payables_account Vendors, Domestic - 5410
+{'serial_no': False, 'lot_no': True, 'expiry_date': True}
+payables_account Vendors, Domestic - 5410
+{'serial_no': False, 'lot_no': True, 'expiry_date': True}
+payables_account Vendors, Domestic - 5410
+{'serial_no': False, 'lot_no': True, 'expiry_date': True}
+DEBUG: Creating sales invoice with data: {'customer': <Customer: General>, 'document_date': datetime.date(2026, 7, 20), 'posting_date': datetime.date(2026, 7, 20), 'status': 'Open', 'amount_received': 25500, 'change_amount': 0, 'payment_method': <PaymentMethod: CASH - Cash Cust.>, 'invoice_discount_type': None, 'invoice_discount_amount': Decimal('0.00'), 'invoice_discount_percentage': Decimal('0.00'), 'global_dimension_1': <DimensionValue: CENTRAL>, 'dimension_set': <DimensionSet: DimensionSet object (1)>}
+DEBUG: Status in validated_data: Open
+DEBUG: Lines data: [{'id': 1, 'item': 'ITM-000694', 'item_no': 'ITM-000694', 'item_name': 'Universal liniment', 'quantity': '1', 'unit_price': '5000.00', 'total_amount': '5000', 'line_discount_amount': '0', 'unit_of_measure': 'PCS', 'tracking_code': '679889', 'description': ''}, {'id': 2, 'item': 'ITM-000414', 'item_no': 'ITM-000414', 'item_name': 'Iodine tincture- 15ml', 'quantity': '1', 'unit_price': '3000.00', 'total_amount': '3000', 'line_discount_amount': '0', 'unit_of_measure': 'PCS', 'tracking_code': '795', 'description': ''}, {'id': 3, 'item': 'ITM-000709', 'item_no': 'ITM-000709', 'item_name': 'Vitamin C 100mg tabs', 'quantity': '40', 'unit_price': '100.00', 'total_amount': '4000', 'line_discount_amount': '0', 'unit_of_measure': 'PCS', 'tracking_code': '03025', 'description': ''}, {'id': 4, 'item': 'ITM-000407', 'item_no': 'ITM-000407', 'item_name': 'Ibuprofen 200mg Tabs', 'quantity': '40', 'unit_price': '50.00', 'total_amount': '2000', 'line_discount_amount': '0', 'unit_of_measure': 'PCS', 'tracking_code': '89w9i0d', 'description': ''}, {'id': 5, 'item': 'ITM-000572', 'item_no': 'ITM-000572', 'item_name': 'Paracetamol 500mg tabs', 'quantity': '50', 'unit_price': '50.00', 'total_amount': '2500', 'line_discount_amount': '0', 'unit_of_measure': 'PCS', 'tracking_code': '678iuy', 'description': ''}, {'id': 6, 'item': 'ITM-000459', 'item_no': 'ITM-000459', 'item_name': 'Loperamide 2mg caps', 'quantity': '20', 'unit_price': '100.00', 'total_amount': '2000', 'line_discount_amount': '0', 'unit_of_measure': 'PCS', 'tracking_code': '892398weiuv', 'description': ''}, {'id': 7, 'item': 'ITM-000469', 'item_no': 'ITM-000469', 'item_name': 'Magnesium trisilicate 250mg tabs', 'quantity': '40', 'unit_price': '50.00', 'total_amount': '2000', 'line_discount_amount': '0', 'unit_of_measure': 'PCS', 'tracking_code': 'iusadkjzcx', 'description': ''}, {'id': 8, 'item': 'ITM-000494', 'item_no': 'ITM-000494', 'item_name': 'Metronidazole 200mg tabs- film coated', 'quantity': '60', 'unit_price': '50.00', 'total_amount': '3000', 'line_discount_amount': '0', 'unit_of_measure': 'PCS', 'tracking_code': '902okasm', 'description': ''}, {'id': 9, 'item': 'ITM-000331', 'item_no': 'ITM-000331', 'item_name': 'Finger plasters', 'quantity': '8', 'unit_price': '250.00', 'total_amount': '2000', 'line_discount_amount': '0', 'unit_of_measure': 'PCS', 'tracking_code': '7r59tj', 'description': ''}]
+being called
+SIN-000001
+DEBUG: Saving SalesInvoice with status: Open
+being called
+DEBUG: Saving SalesInvoice with status: Posted
+PSIN-000001
+payables_account Vendors, Domestic - 5410
+{'serial_no': False, 'lot_no': True, 'expiry_date': True}
+payables_account Vendors, Domestic - 5410
+{'serial_no': False, 'lot_no': True, 'expiry_date': True}
+Process returned: <class 'dict'>
+Success: False, Message: Error processing invoice: Item Determine strips requires tracking specifications
+payables_account Vendors, Domestic - 5410
+{'serial_no': False, 'lot_no': True, 'expiry_date': True}
+payables_account Vendors, Domestic - 5410
+{'serial_no': False, 'lot_no': True, 'expiry_date': True}

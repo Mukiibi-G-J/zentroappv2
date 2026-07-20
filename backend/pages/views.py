@@ -2511,9 +2511,11 @@ def _apply_tracking_specification_defaults(payload: dict, request) -> dict:
             .first()
         )
         if line:
+            # Always overwrite — never keep a stale/wrong item from the client.
             payload['purchase_invoice'] = line.purchase_invoice
             payload['purchase_invoice_line'] = line
-            payload['item'] = line.item
+            if line.item_id:
+                payload['item'] = line.item
             if line.location_code_id:
                 payload['location_code'] = line.location_code
     if not payload.get('location_code'):

@@ -2268,17 +2268,26 @@ class TrackingSpecification(BaseModel):
             raise ValidationError(
                 "Purchase Invoice Line, Sales Invoice Line or Item Journal is required"
             )
-        # # Calculate expected quantity based on purchase line
-        # t_quantity = (
-        #     self.purchase_invoice_line.quantity *
-        #     self.purchase_invoice_line.item_unit_of_measure.quantity_per_unit
-        # )
-        # # # Validate quantity matches
-        # if self.quantity_base > expected_quantity:
-        #     raise ValidationError(
-        #         f"Quantity in tracking specification must match purchase line quantity. "
-        #         f"Expected: {int(expected_quantity)}, Got: {int(self.quantity_base)}"
-        #     )
+
+        # Keep parent + item in sync with the source document line/journal.
+        # Worksheet creates can omit item; a stale/wrong item FK makes posting
+        # think tracking is missing (filter used to require item=line.item).
+        if self.purchase_invoice_line_id:
+            line = self.purchase_invoice_line
+            if line.purchase_invoice_id:
+                self.purchase_invoice_id = line.purchase_invoice_id
+            if line.item_id:
+                self.item_id = line.item_id
+        elif self.sales_invoice_line_id:
+            line = self.sales_invoice_line
+            if line.sales_invoice_id:
+                self.sales_invoice_id = line.sales_invoice_id
+            if getattr(line, 'item_id', None):
+                self.item_id = line.item_id
+        elif self.item_journal_id:
+            journal = self.item_journal
+            if getattr(journal, 'item_id', None):
+                self.item_id = journal.item_id
 
         if self.purchase_invoice_line:
             self.quantity_base = _validate_purchase_tracking_quantity(

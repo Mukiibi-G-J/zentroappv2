@@ -441,3 +441,41 @@ TenantJWTMiddleware: tenant 'pimewise' not found (Origin/Referer)
   warnings.warn(
 /root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
   warnings.warn(
+[2026-07-20 17:09:33 +0000] [596193] [INFO] Starting gunicorn 23.0.0
+[2026-07-20 17:09:33 +0000] [596193] [INFO] Listening at: http://127.0.0.1:8002 (596193)
+[2026-07-20 17:09:33 +0000] [596193] [INFO] Using worker: sync
+[2026-07-20 17:09:33 +0000] [596195] [INFO] Booting worker with pid: 596195
+[2026-07-20 17:09:33 +0000] [596196] [INFO] Booting worker with pid: 596196
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+[2026-07-20 17:11:28 +0000] [596193] [INFO] Handling signal: term
+[2026-07-20 20:11:29 +0300] [596195] [INFO] Worker exiting (pid: 596195)
+[2026-07-20 20:11:29 +0300] [596196] [INFO] Worker exiting (pid: 596196)
+[2026-07-20 17:11:38 +0000] [596193] [INFO] Shutting down: Master
+[2026-07-20 17:11:39 +0000] [596563] [INFO] Starting gunicorn 23.0.0
+[2026-07-20 17:11:39 +0000] [596563] [INFO] Listening at: http://127.0.0.1:8002 (596563)
+[2026-07-20 17:11:39 +0000] [596563] [INFO] Using worker: sync
+[2026-07-20 17:11:39 +0000] [596565] [INFO] Booting worker with pid: 596565
+[2026-07-20 17:11:39 +0000] [596567] [INFO] Booting worker with pid: 596567
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+[2026-07-20 17:12:59 +0000] [596563] [INFO] Handling signal: term
+[2026-07-20 20:12:59 +0300] [596567] [INFO] Worker exiting (pid: 596567)
+[2026-07-20 20:12:59 +0300] [596565] [INFO] Worker exiting (pid: 596565)
+Sentry is attempting to send 2 pending events
+Waiting up to 2 seconds
+Press Ctrl-C to quit
+[2026-07-20 17:13:07 +0000] [596563] [INFO] Shutting down: Master
+[2026-07-20 17:13:07 +0000] [596916] [INFO] Starting gunicorn 23.0.0
+[2026-07-20 17:13:07 +0000] [596916] [INFO] Listening at: http://127.0.0.1:8002 (596916)
+[2026-07-20 17:13:07 +0000] [596916] [INFO] Using worker: sync
+[2026-07-20 17:13:07 +0000] [596917] [INFO] Booting worker with pid: 596917
+[2026-07-20 17:13:07 +0000] [596918] [INFO] Booting worker with pid: 596918
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
+/root/projects/zentro-appv2/env/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.3.0) or chardet (7.4.3)/charset_normalizer (3.4.1) doesn't match a supported version!
+  warnings.warn(
