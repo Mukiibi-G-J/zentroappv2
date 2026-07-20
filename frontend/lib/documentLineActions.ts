@@ -174,12 +174,18 @@ export function buildGeneralJournalApplyContext(line: DataRecord): ApplyPaymentC
   return buildApplyEntriesContext(line, line, 'general_journal_line')
 }
 
-/** Item no. from a purchase invoice line (unified ``no`` or legacy ``item`` FK). */
+/** Item no. from a document line (unified ``no``, sales ``item`` FK, or legacy ``item``). */
 export function purchaseLineItemNo(line: DataRecord | null | undefined): string {
   if (!line) return ''
   const lineType = String(line.type ?? 'item').trim().toLowerCase()
-  if (lineType !== 'item') return ''
-  return String(line.no ?? line.item ?? '').trim()
+  if (lineType && lineType !== 'item') return ''
+  const raw = line.no ?? line.item
+  if (raw == null || raw === '') return ''
+  if (typeof raw === 'object') {
+    const obj = raw as { no?: unknown; No?: unknown }
+    return String(obj.no ?? obj.No ?? '').trim()
+  }
+  return String(raw).trim()
 }
 
 /** @deprecated Use buildApplyEntriesContext */

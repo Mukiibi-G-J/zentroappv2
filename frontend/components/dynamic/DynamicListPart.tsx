@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
-import { Check, ChevronRight } from 'lucide-react'
+import { Check, ChevronRight, Barcode } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { usePage, usePages } from '@/hooks/usePage'
@@ -26,9 +26,11 @@ import {
   getDependentRelationFields,
   hasContextRelation,
 } from '@/lib/contextRelations'
-import { getItemByNo, itemRequiresTracking } from '@/services/items.service'
+import { getItemByNo, itemRequiresTracking, fetchAllItemLedgerEntries, pickAvailableLots } from '@/services/items.service'
 import type { PurchaseTrackingContext } from '@/types/tracking'
+import type { POSTrackingOption } from '@/types/pos'
 import DynamicTrackingModal from './DynamicTrackingModal'
+import { POSTrackingDialog } from '@/components/pos/POSTrackingDialog'
 import DynamicField from './DynamicField'
 import YesNoSelect from '@/components/ui/YesNoSelect'
 import SearchableRelationSelect from './SearchableRelationSelect'
@@ -151,20 +153,28 @@ export function DynamicListPart({
   const loadedContextOptions = useRef(new Set<string>())
   const [trackingOpen, setTrackingOpen] = useState(false)
   const [trackingContext, setTrackingContext] = useState<PurchaseTrackingContext | null>(null)
+  const [salesLotOpen, setSalesLotOpen] = useState(false)
+  const [salesLotLineId, setSalesLotLineId] = useState<string | null>(null)
+  const [salesLotItemName, setSalesLotItemName] = useState('')
+  const [salesLotOptions, setSalesLotOptions] = useState<POSTrackingOption[]>([])
+  const [salesLotLoading, setSalesLotLoading] = useState(false)
+  const [salesLotSelected, setSalesLotSelected] = useState<string | undefined>(undefined)
 
   const { data: partPageFull } = usePage(partPage.PageId)
   const linePageActions = partPageFull?.PageActions ?? partPage.PageActions ?? []
 
   const isPostedPurchaseSubform = partPage.Name === 'PostedPurchaseInvoiceSubform'
+  const isSalesInvoiceSubform = partPage.Name === 'SalesInvoiceSubform'
 
   const itemTrackingEnabled = useMemo(
-    () => Boolean(
-      documentHeader
-      && linePageActions.some(
+    () => {
+      if (isSalesInvoiceSubform) return true
+      const hasTrackingAction = linePageActions.some(
         (a) => isItemTrackingLinesAction(a) || isPostedItemTrackingLinesAction(a),
-      ),
-    ),
-    [documentHeader, linePageActions],
+      )
+      return Boolean(documentHeader && hasTrackingAction)
+    },
+    [documentHeader, isSalesInvoiceSubform, linePageActions],
   )
 
   const visibleFieldKey = useMemo(
@@ -377,7 +387,8 @@ export function DynamicListPart({
 
   const openTrackingForLine = useCallback(
     async (line: DataRecord, opts?: { auto?: boolean }) => {
-      if (!itemTrackingEnabled || !documentHeader) return
+      if (!itemTrackingEnabled) return
+      if (!isSalesInvoiceSubform && !documentHeader) return
       const itemNo = purchaseLineItemNo(line)
       if (!itemNo) {
         if (!opts?.auto) toast.error('Select a line with an item first')
@@ -391,6 +402,32 @@ export function DynamicListPart({
 
       const expectedQuantity = (Number(line.quantity) || 0)
         * (Number(line.item_unit_of_measure__quantity_per_unit ?? 1) || 1)
+
+      // Sales invoice: pick an existing lot (same UX as POS) into line.tracking_code.
+      if (isSalesInvoiceSubform) {
+        if (linesReadOnly) return
+        setSelectedRowId(line.SystemId)
+        setSalesLotLineId(line.SystemId)
+        setSalesLotItemName(item.item_name)
+        setSalesLotSelected(
+          String(line.tracking_code ?? '').trim() || undefined,
+        )
+        setSalesLotOptions([])
+        setSalesLotLoading(true)
+        setSalesLotOpen(true)
+        try {
+          const entries = await fetchAllItemLedgerEntries(item.no)
+          setSalesLotOptions(pickAvailableLots(entries))
+        } catch {
+          toast.error('Failed to load available lots')
+          setSalesLotOptions([])
+        } finally {
+          setSalesLotLoading(false)
+        }
+        return
+      }
+
+      if (!documentHeader) return
 
       if (isPostedPurchaseSubform) {
         const worksheetPage = await resolvePostedTrackingWorksheetPage()
@@ -451,11 +488,25 @@ export function DynamicListPart({
     [
       documentHeader,
       isPostedPurchaseSubform,
+      isSalesInvoiceSubform,
       itemTrackingEnabled,
       linesReadOnly,
       resolvePostedTrackingWorksheetPage,
       resolveTrackingWorksheetPage,
     ],
+  )
+
+  const selectSalesLot = useCallback(
+    (lotNo: string) => {
+      if (!salesLotLineId) return
+      void lines.updateLineField(salesLotLineId, 'tracking_code', lotNo)
+      setSalesLotOpen(false)
+      setSalesLotLineId(null)
+      setSalesLotOptions([])
+      setSalesLotSelected(undefined)
+      toast.success(`Lot ${lotNo} selected`)
+    },
+    [lines, salesLotLineId],
   )
 
   const itemTrackingActionLabel = useCallback(
@@ -673,6 +724,15 @@ export function DynamicListPart({
       return
     }
     setSelectedRowId(line.SystemId)
+    if (
+      isSalesInvoiceSubform
+      && itemTrackingEnabled
+      && !linesReadOnly
+      && field.Name === 'tracking_code'
+    ) {
+      void openTrackingForLine(line)
+      return
+    }
     commitActiveLineCell()
     focusLineCell(line, field)
   }
@@ -831,12 +891,22 @@ export function DynamicListPart({
       }
     }
     if (itemTrackingEnabled) {
-      for (const action of trackingActionsForLine(effectiveSelectedLine)) {
-        const Icon = resolveRibbonIcon(action.ImageUrl)
+      const trackingActions = trackingActionsForLine(effectiveSelectedLine)
+      if (trackingActions.length > 0) {
+        for (const action of trackingActions) {
+          const Icon = resolveRibbonIcon(action.ImageUrl)
+          items.push({
+            id: `action-${action.ActionId}`,
+            label: itemTrackingActionLabel(action),
+            icon: Icon,
+            onClick: () => void openTrackingForLine(effectiveSelectedLine),
+          })
+        }
+      } else if (isSalesInvoiceSubform && !linesReadOnly) {
         items.push({
-          id: `action-${action.ActionId}`,
-          label: itemTrackingActionLabel(action),
-          icon: Icon,
+          id: 'action-sales-item-tracking',
+          label: 'Item Tracking Lines',
+          icon: Barcode,
           onClick: () => void openTrackingForLine(effectiveSelectedLine),
         })
       }
@@ -848,6 +918,7 @@ export function DynamicListPart({
     applyEntriesEnabled,
     applyVendorEntriesPage,
     effectiveSelectedLine,
+    isSalesInvoiceSubform,
     itemTrackingEnabled,
     linePageActions,
     linesReadOnly,
@@ -896,12 +967,22 @@ export function DynamicListPart({
       }
 
       if (itemTrackingEnabled) {
-        for (const action of trackingActionsForLine(line)) {
-          const Icon = resolveRibbonIcon(action.ImageUrl)
+        const trackingActions = trackingActionsForLine(line)
+        if (trackingActions.length > 0) {
+          for (const action of trackingActions) {
+            const Icon = resolveRibbonIcon(action.ImageUrl)
+            items.push({
+              id: `action-${action.ActionId}`,
+              label: itemTrackingActionLabel(action),
+              icon: Icon,
+              onClick: () => void openTrackingForLine(line),
+            })
+          }
+        } else if (isSalesInvoiceSubform && !linesReadOnly) {
           items.push({
-            id: `action-${action.ActionId}`,
-            label: itemTrackingActionLabel(action),
-            icon: Icon,
+            id: 'action-sales-item-tracking',
+            label: 'Item Tracking Lines',
+            icon: Barcode,
             onClick: () => void openTrackingForLine(line),
           })
         }
@@ -913,6 +994,7 @@ export function DynamicListPart({
       applyCustomerEntriesPage,
       applyEntriesEnabled,
       applyVendorEntriesPage,
+      isSalesInvoiceSubform,
       itemTrackingEnabled,
       linePageActions,
       itemTrackingActionLabel,
@@ -992,6 +1074,21 @@ export function DynamicListPart({
           setTrackingContext(null)
           setTrackingWorksheetPageOverride(undefined)
         }}
+      />
+
+      <POSTrackingDialog
+        open={salesLotOpen}
+        itemName={salesLotItemName}
+        options={salesLotOptions}
+        loading={salesLotLoading}
+        selectedLotNo={salesLotSelected}
+        onClose={() => {
+          setSalesLotOpen(false)
+          setSalesLotLineId(null)
+          setSalesLotOptions([])
+          setSalesLotSelected(undefined)
+        }}
+        onSelect={selectSalesLot}
       />
 
       {!recordReady ? (

@@ -455,7 +455,10 @@ export default function DynamicDocumentPage({ pageId, systemId }: Props) {
                 applyCustomerEntriesPage={applyCustomerEntriesPage}
                 paymentHeader={page?.Name === 'PaymentJournalCard' ? currentData : undefined}
                 documentHeader={
-                  page?.Name === 'PurchaseInvoice' || page?.Name === 'PostedPurchaseInvoice'
+                  page?.Name === 'PurchaseInvoice'
+                  || page?.Name === 'PostedPurchaseInvoice'
+                  || page?.Name === 'SalesInvoice'
+                  || page?.Name === 'PostedSalesInvoice'
                     ? currentData
                     : undefined
                 }

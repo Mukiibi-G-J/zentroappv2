@@ -16,7 +16,6 @@ import type { Page, PageControlField } from '@/types/page'
 import type { DataRecord } from '@/types/pagedata'
 import { isDeleteTrackingLineAction } from '@/lib/documentLineActions'
 import { listFieldValuesEqual, normalizeListFieldSaveValue } from '@/lib/listFieldValue'
-import { toast } from 'sonner'
 import WorksheetEditableGrid from './WorksheetEditableGrid'
 
 function fieldVisibleForTracking(
@@ -111,7 +110,7 @@ export default function ItemTrackingWorksheetBody({
   }, [dismissModal, modalDismissRef])
 
   const applyExistingLot = useCallback(
-    async (record: DataRecord, lotNo: string, opts?: { notify?: boolean }) => {
+    async (record: DataRecord, lotNo: string) => {
       const trimmed = lotNo.trim()
       const rowKey = record.SystemId
 
@@ -138,11 +137,6 @@ export default function ItemTrackingWorksheetBody({
                 value: normalizedExpiry,
               })
             }
-          }
-          if (opts?.notify && result.expiry_date) {
-            toast.info(
-              `Existing lot found — expiry date set to ${new Date(result.expiry_date).toLocaleDateString()} and locked.`,
-            )
           }
         } else {
           setLotExpiryLocked((prev) => ({ ...prev, [rowKey]: false }))
@@ -186,7 +180,7 @@ export default function ItemTrackingWorksheetBody({
     (record: DataRecord, field: PageControlField, value: unknown) => {
       if (field.Name === 'lot_no') {
         delete checkedLotsRef.current[record.SystemId]
-        void applyExistingLot(record, String(value ?? ''), { notify: true })
+        void applyExistingLot(record, String(value ?? ''))
       }
     },
     [applyExistingLot],
