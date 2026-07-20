@@ -1108,7 +1108,25 @@ def _seed_sales_invoice_pages():
              editable=True, primary_key=False, tab_index=4),
         dict(name='total_amount', caption='Amount', field_type='Decimal', visible=True,
              editable=False, primary_key=False, tab_index=5),
+        dict(name='tracking_code', caption='Lot No.', field_type='Code', visible=True,
+             editable=False, primary_key=False, tab_index=6,
+             visible_when_field='type', visible_when_values='item'),
     ])
+
+    PageAction.objects.update_or_create(
+        page=subform,
+        name='ItemTrackingLines',
+        defaults={
+            'caption': 'Item Tracking Lines',
+            'action_relative_url': '#item-tracking-lines',
+            'ribbon_tab': 'Line',
+            'tooltip': 'Select lot / serial for this sales line',
+            'visible': True,
+            'image_url': 'Barcode',
+            'visible_when_field': 'type',
+            'visible_when_values': 'item',
+        },
+    )
 
     doc, _ = Page.objects.update_or_create(
         name='SalesInvoice',
@@ -1143,11 +1161,11 @@ def _seed_sales_invoice_pages():
              primary_key=False, tab_index=1,
              has_table_relation=True, related_table='Customer', related_field='no',
              related_display_field='name'),
-        dict(name='document_date', caption='Document Date', field_type='Date', visible=True, editable=True,
+        dict(name='document_date', caption='Document Date', field_type='Date', visible=False, editable=True,
              primary_key=False, tab_index=2),
         dict(name='posting_date', caption='Posting Date', field_type='Date', visible=True, editable=True,
              primary_key=False, tab_index=3),
-        dict(name='due_date', caption='Due Date', field_type='Date', visible=True, editable=True,
+        dict(name='due_date', caption='Due Date', field_type='Date', visible=False, editable=True,
              primary_key=False, tab_index=4),
         dict(name='payment_method', caption='How did you pay?', field_type='Code', visible=True,
              editable=True, primary_key=False, tab_index=5,
