@@ -1967,7 +1967,7 @@ def _seed_posted_sales_invoice_list(doc: Page) -> Page:
     list_page, _ = Page.objects.update_or_create(
         name='PostedSalesInvoiceList',
         defaults={
-            'caption': 'Posted Sales Invoices',
+            'caption': 'Sales History',
             'source_table': 'PostedSalesInvoice',
             'page_type': 'List',
             'editable': False,
@@ -1990,7 +1990,7 @@ def _seed_posted_sales_invoice_list(doc: Page) -> Page:
         name='PostedSalesInvoiceListControl',
         defaults={
             'control_type': 'Repeater',
-            'caption': 'Posted Sales Invoices',
+            'caption': 'Sales History',
             'source_table': 'PostedSalesInvoice',
             'show_caption': True,
             'editable': False,
@@ -2028,7 +2028,7 @@ def _seed_posted_sales_invoice_list(doc: Page) -> Page:
 
 
 def _seed_posted_sales_invoice_list_scope_actions(list_page: Page) -> None:
-    """Period scope chips on Posted Sales Invoices list (page-engine PageActions)."""
+    """Period scope chips on Sales History list (page-engine PageActions)."""
     PageControl.objects.filter(
         page=list_page,
         name='PostedSalesCueGroup',
@@ -2326,10 +2326,11 @@ def _seed_posted_item_tracking_lines_page() -> Page:
 
 
 def _seed_posted_purchase_invoice_list(doc: Page) -> Page:
+    """Purchase History list — backed by PostedPurchaseInvoice (posted archive)."""
     list_page, _ = Page.objects.update_or_create(
         name='PostedPurchaseInvoiceList',
         defaults={
-            'caption': 'Posted Purchase Invoices',
+            'caption': 'Purchase History',
             'source_table': 'PostedPurchaseInvoice',
             'page_type': 'List',
             'editable': False,
@@ -2352,7 +2353,7 @@ def _seed_posted_purchase_invoice_list(doc: Page) -> Page:
         name='PostedPurchaseInvoiceListControl',
         defaults={
             'control_type': 'Repeater',
-            'caption': 'Posted Purchase Invoices',
+            'caption': 'Purchase History',
             'source_table': 'PostedPurchaseInvoice',
             'show_caption': True,
             'editable': False,
@@ -4848,9 +4849,9 @@ def _seed_role_centre_pages(
         ('NavSalesOrders', 'Sales Orders', 'SalesOrderList', 'Package', 'Sales'),
         ('NavPOS', 'Point of Sale', 'SalesPOS', 'ShoppingCart', 'Sales'),
         ('NavSalesInvoices', 'Sales Invoices', 'SalesInvoiceList', 'FileOutput', 'Sales'),
-        ('NavPostedSalesInvoices', 'Posted Sales Invoices', 'PostedSalesInvoiceList', 'FileCheck', 'Sales'),
+        ('NavPostedSalesInvoices', 'Sales History', 'PostedSalesInvoiceList', 'FileCheck', 'Sales'),
         ('NavPurchaseInvoices', 'Purchase Invoices', 'PurchaseInvoiceList', 'FileInput', 'Purchase'),
-        ('NavPostedPurchaseInvoices', 'Posted Purchase Invoices', 'PostedPurchaseInvoiceList', 'FileCheck', 'Purchase'),
+        ('NavPostedPurchaseInvoices', 'Purchase History', 'PostedPurchaseInvoiceList', 'FileCheck', 'Purchase'),
         ('NavBankAccounts', 'Bank Accounts', 'BankAccountList', 'Landmark', 'Finance'),
         ('NavChartOfAccounts', 'Chart of Accounts', 'GLAccountList', 'ListTree', 'Finance'),
         ('NavFinancialReports', 'Financial Reports', 'FinancialReportList', 'FileChart', 'Finance'),
@@ -4911,11 +4912,11 @@ def _seed_debug_admin_rc(
         ('NavSalesOrders', 'Sales Orders', 'SalesOrderList', 'Package', 'Sales'),
         ('NavPOS', 'Point of Sale', 'SalesPOS', 'ShoppingCart', 'Sales'),
         ('NavSalesInvoices', 'Sales Invoices', 'SalesInvoiceList', 'FileOutput', 'Sales'),
-        ('NavPostedSalesInvoices', 'Posted Sales Invoices', 'PostedSalesInvoiceList', 'FileCheck', 'Sales'),
+        ('NavPostedSalesInvoices', 'Sales History', 'PostedSalesInvoiceList', 'FileCheck', 'Sales'),
         ('NavSalesCreditMemos', 'Sales Credit Memos', 'SalesCreditMemoList', 'FileOutput', 'Sales'),
         ('NavPostedSalesCreditMemos', 'Posted Sales Credit Memos', 'PostedSalesCreditMemoList', 'FileCheck', 'Sales'),
         ('NavPurchaseInvoices', 'Purchase Invoices', 'PurchaseInvoiceList', 'FileInput', 'Purchase'),
-        ('NavPostedPurchaseInvoices', 'Posted Purchase Invoices', 'PostedPurchaseInvoiceList', 'FileCheck', 'Purchase'),
+        ('NavPostedPurchaseInvoices', 'Purchase History', 'PostedPurchaseInvoiceList', 'FileCheck', 'Purchase'),
         ('NavBankAccounts', 'Bank Accounts', 'BankAccountList', 'Landmark', 'Finance'),
         ('NavChartOfAccounts', 'Chart of Accounts', 'GLAccountList', 'ListTree', 'Finance'),
         ('NavFinancialReports', 'Financial Reports', 'FinancialReportList', 'FileChart', 'Finance'),
@@ -5717,7 +5718,7 @@ def _seed_sales_manager_rc(
     )
     _seed_cue(
         page=rc, cue_group=sales_cue_group, name='RCCuePostedInvoices',
-        caption='Posted Sales Invoices', tab_index=2,
+        caption='Sales History', tab_index=2,
         cue_source_table='SalesInvoice', cue_aggregate='count',
         cue_filter_field='status', cue_filter_value='Posted',
         cue_style='Subordinate', drill_down_page=posted_sales_invoice_list,
@@ -5760,7 +5761,7 @@ def _seed_sales_manager_rc(
         ('NavSalesOrders', 'Sales Orders', 'SalesOrderList', 'Package', 'Sales'),
         ('NavCustomers', 'Customers', 'CustomerList', 'Users', 'Sales'),
         ('NavSalesInvoices', 'Sales Invoices', 'SalesInvoiceList', 'FileOutput', 'Sales'),
-        ('NavPostedSalesInvoices', 'Posted Sales Invoices', 'PostedSalesInvoiceList', 'FileCheck', 'Sales'),
+        ('NavPostedSalesInvoices', 'Sales History', 'PostedSalesInvoiceList', 'FileCheck', 'Sales'),
         ('NavSalesCreditMemos', 'Sales Credit Memos', 'SalesCreditMemoList', 'FileOutput', 'Sales'),
         ('NavPostedSalesCreditMemos', 'Posted Sales Credit Memos', 'PostedSalesCreditMemoList', 'FileCheck', 'Sales'),
         ('NavItems', 'Items', 'ItemList', 'Package', 'Inventory'),
@@ -5877,7 +5878,7 @@ def _seed_warehouse_rc(
     if posted_purchase_invoice_list:
         _seed_cue(
             page=rc, cue_group=inventory_group, name='RCCuePostedPurchaseInvoices',
-            caption='Posted Purchase Invoices', tab_index=1,
+            caption='Purchase History', tab_index=1,
             cue_source_table='PostedPurchaseInvoice', cue_aggregate='count',
             cue_filter_field='', cue_filter_value='',
             cue_style='Subordinate', drill_down_page=posted_purchase_invoice_list,
@@ -5912,7 +5913,7 @@ def _seed_warehouse_rc(
         ('NavPostedInventoryAdjustments', 'Posted Inventory Adjustments', 'PostedInventoryAdjustmentList', 'FileCheck', 'Inventory'),
         ('NavVendors', 'Vendors', 'VendorList', 'Truck', 'Purchase'),
         ('NavPurchaseInvoices', 'Purchase Invoices', 'PurchaseInvoiceList', 'FileInput', 'Purchase'),
-        ('NavPostedPurchaseInvoices', 'Posted Purchase Invoices', 'PostedPurchaseInvoiceList', 'FileCheck', 'Purchase'),
+        ('NavPostedPurchaseInvoices', 'Purchase History', 'PostedPurchaseInvoiceList', 'FileCheck', 'Purchase'),
     ])
     return rc
 
@@ -6000,7 +6001,7 @@ def _seed_cashier_rc(
         name='RCRecentPostedInvoices',
         defaults={
             'control_type': 'Part',
-            'caption': 'Recent Posted Sales Invoices',
+            'caption': 'Recent Sales History',
             'source_table': '',
             'show_caption': True,
             'editable': False,
@@ -6020,7 +6021,7 @@ def _seed_cashier_rc(
         ('NavPOS', 'Point of Sale', 'SalesPOS', 'ShoppingCart', 'Sales'),
         ('NavCustomers', 'Customers', 'CustomerList', 'Users', 'Sales'),
         ('NavItems', 'Items', 'ItemList', 'Package', 'Inventory'),
-        ('NavPostedSalesInvoices', 'Posted Sales Invoices', 'PostedSalesInvoiceList', 'FileCheck', 'Sales'),
+        ('NavPostedSalesInvoices', 'Sales History', 'PostedSalesInvoiceList', 'FileCheck', 'Sales'),
         ('NavUserSettings', 'User settings', 'UserSettingsList', 'Settings', 'Setup'),
     ])
     return rc
@@ -6074,7 +6075,7 @@ def _seed_pharmacist_rc(
         ('NavHome', 'Home', '', 'Home', 'General'),
         ('NavItems', 'Items', 'ItemList', 'Package', 'Inventory'),
         ('NavPurchaseInvoices', 'Purchases', 'PurchaseInvoiceList', 'ShoppingCart', 'Purchase'),
-        ('NavPostedPurchaseInvoices', 'Posted Purchase Invoices', 'PostedPurchaseInvoiceList', 'FileCheck', 'Purchase'),
+        ('NavPostedPurchaseInvoices', 'Purchase History', 'PostedPurchaseInvoiceList', 'FileCheck', 'Purchase'),
         ('NavVendors', 'Suppliers', 'VendorList', 'Truck', 'Purchase'),
         ('NavUserSettings', 'User settings', 'UserSettingsList', 'Settings', 'Setup'),
     ]
@@ -6113,7 +6114,7 @@ def _seed_operations_manager_rc(
         name__startswith='RCCue',
     ).delete()
 
-    # No posted sales invoices / credit memos — ops managers should not see those.
+    # Sales History (posted invoices) is available; credit memos stay off this RC.
     nav_specs = [
         ('NavHome', 'Home', '', 'Home', 'General'),
         ('NavItems', 'Items', 'ItemList', 'Package', 'Inventory'),
@@ -6122,8 +6123,9 @@ def _seed_operations_manager_rc(
         ('NavSalesOrders', 'Sales Orders', 'SalesOrderList', 'Package', 'Sales'),
         ('NavPOS', 'Point of Sale', 'SalesPOS', 'ShoppingCart', 'Sales'),
         ('NavSalesInvoices', 'Sales Invoices', 'SalesInvoiceList', 'FileOutput', 'Sales'),
+        ('NavPostedSalesInvoices', 'Sales History', 'PostedSalesInvoiceList', 'FileCheck', 'Sales'),
         ('NavPurchaseInvoices', 'Purchases', 'PurchaseInvoiceList', 'ShoppingCart', 'Purchase'),
-        ('NavPostedPurchaseInvoices', 'Posted Purchase Invoices', 'PostedPurchaseInvoiceList', 'FileCheck', 'Purchase'),
+        ('NavPostedPurchaseInvoices', 'Purchase History', 'PostedPurchaseInvoiceList', 'FileCheck', 'Purchase'),
         ('NavUserSettings', 'User settings', 'UserSettingsList', 'Settings', 'Setup'),
         ('NavUserSetup', 'User Setup', 'UserSetupList', 'UserCog', 'Setup'),
     ]
@@ -6134,7 +6136,7 @@ def _seed_operations_manager_rc(
     if payment_list:
         nav_specs.insert(-2, ('NavPayments', 'Payments', 'PaymentJournalList', 'CreditCard', 'Finance'))
 
-    # prune=True drops leftovers (credit memos, posted sales invoices, admin users, etc.).
+    # prune=True drops leftovers (credit memos, admin users, etc.).
     _seed_rc_nav_actions(rc, nav_specs, prune=True)
     return rc
 

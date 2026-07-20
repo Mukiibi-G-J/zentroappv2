@@ -63,7 +63,16 @@ export function POSTrackingDialog({
                     return (
                       <tr
                         key={`${option.lot_no}-${index}`}
-                        className={`border-b border-strokeColor/60 ${
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => onSelect(option.lot_no)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            onSelect(option.lot_no)
+                          }
+                        }}
+                        className={`cursor-pointer border-b border-strokeColor/60 transition-colors hover:bg-s1/5 ${
                           index === 0 ? 'bg-blue-50/60' : ''
                         } ${isSelected ? 'ring-1 ring-inset ring-s1' : ''}`}
                       >
@@ -85,7 +94,10 @@ export function POSTrackingDialog({
                         <td className="px-2 py-3 text-right">
                           <button
                             type="button"
-                            onClick={() => onSelect(option.lot_no)}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              onSelect(option.lot_no)
+                            }}
                             className="rounded-lg bg-s1 px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
                           >
                             Select

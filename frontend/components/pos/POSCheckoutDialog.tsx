@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import SearchableRelationSelect from '@/components/dynamic/SearchableRelationSelect'
 import RelationLookupModal from '@/components/dynamic/RelationLookupModal'
+import DatePicker from '@/components/ui/DatePicker'
 import { usePages } from '@/hooks/usePage'
 import { formatAmountInput, formatDecimalDisplay, parseNumericInput } from '@/lib/formatNumber'
 import { PAGE_IDS } from '@/lib/pageIds'
@@ -238,18 +239,11 @@ export function POSCheckoutDialog({
 
           <div>
             <label className="mb-1 block text-xs font-medium text-bodyText">Sale date</label>
-            <input
-              type="date"
-              className="w-full rounded-lg border border-strokeColor px-3 py-2 text-sm"
+            <DatePicker
               value={saleDate}
-              max={canPostPreviousDates ? undefined : todayIsoDate()}
-              title={
-                canPostPreviousDates
-                  ? undefined
-                  : 'You cannot select previous dates'
-              }
-              onChange={(e) => {
-                const selected = e.target.value
+              className="border-strokeColor py-0.5"
+              onChange={(selected) => {
+                if (!selected) return
                 const today = todayIsoDate()
                 if (!canPostPreviousDates && selected < today) return
                 onSaleDateChange(selected)

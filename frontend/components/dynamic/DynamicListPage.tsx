@@ -1569,7 +1569,7 @@ export default function DynamicListPage({ pageId }: Props) {
           )}
           <div className="min-w-0">
             <h2 className="text-xl font-semibold text-mainTextColor">
-              {isPostedSalesHistory ? 'Sales History' : (page?.Caption ?? '—')}
+              {page?.Caption ?? '—'}
             </h2>
             {isDrillDown && activeFilterLabel && !isPostedSalesHistory && (
               <p className="text-sm text-bodyText mt-0.5">

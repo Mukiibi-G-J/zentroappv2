@@ -94,6 +94,63 @@ export function posGridEntries(tree: MenuPosTreeResponse | null, path: number[])
     .sort((a, b) => a.display_order - b.display_order || a.item_name.localeCompare(b.item_name))
 }
 
+/** All sellable menu items in the POS tree (for global search). */
+export function flattenPosTreeItems(tree: MenuPosTreeResponse | null): PosGridEntry[] {
+  if (!tree) return []
+  const byId = new Map<number, PosGridEntry>()
+
+  const addItem = (it: PosTreeMenuItem) => {
+    byId.set(it.id, { kind: 'item', ...it })
+  }
+
+  const walk = (nodes: PosTreeGroupNode[]) => {
+    for (const n of nodes) {
+      for (const it of n.items ?? []) addItem(it)
+      if (n.children?.length) walk(n.children)
+    }
+  }
+
+  walk(tree.root_groups ?? [])
+  for (const it of tree.ungrouped_items ?? []) addItem(it)
+
+  for (const slot of tree.home_layout ?? []) {
+    if (slot.kind === 'item' && slot.menu_item) addItem(slot.menu_item)
+  }
+
+  return [...byId.values()].sort(
+    (a, b) =>
+      (a.kind === 'item' ? a.display_order : 0) - (b.kind === 'item' ? b.display_order : 0) ||
+      (a.kind === 'item' ? a.item_name : a.name).localeCompare(
+        b.kind === 'item' ? b.item_name : b.name,
+      ),
+  )
+}
+
+export function filterPosEntries(
+  entries: PosGridEntry[],
+  query: string,
+  allItems?: PosGridEntry[],
+): PosGridEntry[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return entries
+
+  const matches = (e: PosGridEntry) => {
+    if (e.kind === 'group') return e.name.toLowerCase().includes(q)
+    return (
+      e.item_name.toLowerCase().includes(q) ||
+      (e.item_no || '').toLowerCase().includes(q)
+    )
+  }
+
+  // Prefer flat item search so guests can find "Black Tea" from the home grid.
+  if (allItems?.length) {
+    const itemHits = allItems.filter((e) => e.kind === 'item' && matches(e))
+    if (itemHits.length) return itemHits
+  }
+
+  return entries.filter(matches)
+}
+
 const TILE_FALLBACK = [
   'bg-rose-500',
   'bg-amber-500',

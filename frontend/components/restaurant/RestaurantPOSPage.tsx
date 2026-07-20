@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   ArrowLeft,
@@ -11,6 +11,7 @@ import {
   Plus,
   Printer,
   RefreshCw,
+  Search,
   Split,
   Send,
   ShoppingBag,
@@ -23,7 +24,15 @@ import { SeatPickerDialog } from '@/components/restaurant/SeatPickerDialog'
 import { useRestaurantPOS } from '@/hooks/useRestaurantPOS'
 import { usePages } from '@/hooks/usePage'
 import { formatDecimalDisplay } from '@/lib/formatNumber'
-import { posGridEntries, posTileClass, posTileStyle, tableStatusClass, orderItemStatusClass } from '@/lib/restaurantPosTree'
+import {
+  filterPosEntries,
+  flattenPosTreeItems,
+  posGridEntries,
+  posTileClass,
+  posTileStyle,
+  tableStatusClass,
+  orderItemStatusClass,
+} from '@/lib/restaurantPosTree'
 
 const STATUS_OPTIONS = [
   { value: 'all', label: 'All' },
@@ -139,6 +148,8 @@ export default function RestaurantPOSPage() {
   const { data: pages = [] } = usePages()
   const menuBuilderPageId = pages.find((p) => p.Name === 'MenuBuilder')?.PageId
   const urlOrderLoadedRef = useRef<number | null>(null)
+  const [showSearch, setShowSearch] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const orderIdFromUrl = searchParams.get('orderId')
   useEffect(() => {
@@ -149,7 +160,22 @@ export default function RestaurantPOSPage() {
     void pos.resumeQuickSale(id)
   }, [orderIdFromUrl, pos.resumeQuickSale])
 
-  const menuEntries = posGridEntries(pos.posTree, pos.posStack)
+  useEffect(() => {
+    if (pos.tab !== 'menu') {
+      setShowSearch(false)
+      setSearchQuery('')
+    }
+  }, [pos.tab])
+
+  const menuEntries = useMemo(
+    () => posGridEntries(pos.posTree, pos.posStack),
+    [pos.posTree, pos.posStack],
+  )
+  const allMenuItems = useMemo(() => flattenPosTreeItems(pos.posTree), [pos.posTree])
+  const visibleMenuEntries = useMemo(
+    () => filterPosEntries(menuEntries, searchQuery, allMenuItems),
+    [menuEntries, searchQuery, allMenuItems],
+  )
   const orderTotal = pos.displayTotal
   const canPay = pos.canPayCounter || pos.canPayDineIn
 
@@ -223,7 +249,11 @@ export default function RestaurantPOSPage() {
                 {pos.posStack.length > 0 ? (
                   <button
                     type="button"
-                    onClick={() => pos.setPosStack((s) => s.slice(0, -1))}
+                    onClick={() => {
+                      setSearchQuery('')
+                      setShowSearch(false)
+                      pos.setPosStack((s) => s.slice(0, -1))
+                    }}
                     className="inline-flex items-center gap-1 rounded-lg border border-strokeColor px-2 py-1 text-xs"
                   >
                     <ArrowLeft className="h-3.5 w-3.5" />
@@ -246,6 +276,39 @@ export default function RestaurantPOSPage() {
                   <span className="text-sm font-medium text-mainTextColor">
                     {pos.activeMenu?.name ?? 'Menu'}
                   </span>
+                )}
+                {showSearch ? (
+                  <div className="ml-auto flex min-w-0 flex-1 items-center gap-2 sm:max-w-xs">
+                    <input
+                      autoFocus
+                      type="search"
+                      placeholder="Search items…"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full rounded-lg border border-strokeColor px-2.5 py-1.5 text-sm outline-none focus:border-s1"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowSearch(false)
+                        setSearchQuery('')
+                      }}
+                      className="rounded-lg p-1.5 text-bodyText hover:bg-softBg"
+                      aria-label="Close search"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowSearch(true)}
+                    className="ml-auto rounded-lg p-1.5 text-bodyText hover:bg-softBg"
+                    aria-label="Search menu"
+                    title="Search items"
+                  >
+                    <Search className="h-5 w-5" />
+                  </button>
                 )}
               </>
             )}
@@ -378,13 +441,22 @@ export default function RestaurantPOSPage() {
                       : 'Tap a menu item to create this check.'}
                   </div>
                 ) : null}
+                {searchQuery.trim() && visibleMenuEntries.length === 0 ? (
+                  <p className="mb-3 text-center text-sm text-bodyText">
+                    No items match &quot;{searchQuery.trim()}&quot;
+                  </p>
+                ) : null}
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-                {menuEntries.map((entry, idx) =>
+                {visibleMenuEntries.map((entry, idx) =>
                   entry.kind === 'group' ? (
                     <button
                       key={`g-${entry.id}`}
                       type="button"
-                      onClick={() => pos.setPosStack((s) => [...s, entry.id])}
+                      onClick={() => {
+                        setSearchQuery('')
+                        setShowSearch(false)
+                        pos.setPosStack((s) => [...s, entry.id])
+                      }}
                       style={posTileStyle(entry.tile_color)}
                       className={`flex min-h-24 flex-col items-center justify-center rounded-xl p-3 text-center font-semibold shadow-sm ${posTileClass(entry.tile_color, idx)}`}
                     >
