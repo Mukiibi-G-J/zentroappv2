@@ -22,6 +22,7 @@ export interface CreateSalesPayload {
   customer: number
   customer_name?: string
   document_date: string
+  posting_date?: string
   status: 'Open' | 'Draft'
   amount_received?: number
   change_amount?: number

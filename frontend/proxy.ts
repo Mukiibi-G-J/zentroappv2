@@ -12,6 +12,7 @@ const PUBLIC_PATHS = new Set([
   '/forgot-password',
   '/reset-password',
   '/change-password',
+  '/menu',
 ])
 
 function isPublicAsset(pathname: string): boolean {
@@ -20,6 +21,8 @@ function isPublicAsset(pathname: string): boolean {
     pathname === '/favicon.ico' ||
     pathname === '/robots.txt' ||
     pathname.startsWith('/assets') ||
+    pathname.startsWith('/images/') ||
+    pathname.startsWith('/menu') ||
     /\.(ico|png|jpg|jpeg|svg|gif|webp|woff|woff2|ttf|eot)$/i.test(pathname)
   )
 }
@@ -145,6 +148,8 @@ export const config = {
     '/signup',
     '/on-boarding',
     '/verify-otp',
+    '/menu',
+    '/menu/:path*',
     '/dashboard',
     '/dashboard/:path*',
     '/record/:path*',

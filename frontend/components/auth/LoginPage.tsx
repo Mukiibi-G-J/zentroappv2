@@ -79,11 +79,21 @@ function LoginForm() {
       window.location.replace(destination)
     } catch (err) {
       const status = axios.isAxiosError(err) ? err.response?.status : undefined
+      const detail =
+        axios.isAxiosError(err) && typeof err.response?.data?.detail === 'string'
+          ? err.response.data.detail
+          : undefined
       if (status === 431) {
         clearCookiesThatCause431()
         setError(
           'Login blocked by oversized browser cookies (HTTP 431). Cookies were cleared — try Sign In again.',
         )
+      } else if (status === 502 || (detail && detail.includes('API proxy failed'))) {
+        setError(
+          'Cannot reach the API server. Check that Django is running and NEXT_PUBLIC_API_REWRITE_HOST matches your current LAN IP.',
+        )
+      } else if (!status || status >= 500) {
+        setError('Sign-in failed due to a server error. Please try again.')
       } else {
         setError('Invalid username or password. Please try again.')
       }

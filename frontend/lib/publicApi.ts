@@ -4,22 +4,15 @@ function getPublicApiBaseUrl(): string {
   if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL
 
   const port = process.env.NEXT_PUBLIC_API_PORT ?? '8002'
-  const rewriteHost = process.env.NEXT_PUBLIC_API_REWRITE_HOST
 
-  // When Cursor (or similar) port-forwards 127.0.0.1:8002 to a remote HTTPS API,
-  // Next rewrites must use a LAN IP. Hitting that host from the browser too
-  // bypasses Next's trailing-slash 308 ↔ Django APPEND_SLASH 301 redirect loop
-  // (and avoids Chrome caching those permanent redirects forever).
-  if (rewriteHost) {
-    return `http://${rewriteHost}:${port}`
-  }
-
-  // Browser: same-origin /api → Next.js rewrite → Django (avoids cross-port CORS/PNA).
+  // Browser: same-origin /api → Next.js proxy → Django (avoids cross-port CORS/PNA).
+  // NEXT_PUBLIC_API_REWRITE_HOST is only for the server-side proxy (route.ts), not the browser.
   if (typeof window !== 'undefined') {
     return window.location.origin
   }
 
-  return `http://127.0.0.1:${port}`
+  const host = process.env.NEXT_PUBLIC_API_REWRITE_HOST ?? '127.0.0.1'
+  return `http://${host}:${port}`
 }
 
 /** Axios instance for public marketing endpoints (no auth redirect). */

@@ -95,9 +95,20 @@ interface POSCheckoutDialogProps {
   selectedPaymentMethod: POSPaymentMethod | null
   onPaymentMethodChange: (method: POSPaymentMethod) => void
   isGeneralCustomer: boolean
+  saleDate: string
+  onSaleDateChange: (value: string) => void
+  canPostPreviousDates: boolean
   loading?: boolean
   onClose: () => void
   onConfirm: () => void
+}
+
+function todayIsoDate(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
 export function POSCheckoutDialog({
@@ -113,6 +124,9 @@ export function POSCheckoutDialog({
   selectedPaymentMethod,
   onPaymentMethodChange,
   isGeneralCustomer,
+  saleDate,
+  onSaleDateChange,
+  canPostPreviousDates,
   loading,
   onClose,
   onConfirm,
@@ -220,6 +234,32 @@ export function POSCheckoutDialog({
                   </option>
                 ))}
             </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-bodyText">Sale date</label>
+            <input
+              type="date"
+              className="w-full rounded-lg border border-strokeColor px-3 py-2 text-sm"
+              value={saleDate}
+              max={canPostPreviousDates ? undefined : todayIsoDate()}
+              title={
+                canPostPreviousDates
+                  ? undefined
+                  : 'You cannot select previous dates'
+              }
+              onChange={(e) => {
+                const selected = e.target.value
+                const today = todayIsoDate()
+                if (!canPostPreviousDates && selected < today) return
+                onSaleDateChange(selected)
+              }}
+            />
+            {!canPostPreviousDates ? (
+              <p className="mt-1 text-xs text-bodyText">
+                You cannot post sales for previous dates
+              </p>
+            ) : null}
           </div>
 
           <div className="rounded-xl bg-softBg p-4">

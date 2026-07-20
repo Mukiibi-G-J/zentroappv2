@@ -22,6 +22,8 @@ import {
 
 import { salesService } from '@/services/sales.service'
 
+import { fetchMyUserSetup } from '@/services/userSetup.service'
+
 import { useSession } from '@/context/SessionContext'
 
 import type {
@@ -194,6 +196,8 @@ function buildSalePayload(
 
   subtotal: number,
 
+  saleDate: string,
+
 ) {
 
   const requiresTender = paymentMethod?.requires_amount_received !== false
@@ -204,7 +208,9 @@ function buildSalePayload(
 
     customer_name: customer.name,
 
-    document_date: todayIsoDate(),
+    document_date: saleDate,
+
+    posting_date: saleDate,
 
     status,
 
@@ -295,6 +301,10 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
   const [companyInfo, setCompanyInfo] = useState<POSCompanyInfo | null>(null)
 
   const [amountReceived, setAmountReceived] = useState(0)
+
+  const [saleDate, setSaleDate] = useState(todayIsoDate)
+
+  const [canPostPreviousDates, setCanPostPreviousDates] = useState(true)
 
   const [checkoutOpen, setCheckoutOpen] = useState(false)
 
@@ -432,7 +442,7 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
     try {
 
-      const [customerRows, methods, setup, favData, company] = await Promise.all([
+      const [customerRows, methods, setup, favData, company, userSetup] = await Promise.all([
 
         salesService.getCustomers(),
 
@@ -444,6 +454,8 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
         salesService.getCompanyInfo(),
 
+        fetchMyUserSetup().catch(() => null),
+
       ])
 
       setCustomers(customerRows)
@@ -453,6 +465,8 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
       setSalesSetup(normalizeSetup(setup))
 
       setCompanyInfo(company)
+
+      setCanPostPreviousDates(userSetup?.canPostPreviousDates ?? true)
 
 
 
@@ -533,19 +547,15 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
       const today = todayIsoDate()
 
-      const summary = await salesService.getSalesUserSummary({
+      const summary = await salesService.getSalesSummary({
 
-        status: 'Posted',
+        posting_date: today,
 
-        date_range_after: today,
-
-        date_range_before: today,
+        user: String(userId),
 
       })
 
-      const mine = summary.users?.find((row) => row.user_id === userId)
-
-      setTodayMySales(Number(mine?.total_sales ?? 0))
+      setTodayMySales(Number(summary.total_sales ?? 0))
 
     } catch {
 
@@ -825,6 +835,8 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
     setError(null)
 
+    setSaleDate(todayIsoDate())
+
     setAmountReceived(subtotal)
 
     setCheckoutOpen(true)
@@ -1026,6 +1038,8 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
           subtotal,
 
+          saleDate,
+
         ),
 
       )
@@ -1045,6 +1059,8 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
   }, [
 
     amountReceived,
+
+    saleDate,
 
     cart,
 
@@ -1116,6 +1132,8 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
         subtotal,
 
+        saleDate,
+
       )
 
       const created = await salesService.createSale(payload)
@@ -1154,7 +1172,7 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
         },
 
-        document_date: todayIsoDate(),
+        document_date: saleDate,
 
         created_at: new Date().toISOString(),
 
@@ -1214,6 +1232,8 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
     amountReceived,
 
+    saleDate,
+
     cart,
 
     clearCart,
@@ -1271,6 +1291,12 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
     amountReceived,
 
     setAmountReceived,
+
+    saleDate,
+
+    setSaleDate,
+
+    canPostPreviousDates,
 
     checkoutOpen,
 

@@ -106,6 +106,9 @@ export function POSMobile({ pos, pageActions }: POSMobileProps) {
         selectedPaymentMethod={pos.selectedPaymentMethod}
         onPaymentMethodChange={pos.setSelectedPaymentMethod}
         isGeneralCustomer={pos.isGeneralCustomer}
+        saleDate={pos.saleDate}
+        onSaleDateChange={pos.setSaleDate}
+        canPostPreviousDates={pos.canPostPreviousDates}
         loading={pos.loadingCheckout}
         onClose={() => pos.setCheckoutOpen(false)}
         onConfirm={pos.completeSale}
