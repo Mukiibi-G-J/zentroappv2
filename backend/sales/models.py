@@ -1322,7 +1322,36 @@ class PostedSalesInvoice(BaseModel):
 
     @property
     def closed(self):
-        return self.status == "Closed"
+        """
+        BC Posted Sales Invoice field 1302 Closed (FlowField):
+        True when no open Cust. Ledger Entry exists for this invoice.
+        Ledger document_no is usually SalesInvoice.invoice_no, not PostedSalesInvoice.no.
+        """
+        # List path annotates _ledger_closed for performance.
+        if "_ledger_closed" in self.__dict__:
+            return bool(self.__dict__["_ledger_closed"])
+
+        doc_nos = {self.no} if self.no else set()
+        if self.customer_invoice_no and self.customer_id:
+            sales_invoice_no = (
+                SalesInvoice.objects.filter(
+                    customer_invoice_no=self.customer_invoice_no,
+                    customer_id=self.customer_id,
+                )
+                .values_list("invoice_no", flat=True)
+                .first()
+            )
+            if sales_invoice_no:
+                doc_nos.add(sales_invoice_no)
+        doc_nos.discard(None)
+        doc_nos.discard("")
+        if not doc_nos:
+            return True
+        return not CustomerLedgerEntry.objects.filter(
+            customer_id=self.customer_id,
+            document_no__in=doc_nos,
+            open=True,
+        ).exists()
 
     @property
     def can_be_reversed(self):
@@ -1954,6 +1983,11 @@ class SalesCreditMemoLine(BaseModel):
     @property
     def line_amount(self):
         return self.quantity * self.unit_price
+
+    def save(self, *args, **kwargs):
+        if self.quantity is not None and self.unit_price is not None:
+            self.amount = self.quantity * self.unit_price
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.credit_memo.credit_memo_no} - {self.item.item_name}"

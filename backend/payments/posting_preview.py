@@ -32,6 +32,8 @@ def _account_no(obj) -> str | None:
         return None
     if hasattr(obj, 'no'):
         return str(obj.no)
+    if hasattr(obj, 'code'):
+        return str(obj.code)
     return str(obj)
 
 
@@ -270,6 +272,60 @@ def _serialize_bank_entry(entry: dict, *, bank_balances: dict[str, float] | None
     }
 
 
+def _serialize_vat_entry(entry: dict) -> dict:
+    vat_account = entry.get('vat_account')
+    return {
+        'PostingDate': _preview_date(entry.get('posting_date')),
+        'DocumentType': entry.get('document_type'),
+        'DocumentNo': entry.get('document_no'),
+        'Type': entry.get('type'),
+        'VatBusPostingGroup': entry.get('vat_bus_posting_group'),
+        'VatProdPostingGroup': entry.get('vat_prod_posting_group'),
+        'Base': float(entry.get('base') or 0),
+        'Amount': float(entry.get('amount') or 0),
+        'VatPercent': float(entry.get('vat_percent') or 0),
+        'VatAccountNo': _account_no(vat_account),
+    }
+
+
+def _serialize_item_ledger_entry(entry: dict) -> dict:
+    item = entry.get('item')
+    location = entry.get('location')
+    return {
+        'PostingDate': _preview_date(entry.get('posting_date')),
+        'EntryType': entry.get('entry_type'),
+        'DocumentType': entry.get('document_type'),
+        'DocumentNo': entry.get('document_no'),
+        'ItemNo': _account_no(item),
+        'ItemName': getattr(item, 'name', None) if item else None,
+        'Description': entry.get('description'),
+        'Quantity': float(entry.get('quantity') or 0),
+        'LocationCode': _account_no(location) if location else None,
+        'LotNo': entry.get('lot_no'),
+        'SerialNo': entry.get('serial_no'),
+        'Amount': float(entry.get('amount') or 0),
+    }
+
+
+def _serialize_value_entry(entry: dict) -> dict:
+    item = entry.get('item')
+    location = entry.get('location')
+    return {
+        'PostingDate': _preview_date(entry.get('posting_date')),
+        'EntryType': entry.get('entry_type'),
+        'DocumentType': entry.get('document_type'),
+        'DocumentNo': entry.get('document_no'),
+        'ItemNo': _account_no(item),
+        'ItemName': getattr(item, 'name', None) if item else None,
+        'Description': entry.get('description'),
+        'ValuedQuantity': float(entry.get('valued_quantity') or 0),
+        'CostAmount': float(entry.get('cost_amount') or 0),
+        'SalesAmount': float(entry.get('sales_amount') or 0),
+        'LocationCode': _account_no(location) if location else None,
+        'Amount': float(entry.get('amount') or 0),
+    }
+
+
 PREVIEW_TABLE_SPECS: tuple[tuple[str, str, str, callable], ...] = (
     ('gl_entries', 'G/L Entry', 'gl_entry', _serialize_gl_entry),
     ('vendor_entries', 'Vendor Ledger Entry', 'vendor_ledger_entry', _serialize_vendor_entry),
@@ -292,6 +348,39 @@ PREVIEW_TABLE_SPECS: tuple[tuple[str, str, str, callable], ...] = (
         'detailed_customer_ledger_entry',
         _serialize_detailed_customer_entry,
     ),
+)
+
+# Find Entries (BC Navigate) includes VAT / item / value ledgers; keep preview specs lean.
+FIND_ENTRIES_TABLE_SPECS: tuple[tuple[str, str, str, callable], ...] = (
+    ('gl_entries', 'G/L Entry', 'gl_entry', _serialize_gl_entry),
+    ('vat_entries', 'VAT Entry', 'vat_entry', _serialize_vat_entry),
+    ('vendor_entries', 'Vendor Ledger Entry', 'vendor_ledger_entry', _serialize_vendor_entry),
+    (
+        'detailed_vendor_entries',
+        'Detailed Vendor Ledg. Entry',
+        'detailed_vendor_ledger_entry',
+        _serialize_detailed_vendor_entry,
+    ),
+    ('customer_entries', 'Customer Ledger Entry', 'customer_ledger_entry', _serialize_customer_entry),
+    (
+        'detailed_customer_entries',
+        'Detailed Customer Ledg. Entry',
+        'detailed_customer_ledger_entry',
+        _serialize_detailed_customer_entry,
+    ),
+    (
+        'bank_account_entries',
+        'Bank Account Ledger Entry',
+        'bank_account_ledger_entry',
+        _serialize_bank_entry,
+    ),
+    (
+        'item_ledger_entries',
+        'Item Ledger Entry',
+        'item_ledger_entry',
+        _serialize_item_ledger_entry,
+    ),
+    ('value_entries', 'Value Entry', 'value_entry', _serialize_value_entry),
 )
 
 
@@ -386,6 +475,61 @@ def build_bc_preview_sets(entries: dict) -> tuple[list[dict], dict[str, list[dic
         entry_sets[table_key] = rows
 
     return related, entry_sets
+
+
+def build_find_entries_sets(
+    entries: dict,
+    *,
+    source_table_name: str | None = None,
+) -> tuple[list[dict], dict[str, list[dict]]]:
+    """BC Navigate / Find Entries summary — include zero-amount and item/VAT ledgers."""
+    related: list[dict] = []
+    entry_sets: dict[str, list[dict]] = {}
+
+    if source_table_name:
+        related.append({
+            'TableKey': 'source_document',
+            'TableName': source_table_name,
+            'NoOfEntries': 1,
+        })
+
+    for source_key, table_name, table_key, serializer in FIND_ENTRIES_TABLE_SPECS:
+        raw = list(entries.get(source_key) or [])
+        if not raw:
+            continue
+        rows = _serialize_preview_rows(source_key, raw, serializer)
+        related.append({
+            'TableKey': table_key,
+            'TableName': table_name,
+            'NoOfEntries': len(rows),
+        })
+        entry_sets[table_key] = rows
+
+    return related, entry_sets
+
+
+def build_find_entries_preview_content(
+    entries: dict,
+    *,
+    message: str = '',
+    batch_name: str | None = None,
+    source_table_name: str | None = None,
+) -> dict:
+    """Map posted-document ledger lookup to BC Find Entries preview payload."""
+    related, entry_sets = build_find_entries_sets(
+        entries,
+        source_table_name=source_table_name,
+    )
+    content: dict = {
+        'Entries': [],
+        'RelatedEntries': related,
+        'EntrySets': entry_sets,
+        'Message': message or 'Find entries',
+        'DialogTitle': 'Find Entries',
+    }
+    if batch_name:
+        content['BatchName'] = batch_name
+    return content
 
 
 def merge_bc_preview_sets(

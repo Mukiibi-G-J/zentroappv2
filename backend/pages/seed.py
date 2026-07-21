@@ -686,7 +686,11 @@ def seed():
     sales_pos_page = _seed_sales_pos_page()
     _ = sales_pos_page  # registered in role centre nav
     purchase_invoice_doc, purchase_invoice_list = _seed_purchase_invoice_pages()
-    posted_sales_invoice_list = _seed_posted_sales_invoice_list(sales_invoice_doc)
+    purchase_credit_memo_doc, purchase_credit_memo_list = _seed_purchase_credit_memo_pages()
+    _ = purchase_credit_memo_doc, purchase_credit_memo_list
+    posted_sales_invoice_list = _seed_posted_sales_invoice_list(
+        _seed_posted_sales_invoice_pages(),
+    )
     _seed_posted_sales_invoice_list_scope_actions(posted_sales_invoice_list)
     posted_purchase_invoice_list = _seed_posted_purchase_invoice_list(
         _seed_posted_purchase_invoice_pages(),
@@ -1277,6 +1281,28 @@ def _seed_sales_invoice_pages():
             'visible_when_values': 'Open,Draft',
         },
     )
+    PageAction.objects.filter(page=doc, name='reverse_transactions').delete()
+    PageAction.objects.update_or_create(
+        page=doc,
+        name='create_corrective_credit_memo',
+        defaults={
+            'caption': 'Create Corrective Credit Memo',
+            'requires_confirmation': True,
+            'confirmation_message': (
+                'Create a credit memo for this posted invoice that you complete '
+                'and post manually to reverse the posted invoice?'
+            ),
+            'tooltip': (
+                'Create a credit memo for this posted invoice that you complete '
+                'and post manually to reverse the posted invoice.'
+            ),
+            'visible': True,
+            'ribbon_tab': 'Home',
+            'image_url': 'FileMinus',
+            'visible_when_field': 'status',
+            'visible_when_values': 'Posted',
+        },
+    )
 
     return doc, list_page
 
@@ -1289,10 +1315,10 @@ def _seed_sales_credit_memo_pages():
             'caption': 'Sales Credit Memo Lines',
             'source_table': 'SalesCreditMemoLine',
             'page_type': 'ListPart',
-            'editable': False,
+            'editable': True,
             'insert_allowed': False,
-            'delete_allowed': False,
-            'modify_allowed': False,
+            'delete_allowed': True,
+            'modify_allowed': True,
         },
     )
 
@@ -1304,7 +1330,7 @@ def _seed_sales_credit_memo_pages():
             'caption': 'Lines',
             'source_table': 'SalesCreditMemoLine',
             'show_caption': False,
-            'editable': False,
+            'editable': True,
             'visible': True,
         },
     )
@@ -1314,15 +1340,15 @@ def _seed_sales_credit_memo_pages():
              has_table_relation=True, related_table='Item', related_field='no',
              related_display_field='item_name'),
         dict(name='description', caption='Description', field_type='Text', visible=True,
-             editable=False, primary_key=False, tab_index=1),
+             editable=True, primary_key=False, tab_index=1),
         dict(name='location_code', caption='Location Code', field_type='Code', visible=True,
              editable=False, primary_key=False, tab_index=2,
              has_table_relation=True, related_table='Location', related_field='code',
              related_display_field='description'),
         dict(name='quantity', caption='Quantity', field_type='Integer', visible=True,
-             editable=False, primary_key=False, tab_index=3),
+             editable=True, primary_key=False, tab_index=3),
         dict(name='unit_price', caption='Unit Price Excl. VAT', field_type='Decimal', visible=True,
-             editable=False, primary_key=False, tab_index=4),
+             editable=True, primary_key=False, tab_index=4),
         dict(name='amount', caption='Line Amount Excl. VAT', field_type='Decimal', visible=True,
              editable=False, primary_key=False, tab_index=5),
     ])
@@ -1925,6 +1951,190 @@ def _seed_purchase_invoice_pages():
     return doc, list_page
 
 
+def _seed_purchase_credit_memo_pages():
+    """Document + list for PurchaseCreditMemo (BC Create Corrective Credit Memo target)."""
+    subform, _ = Page.objects.update_or_create(
+        name='PurchaseCreditMemoSubform',
+        defaults={
+            'caption': 'Purchase Credit Memo Lines',
+            'source_table': 'PurchaseCreditMemoLine',
+            'page_type': 'ListPart',
+            'editable': True,
+            'insert_allowed': False,
+            'delete_allowed': True,
+            'modify_allowed': True,
+        },
+    )
+    sub_ctrl, _ = PageControl.objects.update_or_create(
+        page=subform,
+        name='PurchaseCreditMemoSubformRepeater',
+        defaults={
+            'control_type': 'Repeater',
+            'caption': 'Lines',
+            'source_table': 'PurchaseCreditMemoLine',
+            'show_caption': False,
+            'editable': True,
+            'visible': True,
+        },
+    )
+    _seed_fields(sub_ctrl, subform, [
+        dict(name='item', caption='No.', field_type='Code', visible=True, editable=False,
+             primary_key=False, tab_index=0,
+             has_table_relation=True, related_table='Item', related_field='no',
+             related_display_field='item_name'),
+        dict(name='description', caption='Description', field_type='Text', visible=True,
+             editable=True, primary_key=False, tab_index=1),
+        dict(name='location_code', caption='Location Code', field_type='Code', visible=True,
+             editable=False, primary_key=False, tab_index=2,
+             has_table_relation=True, related_table='Location', related_field='code',
+             related_display_field='description'),
+        dict(name='quantity', caption='Quantity', field_type='Integer', visible=True,
+             editable=True, primary_key=False, tab_index=3),
+        dict(name='unit_cost', caption='Direct Unit Cost', field_type='Decimal', visible=True,
+             editable=True, primary_key=False, tab_index=4),
+        dict(name='line_amount', caption='Line Amount', field_type='Decimal', visible=True,
+             editable=False, primary_key=False, tab_index=5),
+    ])
+    _ensure_table_relation('PurchaseCreditMemoLine', 'item', 'Item', 'no', 'item_name')
+    _ensure_table_relation('PurchaseCreditMemoLine', 'location_code', 'Location', 'code', 'description')
+
+    doc, _ = Page.objects.update_or_create(
+        name='PurchaseCreditMemo',
+        defaults={
+            'caption': 'Purchase Credit Memo',
+            'source_table': 'PurchaseCreditMemo',
+            'page_type': 'Document',
+            'editable': True,
+            'insert_allowed': False,
+            'delete_allowed': False,
+            'modify_allowed': True,
+            'title_field': 'no',
+        },
+    )
+    general_ctrl, _ = PageControl.objects.update_or_create(
+        page=doc,
+        name='PurchaseCreditMemoGeneral',
+        defaults={
+            'control_type': 'Group',
+            'caption': 'General',
+            'source_table': 'PurchaseCreditMemo',
+            'show_caption': True,
+            'editable': True,
+            'visible': True,
+        },
+    )
+    _seed_fields(general_ctrl, doc, [
+        dict(name='no', caption='No.', field_type='Code', visible=True, editable=False,
+             primary_key=True, tab_index=0),
+        dict(name='vendor', caption='Vendor', field_type='Code', visible=True, editable=False,
+             primary_key=False, tab_index=1,
+             has_table_relation=True, related_table='Vendor', related_field='no',
+             related_display_field='name'),
+        dict(name='document_date', caption='Document Date', field_type='Date', visible=True,
+             editable=True, primary_key=False, tab_index=2),
+        dict(name='posting_date', caption='Posting Date', field_type='Date', visible=True,
+             editable=True, primary_key=False, tab_index=3),
+        dict(name='due_date', caption='Due Date', field_type='Date', visible=True,
+             editable=True, primary_key=False, tab_index=4),
+        dict(name='original_invoice_no', caption='Applies-to Doc. No.', field_type='Code',
+             visible=True, editable=False, primary_key=False, tab_index=5),
+        dict(name='status', caption='Status', field_type='Option', visible=True, editable=False,
+             primary_key=False, tab_index=6,
+             enum_values='Open,Posted,Cancelled'),
+    ])
+
+    part_ctrl, _ = PageControl.objects.update_or_create(
+        page=doc,
+        name='PurchaseCreditMemoLines',
+        defaults={
+            'control_type': 'Part',
+            'caption': 'Lines',
+            'source_table': 'PurchaseCreditMemoLine',
+            'show_caption': True,
+            'editable': True,
+            'visible': True,
+            'part_page': subform,
+            'link_field': 'credit_memo__system_id',
+        },
+    )
+    part_ctrl.part_page = subform
+    part_ctrl.link_field = 'credit_memo__system_id'
+    part_ctrl.save(update_fields=['part_page', 'link_field'])
+
+    list_page, _ = Page.objects.update_or_create(
+        name='PurchaseCreditMemoList',
+        defaults={
+            'caption': 'Purchase Credit Memos',
+            'source_table': 'PurchaseCreditMemo',
+            'page_type': 'List',
+            'editable': False,
+            'insert_allowed': False,
+            'delete_allowed': False,
+            'modify_allowed': False,
+            'card_page': doc,
+            'title_field': 'no',
+            'list_filter_field': 'status',
+            'list_filter_value': 'Open',
+        },
+    )
+    list_page.card_page = doc
+    list_page.list_filter_field = 'status'
+    list_page.list_filter_value = 'Open'
+    list_page.save(update_fields=['card_page', 'list_filter_field', 'list_filter_value'])
+
+    list_ctrl, _ = PageControl.objects.update_or_create(
+        page=list_page,
+        name='PurchaseCreditMemoListControl',
+        defaults={
+            'control_type': 'Repeater',
+            'caption': 'Purchase Credit Memos',
+            'source_table': 'PurchaseCreditMemo',
+            'show_caption': True,
+            'editable': False,
+            'visible': True,
+        },
+    )
+    _seed_fields(list_ctrl, list_page, [
+        dict(name='no', caption='No.', field_type='Code', visible=True, editable=False,
+             primary_key=True, tab_index=0, freeze_column=True),
+        dict(name='vendor', caption='Vendor', field_type='Code', visible=True, editable=False,
+             primary_key=False, tab_index=1,
+             has_table_relation=True, related_table='Vendor', related_field='no',
+             related_display_field='name'),
+        dict(name='document_date', caption='Document Date', field_type='Date', visible=True,
+             editable=False, primary_key=False, tab_index=2),
+        dict(name='posting_date', caption='Posting Date', field_type='Date', visible=True,
+             editable=False, primary_key=False, tab_index=3),
+        dict(name='original_invoice_no', caption='Applies-to Doc. No.', field_type='Code',
+             visible=True, editable=False, primary_key=False, tab_index=4),
+        dict(name='status', caption='Status', field_type='Option', visible=True, editable=False,
+             primary_key=False, tab_index=5,
+             enum_values='Open,Posted,Cancelled'),
+    ])
+    _link_drill_down(
+        page_names=('PurchaseCreditMemoList',),
+        field_name='no',
+        drill_down_page=doc,
+    )
+
+    PageAction.objects.update_or_create(
+        page=doc,
+        name='post_credit_memo',
+        defaults={
+            'caption': 'Post',
+            'requires_confirmation': True,
+            'confirmation_message': 'Post this purchase credit memo to the general ledger?',
+            'tooltip': 'Post purchase credit memo',
+            'visible': True,
+            'ribbon_tab': 'Home',
+            'image_url': 'CircleCheck',
+            'visible_when_field': 'status',
+            'visible_when_values': 'Open',
+        },
+    )
+    return doc, list_page
+
+
 def _seed_status_filtered_list_page(
     *,
     name: str,
@@ -1984,6 +2194,156 @@ def _seed_status_filtered_list_page(
     return list_page
 
 
+def _seed_posted_sales_invoice_pages() -> Page:
+    """BC Pages 132 (Document) + 133 (ListPart) on PostedSalesInvoice tables."""
+    subform, _ = Page.objects.update_or_create(
+        name='PostedSalesInvoiceSubform',
+        defaults={
+            'caption': 'Posted Sales Invoice Lines',
+            'source_table': 'PostedSalesInvoiceLine',
+            'page_type': 'ListPart',
+            'editable': False,
+            'insert_allowed': False,
+            'delete_allowed': False,
+            'modify_allowed': False,
+        },
+    )
+
+    sub_ctrl, _ = PageControl.objects.update_or_create(
+        page=subform,
+        name='PostedSalesInvoiceSubformRepeater',
+        defaults={
+            'control_type': 'Repeater',
+            'caption': 'Lines',
+            'source_table': 'PostedSalesInvoiceLine',
+            'show_caption': False,
+            'editable': False,
+            'visible': True,
+        },
+    )
+    _seed_fields(sub_ctrl, subform, [
+        dict(name='type', caption='Type', field_type='Option', visible=True, editable=False,
+             primary_key=False, tab_index=0, enum_values='item,resource'),
+        dict(name='item', caption='No.', field_type='Code', visible=True, editable=False,
+             primary_key=False, tab_index=1,
+             has_table_relation=True, related_table='Item', related_field='no',
+             related_display_field='item_name'),
+        dict(name='description', caption='Description', field_type='Text', visible=True,
+             editable=False, primary_key=False, tab_index=2),
+        dict(name='quantity', caption='Quantity', field_type='Integer', visible=True,
+             editable=False, primary_key=False, tab_index=3),
+        dict(name='unit_price', caption='Unit Price', field_type='Decimal', visible=True,
+             editable=False, primary_key=False, tab_index=4),
+        dict(name='amount', caption='Amount', field_type='Decimal', visible=True,
+             editable=False, primary_key=False, tab_index=5),
+    ])
+
+    doc, _ = Page.objects.update_or_create(
+        name='PostedSalesInvoice',
+        defaults={
+            'caption': 'Posted Sales Invoice',
+            'source_table': 'PostedSalesInvoice',
+            'page_type': 'Document',
+            'editable': False,
+            'insert_allowed': False,
+            'delete_allowed': False,
+            'modify_allowed': False,
+            'title_field': 'no',
+        },
+    )
+
+    general_ctrl, _ = PageControl.objects.update_or_create(
+        page=doc,
+        name='PostedSalesInvoiceGeneral',
+        defaults={
+            'control_type': 'Group',
+            'caption': 'General',
+            'source_table': 'PostedSalesInvoice',
+            'show_caption': True,
+            'editable': False,
+            'visible': True,
+        },
+    )
+    _seed_fields(general_ctrl, doc, [
+        dict(name='no', caption='No.', field_type='Code', visible=True, editable=False,
+             primary_key=True, tab_index=0),
+        dict(name='customer', caption='Customer No.', field_type='Code', visible=True, editable=False,
+             primary_key=False, tab_index=1,
+             has_table_relation=True, related_table='Customer', related_field='no',
+             related_display_field='name'),
+        dict(name='posting_date', caption='Posting Date', field_type='Date', visible=True,
+             editable=False, primary_key=False, tab_index=2),
+        dict(name='payment_method', caption='How did you pay?', field_type='Code', visible=True,
+             editable=False, primary_key=False, tab_index=3,
+             has_table_relation=True, related_table='PaymentMethod', related_field='code',
+             related_display_field='description'),
+        dict(name='status', caption='Status', field_type='Option', visible=True, editable=False,
+             primary_key=False, tab_index=4,
+             enum_values='Draft,Open,Posted,Cancelled'),
+        dict(name='total_amount', caption='Amount', field_type='Decimal', visible=True,
+             editable=False, primary_key=False, tab_index=5),
+        dict(name='closed', caption='Closed', field_type='Boolean', visible=True,
+             editable=False, primary_key=False, tab_index=6),
+    ])
+
+    part_ctrl, _ = PageControl.objects.update_or_create(
+        page=doc,
+        name='PostedSalesInvoiceLines',
+        defaults={
+            'control_type': 'Part',
+            'caption': 'Lines',
+            'source_table': 'PostedSalesInvoiceLine',
+            'show_caption': True,
+            'editable': False,
+            'visible': True,
+            'part_page': subform,
+            'link_field': 'posted_sales_invoice__system_id',
+        },
+    )
+    part_ctrl.part_page = subform
+    part_ctrl.link_field = 'posted_sales_invoice__system_id'
+    part_ctrl.save(update_fields=['part_page', 'link_field'])
+
+    PageAction.objects.filter(page=doc, name='reverse_transactions').delete()
+    PageAction.objects.update_or_create(
+        page=doc,
+        name='create_corrective_credit_memo',
+        defaults={
+            'caption': 'Create Corrective Credit Memo',
+            'requires_confirmation': True,
+            'confirmation_message': (
+                'Create a credit memo for this posted invoice that you complete '
+                'and post manually to reverse the posted invoice?'
+            ),
+            'tooltip': (
+                'Create a credit memo for this posted invoice that you complete '
+                'and post manually to reverse the posted invoice.'
+            ),
+            'visible': True,
+            'ribbon_tab': 'Home',
+            'image_url': 'FileMinus',
+        },
+    )
+    PageAction.objects.update_or_create(
+        page=doc,
+        name='find_entries',
+        defaults={
+            'caption': 'Find Entries',
+            'requires_confirmation': False,
+            'confirmation_message': '',
+            'tooltip': (
+                'Find all ledger entries related to this posted sales invoice '
+                '(G/L, VAT, customer, item, and value entries).'
+            ),
+            'visible': True,
+            'ribbon_tab': 'Navigate',
+            'image_url': 'Search',
+        },
+    )
+
+    return doc
+
+
 def _seed_posted_sales_invoice_list(doc: Page) -> Page:
     """Sales History list — backed by PostedSalesInvoice (posted archive), not open SalesInvoice."""
     list_page, _ = Page.objects.update_or_create(
@@ -2030,11 +2390,15 @@ def _seed_posted_sales_invoice_list(doc: Page) -> Page:
              primary_key=False, tab_index=2),
         dict(name='total_amount', caption='Amount', field_type='Decimal', visible=True, editable=False,
              primary_key=False, tab_index=3),
-        dict(name='user_name', caption='Sales Person', field_type='Text', visible=True, editable=False,
+        dict(name='created_at', caption='Sold At', field_type='DateTime', visible=True, editable=False,
              primary_key=False, tab_index=4),
-        dict(name='status', caption='Status', field_type='Option', visible=True, editable=False,
-             primary_key=False, tab_index=5,
-             enum_values='Posted,Closed'),
+        dict(name='user_name', caption='Sales Person', field_type='Text', visible=True, editable=False,
+             primary_key=False, tab_index=5),
+        dict(name='closed', caption='Closed', field_type='Boolean', visible=True, editable=False,
+             primary_key=False, tab_index=6),
+        dict(name='status', caption='Status', field_type='Option', visible=False, editable=False,
+             primary_key=False, tab_index=7,
+             enum_values='Draft,Open,Posted,Cancelled'),
         dict(name='document_date', caption='Document Date', field_type='Date', visible=False, editable=False,
              primary_key=False, tab_index=98),
         dict(name='due_date', caption='Due Date', field_type='Date', visible=False, editable=False,
@@ -2046,6 +2410,16 @@ def _seed_posted_sales_invoice_list(doc: Page) -> Page:
         page_control__name='PostedSalesInvoiceListControl',
         name__in=('invoice_no', 'total_vat_amount'),
     ).delete()
+    # Closed is the payment FlowField; status is document lifecycle (hide on list).
+    PageControlField.objects.filter(
+        page=list_page,
+        page_control__name='PostedSalesInvoiceListControl',
+        name='status',
+    ).update(
+        visible=False,
+        enum_values='Draft,Open,Posted,Cancelled',
+        tab_index=7,
+    )
     return list_page
 
 
@@ -2233,12 +2607,9 @@ def _seed_posted_purchase_invoice_pages() -> Page:
              editable=False, primary_key=False, tab_index=5),
         dict(name='due_date', caption='Due Date', field_type='Date', visible=True,
              editable=False, primary_key=False, tab_index=6),
+        dict(name='closed', caption='Closed', field_type='Boolean', visible=True,
+             editable=False, primary_key=False, tab_index=7),
     ])
-    PageControlField.objects.filter(
-        page=doc,
-        page_control__name='PostedPurchaseInvoiceGeneral',
-        name='closed',
-    ).delete()
 
     part_ctrl, _ = PageControl.objects.update_or_create(
         page=doc,
@@ -2257,6 +2628,43 @@ def _seed_posted_purchase_invoice_pages() -> Page:
     part_ctrl.part_page = subform
     part_ctrl.link_field = 'posted_purchase_invoice__system_id'
     part_ctrl.save(update_fields=['part_page', 'link_field'])
+
+    PageAction.objects.filter(page=doc, name='reverse_transactions').delete()
+    PageAction.objects.update_or_create(
+        page=doc,
+        name='create_corrective_credit_memo',
+        defaults={
+            'caption': 'Create Corrective Credit Memo',
+            'requires_confirmation': True,
+            'confirmation_message': (
+                'Create a credit memo for this posted invoice that you complete '
+                'and post manually to reverse the posted invoice?'
+            ),
+            'tooltip': (
+                'Create a credit memo for this posted invoice that you complete '
+                'and post manually to reverse the posted invoice.'
+            ),
+            'visible': True,
+            'ribbon_tab': 'Home',
+            'image_url': 'FileMinus',
+        },
+    )
+    PageAction.objects.update_or_create(
+        page=doc,
+        name='find_entries',
+        defaults={
+            'caption': 'Find Entries',
+            'requires_confirmation': False,
+            'confirmation_message': '',
+            'tooltip': (
+                'Find all ledger entries related to this posted purchase invoice '
+                '(G/L, VAT, vendor, item, and value entries).'
+            ),
+            'visible': True,
+            'ribbon_tab': 'Navigate',
+            'image_url': 'Search',
+        },
+    )
 
     return doc
 
@@ -2393,10 +2801,12 @@ def _seed_posted_purchase_invoice_list(doc: Page) -> Page:
              editable=False, primary_key=False, tab_index=2),
         dict(name='posting_date', caption='Posting Date', field_type='Date', visible=True, editable=False,
              primary_key=False, tab_index=3),
-        dict(name='document_date', caption='Document Date', field_type='Date', visible=False, editable=False,
+        dict(name='closed', caption='Closed', field_type='Boolean', visible=True, editable=False,
              primary_key=False, tab_index=4),
-        dict(name='due_date', caption='Due Date', field_type='Date', visible=False, editable=False,
+        dict(name='document_date', caption='Document Date', field_type='Date', visible=False, editable=False,
              primary_key=False, tab_index=5),
+        dict(name='due_date', caption='Due Date', field_type='Date', visible=False, editable=False,
+             primary_key=False, tab_index=6),
     ])
     # Remove legacy PurchaseInvoice list fields from older seeds.
     PageControlField.objects.filter(
@@ -3595,7 +4005,7 @@ def _seed_item_journal_pages() -> tuple[Page, Page, Page, Page]:
 
     posted_list = _seed_status_filtered_list_page(
         name='PostedInventoryAdjustmentList',
-        caption='Posted Inventory Adjustments',
+        caption='Inventory Adjustment History',
         source_table='ItemJournal',
         card_page=card,
         title_field='document_no',
@@ -4902,7 +5312,7 @@ def _seed_role_centre_pages(
         ('NavItems', 'Items', 'ItemList', 'Package', 'Inventory'),
         ('NavInventoryAdjustment', 'Inventory Adjustment', 'InventoryAdjustmentJournalList', 'PackagePlus', 'Inventory'),
         ('NavOpeningBalance', 'Opening Balance', 'OpeningBalanceJournalList', 'Scale', 'Inventory'),
-        ('NavPostedInventoryAdjustments', 'Posted Inventory Adjustments', 'PostedInventoryAdjustmentList', 'FileCheck', 'Inventory'),
+        ('NavPostedInventoryAdjustments', 'Inventory Adjustment History', 'PostedInventoryAdjustmentList', 'FileCheck', 'Inventory'),
         ('NavCustomers', 'Customers', 'CustomerList', 'Users', 'Sales'),
         ('NavVendors', 'Vendors', 'VendorList', 'Truck', 'Purchase'),
         ('NavSalesOrders', 'Sales Orders', 'SalesOrderList', 'Package', 'Sales'),
@@ -4966,7 +5376,7 @@ def _seed_debug_admin_rc(
         ('NavItems', 'Items', 'ItemList', 'Package', 'Inventory'),
         ('NavInventoryAdjustment', 'Inventory Adjustment', 'InventoryAdjustmentJournalList', 'PackagePlus', 'Inventory'),
         ('NavOpeningBalance', 'Opening Balance', 'OpeningBalanceJournalList', 'Scale', 'Inventory'),
-        ('NavPostedInventoryAdjustments', 'Posted Inventory Adjustments', 'PostedInventoryAdjustmentList', 'FileCheck', 'Inventory'),
+        ('NavPostedInventoryAdjustments', 'Inventory Adjustment History', 'PostedInventoryAdjustmentList', 'FileCheck', 'Inventory'),
         ('NavCustomers', 'Customers', 'CustomerList', 'Users', 'Sales'),
         ('NavVendors', 'Vendors', 'VendorList', 'Truck', 'Purchase'),
         ('NavSalesOrders', 'Sales Orders', 'SalesOrderList', 'Package', 'Sales'),
@@ -5977,7 +6387,7 @@ def _seed_warehouse_rc(
         ('NavItems', 'Items', 'ItemList', 'Package', 'Inventory'),
         ('NavInventoryAdjustment', 'Inventory Adjustment', 'InventoryAdjustmentJournalList', 'PackagePlus', 'Inventory'),
         ('NavOpeningBalance', 'Opening Balance', 'OpeningBalanceJournalList', 'Scale', 'Inventory'),
-        ('NavPostedInventoryAdjustments', 'Posted Inventory Adjustments', 'PostedInventoryAdjustmentList', 'FileCheck', 'Inventory'),
+        ('NavPostedInventoryAdjustments', 'Inventory Adjustment History', 'PostedInventoryAdjustmentList', 'FileCheck', 'Inventory'),
         ('NavVendors', 'Vendors', 'VendorList', 'Truck', 'Purchase'),
         ('NavPurchaseInvoices', 'Purchase Invoices', 'PurchaseInvoiceList', 'FileInput', 'Purchase'),
         ('NavPostedPurchaseInvoices', 'Purchase History', 'PostedPurchaseInvoiceList', 'FileCheck', 'Purchase'),

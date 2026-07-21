@@ -396,6 +396,8 @@ MODEL_REGISTRY: dict[str, tuple[str, str]] = {
     'PurchaseInvoiceLine': ('purchases', 'PurchaseInvoiceLine'),
     'PostedPurchaseInvoice': ('purchases', 'PostedPurchaseInvoice'),
     'PostedPurchaseInvoiceLine': ('purchases', 'PostedPurchaseInvoiceLine'),
+    'PurchaseCreditMemo': ('purchases', 'PurchaseCreditMemo'),
+    'PurchaseCreditMemoLine': ('purchases', 'PurchaseCreditMemoLine'),
     'Expense': ('expenses', 'Expense'),
     'ExpenseType': ('expenses', 'ExpenseType'),
     'PaymentJournal': ('payments', 'PaymentJournal'),
@@ -1749,6 +1751,7 @@ def _parent_record_for_line(obj):
         'purchase_invoice',
         'sales_order',
         'purchase_order',
+        'credit_memo',
         'payment_journal',
         'item_journal',
         'expense',
@@ -3062,6 +3065,102 @@ def post_sales_credit_memo(record, request):
     return record
 
 
+def create_corrective_sales_credit_memo_action(record, request):
+    """BC Create Corrective Credit Memo — opens Draft CM for manual edit/post."""
+    from sales.views import create_corrective_sales_credit_memo
+
+    result = create_corrective_sales_credit_memo(record, request)
+    credit_memo = result['credit_memo']
+    created = result.get('created', True)
+    no = getattr(credit_memo, 'credit_memo_no', None) or getattr(credit_memo, 'no', '')
+    message = (
+        f'Credit memo {no} created. Adjust quantities or lines, then Post.'
+        if created
+        else f'Opening existing draft credit memo {no}.'
+    )
+    return {
+        'command': 'NAVIGATE',
+        'content': {
+            'PageName': result['page_name'],
+            'SystemId': str(credit_memo.system_id),
+            'Message': message,
+        },
+    }
+
+
+def create_corrective_purchase_credit_memo_action(record, request):
+    """BC Create Corrective Credit Memo — opens Open CM for manual edit/post."""
+    from purchases.views import create_corrective_purchase_credit_memo
+
+    result = create_corrective_purchase_credit_memo(record, request)
+    credit_memo = result['credit_memo']
+    created = result.get('created', True)
+    no = getattr(credit_memo, 'no', '') or ''
+    message = (
+        f'Credit memo {no} created. Adjust quantities or lines, then Post.'
+        if created
+        else f'Opening existing open credit memo {no}.'
+    )
+    return {
+        'command': 'NAVIGATE',
+        'content': {
+            'PageName': result['page_name'],
+            'SystemId': str(credit_memo.system_id),
+            'Message': message,
+        },
+    }
+
+
+def find_entries_posted_purchase_invoice(record, request):
+    """BC Page 344 Find Entries — related ledgers for a posted purchase invoice."""
+    from pages.find_entries import build_find_entries_for_posted_purchase
+
+    content = build_find_entries_for_posted_purchase(record)
+    ledger_rows = [
+        r for r in (content.get('RelatedEntries') or [])
+        if r.get('TableKey') != 'source_document'
+    ]
+    if not ledger_rows:
+        raise ValueError('No related ledger entries found for this document.')
+    return {'command': 'PREVIEW', 'content': content}
+
+
+def find_entries_posted_sales_invoice(record, request):
+    """BC Page 344 Find Entries — related ledgers for a posted sales invoice."""
+    from pages.find_entries import build_find_entries_for_posted_sales
+
+    content = build_find_entries_for_posted_sales(record)
+    ledger_rows = [
+        r for r in (content.get('RelatedEntries') or [])
+        if r.get('TableKey') != 'source_document'
+    ]
+    if not ledger_rows:
+        raise ValueError('No related ledger entries found for this document.')
+    return {'command': 'PREVIEW', 'content': content}
+
+
+def post_purchase_credit_memo(record, request):
+    from purchases.admin import PurchaseCreditMemoPostingProcessor
+    import uuid
+
+    if record.status == 'Posted':
+        raise ValueError('This credit memo has already been posted.')
+    if not record.original_posted_invoice_id and not record.original_invoice_no:
+        raise ValueError('Credit memo is not linked to an original posted invoice.')
+
+    receipt_no = (
+        f"RCP-{timezone.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
+    )
+    processor = PurchaseCreditMemoPostingProcessor(record, request, receipt_no)
+    with transaction.atomic():
+        result = processor.post()
+        if not result.get('success'):
+            raise ValueError(result.get('message', 'Unknown error during posting'))
+
+    record.refresh_from_db()
+    return record
+
+
 def post_payment_journal(record, request):
     import uuid
 
@@ -3325,10 +3424,19 @@ ACTION_HANDLERS = {
     ('PaymentJournal', 'post_payment_journal'): post_payment_journal,
     ('PurchaseInvoice', 'preview_purchase_invoice'): preview_purchase_invoice,
     ('PurchaseInvoice', 'post_purchase_invoice'): post_purchase_invoice,
+    ('PostedPurchaseInvoice', 'create_corrective_credit_memo'): create_corrective_purchase_credit_memo_action,
+    ('PostedPurchaseInvoice', 'reverse_transactions'): create_corrective_purchase_credit_memo_action,
+    ('PostedPurchaseInvoice', 'find_entries'): find_entries_posted_purchase_invoice,
     ('SalesInvoice', 'preview_sales_invoice'): preview_sales_invoice,
     ('SalesInvoice', 'post_sales_invoice'): post_sales_invoice,
+    ('SalesInvoice', 'create_corrective_credit_memo'): create_corrective_sales_credit_memo_action,
+    ('SalesInvoice', 'reverse_transactions'): create_corrective_sales_credit_memo_action,
+    ('PostedSalesInvoice', 'create_corrective_credit_memo'): create_corrective_sales_credit_memo_action,
+    ('PostedSalesInvoice', 'reverse_transactions'): create_corrective_sales_credit_memo_action,
+    ('PostedSalesInvoice', 'find_entries'): find_entries_posted_sales_invoice,
     ('SalesCreditMemo', 'preview_credit_memo'): preview_sales_credit_memo,
     ('SalesCreditMemo', 'post_credit_memo'): post_sales_credit_memo,
+    ('PurchaseCreditMemo', 'post_credit_memo'): post_purchase_credit_memo,
     ('GeneralJournalLine', 'preview_general_journal'): preview_general_journal_batch_handler,
     ('GeneralJournalLine', 'post_general_journal'): post_general_journal_batch_handler,
     ('FinancialReportRowLine', 'recalculate_financial_report'): recalculate_financial_report_handler,
@@ -3615,6 +3723,14 @@ class PageDataView(APIView):
                 qs = qs.select_related(
                     'item', 'credit_memo', 'location_code',
                 ).order_by('id')
+            elif source_table == 'PurchaseCreditMemo':
+                qs = qs.select_related('vendor', 'original_posted_invoice').order_by(
+                    '-posting_date', '-id',
+                )
+            elif source_table == 'PurchaseCreditMemoLine':
+                qs = qs.select_related(
+                    'item', 'credit_memo', 'location_code',
+                ).order_by('id')
             elif source_table == 'PurchaseInvoiceLine':
                 qs = qs.select_related(
                     'item',
@@ -3643,7 +3759,10 @@ class PageDataView(APIView):
             elif source_table == 'PurchaseInvoice':
                 qs = qs.select_related('vendor').order_by('-posting_date', '-id')
             elif source_table == 'PostedPurchaseInvoice':
+                from purchases.views import PurchaseViewSet
+
                 qs = qs.select_related('vendor').order_by('-posting_date', '-id')
+                qs = PurchaseViewSet._annotate_posted_purchase_invoice_closed(qs)
             elif source_table == 'ItemLedgerEntries':
                 qs = qs.select_related('item', 'location').order_by('id')
             elif source_table == 'RestaurantOrder':
@@ -4410,6 +4529,16 @@ class PageActionView(APIView):
 
                 try:
                     result = handler(obj, request)
+                except PermissionError as e:
+                    return Response(
+                        {'error': str(e)},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+                except ValueError as e:
+                    return Response(
+                        {'error': str(e)},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
                 except Exception as e:
                     return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -4425,6 +4554,15 @@ class PageActionView(APIView):
                     'Successful': True,
                     'Command': 'PREVIEW',
                     'Content': result.get('content'),
+                })
+
+            if isinstance(result, dict) and result.get('command') == 'NAVIGATE':
+                content = result.get('content') or {}
+                return Response({
+                    'Successful': True,
+                    'Command': 'NAVIGATE',
+                    'Content': content,
+                    'Message': content.get('Message', 'Opening document'),
                 })
 
             if isinstance(result, dict) and result.get('command') == 'REFRESH':

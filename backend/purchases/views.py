@@ -16,7 +16,7 @@ from rest_framework.authentication import SessionAuthentication
 from authentication.authentication import JWTAuthenticationWithRevocationChecks as JWTAuthentication
 from rest_framework.permissions import IsAuthenticated
 from django.http import HttpRequest, Http404
-from django.db.models import Sum
+from django.db.models import Sum, OuterRef, Subquery, Exists, Q, CharField
 from rest_framework.views import APIView
 from rest_framework.decorators import (
     api_view,
@@ -59,6 +59,178 @@ from .serializers import (
     DocumentAttachmentSerializer,
 )
 from dimension.branch_filter import filter_queryset_by_branch, get_branch_for_request
+
+
+def create_corrective_purchase_credit_memo(posted_invoice, request):
+    """
+    BC Create Corrective Credit Memo: copy posted purchase invoice into an Open CM.
+    Does not post — user edits quantities/lines then posts manually.
+    """
+    from authentication.models import UserSetup
+    from purchases.models import PostedPurchaseCreditMemo, PurchaseCreditMemoLine
+
+    try:
+        user_setup = UserSetup.objects.get(user=request.user)
+    except UserSetup.DoesNotExist:
+        raise PermissionError(
+            "You do not have permission to create corrective credit memos. "
+            "Enable Reverse Purchase Invoice in User Setup."
+        )
+    if not user_setup.can_reverse_purchase_invoice:
+        raise PermissionError(
+            "You do not have permission to create corrective credit memos. "
+            "Enable Reverse Purchase Invoice in User Setup."
+        )
+
+    if PostedPurchaseCreditMemo.objects.filter(
+        original_posted_invoice=posted_invoice
+    ).exists():
+        raise ValueError(
+            f"Purchase invoice {posted_invoice.no} has already been reversed."
+        )
+
+    existing_open = (
+        PurchaseCreditMemo.objects.filter(
+            original_posted_invoice=posted_invoice,
+            status="Open",
+        )
+        .order_by("-id")
+        .first()
+    )
+    if existing_open:
+        return {
+            "credit_memo": existing_open,
+            "created": False,
+            "page_name": "PurchaseCreditMemo",
+        }
+
+    with transaction.atomic():
+        credit_memo = PurchaseCreditMemo.objects.create(
+            vendor=posted_invoice.vendor,
+            vendor_name=posted_invoice.vendor.name,
+            document_date=posted_invoice.document_date,
+            posting_date=posted_invoice.posting_date,
+            due_date=posted_invoice.due_date,
+            expected_receipt_date=None,
+            original_invoice_no=posted_invoice.no,
+            original_posted_invoice=posted_invoice,
+            status="Open",
+            global_dimension_1=posted_invoice.global_dimension_1,
+            global_dimension_2=posted_invoice.global_dimension_2,
+            dimension_set=posted_invoice.dimension_set,
+        )
+        for line in posted_invoice.posted_purchase_invoice_lines.all():
+            if not line.item_id:
+                continue
+            PurchaseCreditMemoLine.objects.create(
+                credit_memo=credit_memo,
+                item=line.item,
+                description=line.description,
+                location_code=line.location_code,
+                quantity=line.quantity,
+                item_unit_of_measure=line.item_unit_of_measure,
+                unit_of_measure=line.unit_of_measure,
+                unit_cost=line.unit_cost,
+                global_dimension_1=line.global_dimension_1
+                or posted_invoice.global_dimension_1,
+                dimension_set=line.dimension_set or posted_invoice.dimension_set,
+            )
+
+    return {
+        "credit_memo": credit_memo,
+        "created": True,
+        "page_name": "PurchaseCreditMemo",
+    }
+
+
+def execute_posted_purchase_invoice_reversal(
+    posted_invoice,
+    request,
+    reason=None,
+    purchase_invoice_no=None,
+):
+    """
+    Create and auto-post a corrective credit memo for a posted purchase invoice.
+    Raises PermissionError / ValueError on failure. Returns a result dict.
+    """
+    from authentication.models import UserSetup
+    from django.utils import timezone
+    import uuid
+    from purchases.models import PostedPurchaseCreditMemo, PurchaseCreditMemoLine
+    from purchases.admin import PurchaseCreditMemoPostingProcessor
+
+    try:
+        user_setup = UserSetup.objects.get(user=request.user)
+    except UserSetup.DoesNotExist:
+        raise PermissionError(
+            "You do not have permission to reverse purchase invoices. "
+            "Please contact your administrator to enable this permission in your User Setup."
+        )
+
+    if not user_setup.can_reverse_purchase_invoice:
+        raise PermissionError(
+            "You do not have permission to reverse purchase invoices. "
+            "Please contact your administrator to enable this permission in your User Setup."
+        )
+
+    if PostedPurchaseCreditMemo.objects.filter(
+        original_posted_invoice=posted_invoice
+    ).exists():
+        label = purchase_invoice_no or posted_invoice.no
+        raise ValueError(f"Purchase invoice {label} has already been reversed.")
+
+    if not reason:
+        reason = f"Manual reversal by {request.user.username}"
+
+    with transaction.atomic():
+        credit_memo = PurchaseCreditMemo.objects.create(
+            vendor=posted_invoice.vendor,
+            vendor_name=posted_invoice.vendor.name,
+            document_date=posted_invoice.document_date,
+            posting_date=posted_invoice.posting_date,
+            due_date=posted_invoice.due_date,
+            expected_receipt_date=None,
+            original_invoice_no=posted_invoice.no,
+            original_posted_invoice=posted_invoice,
+            status="Open",
+            global_dimension_1=posted_invoice.global_dimension_1,
+            global_dimension_2=posted_invoice.global_dimension_2,
+            dimension_set=posted_invoice.dimension_set,
+        )
+
+        for line in posted_invoice.posted_purchase_invoice_lines.all():
+            PurchaseCreditMemoLine.objects.create(
+                credit_memo=credit_memo,
+                item=line.item,
+                description=line.description,
+                location_code=line.location_code,
+                quantity=line.quantity,
+                item_unit_of_measure=line.item_unit_of_measure,
+                unit_of_measure=line.unit_of_measure,
+                unit_cost=line.unit_cost,
+                global_dimension_1=line.global_dimension_1
+                or posted_invoice.global_dimension_1,
+                dimension_set=line.dimension_set or posted_invoice.dimension_set,
+            )
+
+        receipt_no = (
+            f"RCP-{timezone.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
+        )
+        processor = PurchaseCreditMemoPostingProcessor(
+            credit_memo, request, receipt_no
+        )
+        result = processor.post()
+        if not result.get("success", False):
+            raise ValueError(result.get("message", "Unknown error during posting"))
+
+        credit_memo.refresh_from_db()
+        return {
+            "purchase_invoice_no": purchase_invoice_no or posted_invoice.no,
+            "credit_memo_no": credit_memo.no,
+            "credit_memo_id": credit_memo.id,
+            "status": credit_memo.status,
+            "credit_memo": credit_memo,
+        }
 
 
 class DocumentAttachmentViewSet(viewsets.ModelViewSet):
@@ -167,6 +339,31 @@ class PurchaseViewSet(viewsets.ModelViewSet):
         "updated_at",
     ]
     ordering = ["-created_at"]
+
+    @staticmethod
+    def _annotate_posted_purchase_invoice_closed(queryset):
+        """BC Closed FlowField: True when no open Vendor Ledger Entry exists."""
+        linked_purchase_invoice_no = (
+            PurchaseInvoice.objects.filter(
+                vendor_invoice_no=OuterRef("vendor_invoice_no"),
+                vendor_id=OuterRef("vendor_id"),
+            )
+            .order_by("-id")
+            .values("invoice_no")[:1]
+        )
+        queryset = queryset.annotate(
+            linked_purchase_invoice_no=Subquery(
+                linked_purchase_invoice_no, output_field=CharField()
+            ),
+        )
+        open_vle = VendorLedger.objects.filter(
+            vendor_id=OuterRef("vendor_id"),
+            open=True,
+        ).filter(
+            Q(document_no=OuterRef("linked_purchase_invoice_no"))
+            | Q(document_no=OuterRef("no"))
+        )
+        return queryset.annotate(_ledger_closed=~Exists(open_vle))
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -593,157 +790,55 @@ class PurchaseViewSet(viewsets.ModelViewSet):
         """
         try:
             purchase = self.get_object()
-
-            # Check user permission to reverse purchase invoices
-            # This permission is controlled in User Setup (can_reverse_purchase_invoice)
-            from authentication.models import UserSetup
-
-            try:
-                user_setup = UserSetup.objects.get(user=request.user)
-            except UserSetup.DoesNotExist:
-                # If no setup exists, deny by default (security-first approach)
-                return Response(
-                    {
-                        "error": "Permission denied",
-                        "detail": "You do not have permission to reverse purchase invoices. Please contact your administrator to enable this permission in your User Setup.",
-                    },
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-
-            # Check the permission flag
-            if not user_setup.can_reverse_purchase_invoice:
-                return Response(
-                    {
-                        "error": "Permission denied",
-                        "detail": "You do not have permission to reverse purchase invoices. Please contact your administrator to enable this permission in your User Setup.",
-                    },
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-
-            # Validate purchase is posted
             if purchase.status != "Posted":
                 return Response(
                     {
                         "error": "Cannot reverse purchase invoice",
-                        "detail": f"Purchase invoice {purchase.invoice_no} is not posted. Only posted invoices can be reversed.",
+                        "detail": (
+                            f"Purchase invoice {purchase.invoice_no} is not posted. "
+                            "Only posted invoices can be reversed."
+                        ),
                     },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # Check if already reversed
-            from purchases.models import PostedPurchaseCreditMemo
-
             posted_invoice = PostedPurchaseInvoice.objects.filter(
                 vendor_invoice_no=purchase.vendor_invoice_no
             ).first()
-
-            if posted_invoice:
-                # Check if already reversed
-                is_reversed = PostedPurchaseCreditMemo.objects.filter(
-                    original_posted_invoice=posted_invoice
-                ).exists()
-                if is_reversed:
-                    return Response(
-                        {
-                            "error": "Purchase invoice already reversed",
-                            "detail": f"Purchase invoice {purchase.invoice_no} has already been reversed.",
-                        },
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-
-            # Get reason from request (optional)
-            reason = request.data.get(
-                "reason", f"Manual reversal by {request.user.username}"
-            )
-
-            # Step 1: Create credit memo from posted purchase invoice
-            # Find the PostedPurchaseInvoice
             if not posted_invoice:
                 return Response(
                     {
                         "error": "Posted purchase invoice not found",
-                        "detail": f"Could not find posted invoice for {purchase.invoice_no}. The invoice may not have been properly posted.",
+                        "detail": (
+                            f"Could not find posted invoice for {purchase.invoice_no}. "
+                            "The invoice may not have been properly posted."
+                        ),
                     },
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-            # Get admin instance for creating credit memo
-            posted_invoice_admin = PostedPurchaseInvoiceAdmin(
-                PostedPurchaseInvoice, admin.site
+            result = execute_posted_purchase_invoice_reversal(
+                posted_invoice,
+                request,
+                reason=request.data.get("reason"),
+                purchase_invoice_no=purchase.invoice_no,
+            )
+            return Response(
+                {
+                    "message": "Purchase invoice reversed successfully",
+                    "purchase_invoice_no": result["purchase_invoice_no"],
+                    "credit_memo_no": result["credit_memo_no"],
+                    "credit_memo_id": result["credit_memo_id"],
+                    "status": result["status"],
+                },
+                status=status.HTTP_200_OK,
             )
 
-            # Create credit memo directly (replicating admin logic)
-            with transaction.atomic():
-                from purchases.models import PurchaseCreditMemoLine
-                from django.utils import timezone
-                import uuid
-
-                # Create the credit memo with status "Open" (copy dimensions from posted invoice)
-                credit_memo = PurchaseCreditMemo.objects.create(
-                    vendor=posted_invoice.vendor,
-                    vendor_name=posted_invoice.vendor.name,
-                    document_date=posted_invoice.document_date,
-                    posting_date=posted_invoice.posting_date,
-                    due_date=posted_invoice.due_date,
-                    expected_receipt_date=None,
-                    original_invoice_no=posted_invoice.no,
-                    original_posted_invoice=posted_invoice,
-                    status="Open",
-                    global_dimension_1=posted_invoice.global_dimension_1,
-                    global_dimension_2=posted_invoice.global_dimension_2,
-                    dimension_set=posted_invoice.dimension_set,
-                )
-
-                # Copy all lines from the posted invoice (including dimensions)
-                lines_created = 0
-                for line in posted_invoice.posted_purchase_invoice_lines.all():
-                    PurchaseCreditMemoLine.objects.create(
-                        credit_memo=credit_memo,
-                        item=line.item,
-                        description=line.description,
-                        location_code=line.location_code,
-                        quantity=line.quantity,
-                        item_unit_of_measure=line.item_unit_of_measure,
-                        unit_of_measure=line.unit_of_measure,
-                        unit_cost=line.unit_cost,
-                        global_dimension_1=line.global_dimension_1
-                        or posted_invoice.global_dimension_1,
-                        global_dimension_2=line.global_dimension_2,
-                        dimension_set=line.dimension_set,
-                    )
-                    lines_created += 1
-
-                # Step 2: Post the credit memo automatically
-                receipt_no = f"RCP-{timezone.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
-
-                from purchases.admin import PurchaseCreditMemoPostingProcessor
-
-                # Create posting processor and post the credit memo
-                processor = PurchaseCreditMemoPostingProcessor(
-                    credit_memo, request, receipt_no
-                )
-
-                # Post the credit memo (this creates all reversal entries)
-                result = processor.post()
-
-                if not result.get("success", False):
-                    error_msg = result.get("message", "Unknown error during posting")
-                    raise Exception(error_msg)
-
-                # Refresh credit memo to get updated status
-                credit_memo.refresh_from_db()
-
-                return Response(
-                    {
-                        "message": "Purchase invoice reversed successfully",
-                        "purchase_invoice_no": purchase.invoice_no,
-                        "credit_memo_no": credit_memo.no,
-                        "credit_memo_id": credit_memo.id,
-                        "status": credit_memo.status,
-                    },
-                    status=status.HTTP_200_OK,
-                )
-
+        except PermissionError as e:
+            return Response(
+                {"error": "Permission denied", "detail": str(e)},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         except Exception as e:
             import traceback
             import logging
@@ -753,7 +848,6 @@ class PurchaseViewSet(viewsets.ModelViewSet):
             logger.error(f"Full traceback: {traceback.format_exc()}")
 
             error_message = str(e)
-            # Clean up error message
             if error_message.startswith("Error creating credit memo: "):
                 error_message = error_message.replace(
                     "Error creating credit memo: ", ""

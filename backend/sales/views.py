@@ -580,6 +580,226 @@ class CustomerViewSet(viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
 
+def create_corrective_sales_credit_memo(sales_invoice_or_posted, request):
+    """
+    BC Create Corrective Credit Memo: copy posted invoice into a Draft sales credit memo.
+    Does not post — user edits quantities/lines then posts manually.
+
+    Accepts either a posted SalesInvoice or a PostedSalesInvoice archive row.
+    """
+    from authentication.models import UserSetup
+    from helpers.helpers import generate_document_number
+    from sales.models import PostedSalesInvoice, SalesCreditMemoLine, SalesReceivable
+
+    try:
+        user_setup = UserSetup.objects.get(user=request.user)
+    except UserSetup.DoesNotExist:
+        raise PermissionError(
+            "You do not have permission to create corrective credit memos. "
+            "Enable Reverse Sales Invoice in User Setup."
+        )
+    if not user_setup.can_reverse_sales_invoice:
+        raise PermissionError(
+            "You do not have permission to create corrective credit memos. "
+            "Enable Reverse Sales Invoice in User Setup."
+        )
+
+    if isinstance(sales_invoice_or_posted, PostedSalesInvoice):
+        posted = sales_invoice_or_posted
+    else:
+        sales_invoice = sales_invoice_or_posted
+        if sales_invoice.status != "Posted":
+            raise ValueError(
+                f"Sales invoice {sales_invoice.invoice_no} is not posted. "
+                "Only posted invoices can create a corrective credit memo."
+            )
+
+        customer_invoice_no = getattr(sales_invoice, "customer_invoice_no", None)
+        if customer_invoice_no:
+            posted = PostedSalesInvoice.objects.filter(
+                customer_invoice_no=customer_invoice_no,
+                customer=sales_invoice.customer,
+            ).first()
+        else:
+            posted = PostedSalesInvoice.objects.filter(
+                customer=sales_invoice.customer,
+                document_date=sales_invoice.document_date,
+            ).first()
+
+        if not posted:
+            raise ValueError(
+                f"Could not find posted invoice for {sales_invoice.invoice_no}."
+            )
+
+    if posted.reversed:
+        raise ValueError(
+            f"Invoice {posted.no} has already been reversed"
+            + (f" on {posted.reversed_date}." if posted.reversed_date else ".")
+        )
+    if posted.credit_memos.filter(status="Posted").exists():
+        raise ValueError(
+            f"Invoice {posted.no} already has credit memos posted against it."
+        )
+    existing_draft = posted.credit_memos.filter(status="Draft").order_by("-id").first()
+    if existing_draft:
+        return {
+            "credit_memo": existing_draft,
+            "created": False,
+            "page_name": "SalesCreditMemo",
+        }
+
+    with transaction.atomic():
+        credit_memo_no, _ = generate_document_number(
+            SalesReceivable,
+            "credit_memo_no",
+            "credit_memo_no",
+            is_no_series_lines=True,
+        )
+        if not credit_memo_no:
+            raise ValueError("Failed to generate credit memo number")
+
+        credit_memo = SalesCreditMemo.objects.create(
+            credit_memo_no=credit_memo_no,
+            customer=posted.customer,
+            document_date=posted.document_date,
+            posting_date=posted.posting_date,
+            vat_date=posted.vat_date,
+            original_invoice_no=posted.no,
+            original_invoice=posted,
+            status="Draft",
+            reversed_by_user=request.user,
+            global_dimension_1=posted.global_dimension_1,
+            global_dimension_2=posted.global_dimension_2,
+            dimension_set=posted.dimension_set,
+        )
+        for line in posted.posted_sales_invoice_lines.all():
+            if not line.item_id:
+                continue
+            SalesCreditMemoLine.objects.create(
+                credit_memo=credit_memo,
+                item=line.item,
+                description=line.description,
+                location_code=line.location_code,
+                quantity=line.quantity,
+                item_unit_of_measure=line.item_unit_of_measure,
+                unit_of_measure=line.unit_of_measure,
+                unit_price=line.unit_price,
+                amount=line.amount,
+                global_dimension_1=line.global_dimension_1
+                or posted.global_dimension_1,
+                dimension_set=line.dimension_set or posted.dimension_set,
+            )
+
+    return {
+        "credit_memo": credit_memo,
+        "created": True,
+        "page_name": "SalesCreditMemo",
+    }
+
+
+def execute_sales_invoice_reversal(sales_invoice, request, reason=None):
+    """
+    Create and auto-post a corrective credit memo for a posted sales invoice.
+    Raises PermissionError / ValueError on failure. Returns a result dict.
+    """
+    from authentication.models import UserSetup
+
+    try:
+        user_setup = UserSetup.objects.get(user=request.user)
+    except UserSetup.DoesNotExist:
+        raise PermissionError(
+            "You do not have permission to reverse sales invoices. "
+            "Please contact your administrator to enable this permission in your User Setup."
+        )
+
+    if not user_setup.can_reverse_sales_invoice:
+        raise PermissionError(
+            "You do not have permission to reverse sales invoices. "
+            "Please contact your administrator to enable this permission in your User Setup."
+        )
+
+    if sales_invoice.status != "Posted":
+        raise ValueError(
+            f"Sales invoice {sales_invoice.invoice_no} is not posted. "
+            "Only posted invoices can be reversed."
+        )
+
+    customer_invoice_no = getattr(sales_invoice, "customer_invoice_no", None)
+    if customer_invoice_no:
+        posted_sales_invoice = PostedSalesInvoice.objects.filter(
+            customer_invoice_no=customer_invoice_no,
+            customer=sales_invoice.customer,
+        ).first()
+    else:
+        posted_sales_invoice = PostedSalesInvoice.objects.filter(
+            customer=sales_invoice.customer,
+            document_date=sales_invoice.document_date,
+        ).first()
+
+    if posted_sales_invoice:
+        if posted_sales_invoice.reversed:
+            raise ValueError(
+                f"Sales invoice {sales_invoice.invoice_no} has already been reversed"
+                + (
+                    f" on {posted_sales_invoice.reversed_date}."
+                    if posted_sales_invoice.reversed_date
+                    else "."
+                )
+            )
+        if posted_sales_invoice.credit_memos.filter(status="Posted").exists():
+            raise ValueError(
+                f"Sales invoice {sales_invoice.invoice_no} already has credit memos "
+                "posted against it."
+            )
+
+    if not posted_sales_invoice:
+        raise ValueError(
+            f"Could not find posted invoice for {sales_invoice.invoice_no}. "
+            "The invoice may not have been properly posted."
+        )
+
+    if not reason:
+        reason = f"Manual reversal by {request.user.username}"
+
+    class ReversalInvoiceWrapper:
+        """Wrapper to make SalesInvoice compatible with reversal processor."""
+
+        def __init__(self, open_invoice, posted_invoice):
+            self.no = open_invoice.invoice_no
+            self.invoice_no = open_invoice.invoice_no
+            self.customer = open_invoice.customer
+            self.document_date = open_invoice.document_date
+            self.posting_date = open_invoice.posting_date
+            self.vat_date = getattr(open_invoice, "vat_date", None)
+            self.due_date = getattr(open_invoice, "due_date", None)
+            self.customer_invoice_no = customer_invoice_no
+            self.status = open_invoice.status
+            self.reversed = False
+            self.posted_sales_invoice_lines = (
+                posted_invoice.posted_sales_invoice_lines.all()
+            )
+            self.credit_memos = SalesCreditMemo.objects.none()
+
+    invoice_wrapper = ReversalInvoiceWrapper(sales_invoice, posted_sales_invoice)
+
+    with transaction.atomic():
+        processor = SalesInvoiceReversalPostingProcessor(
+            invoice_wrapper, request, reason=reason
+        )
+        result = processor.post()
+        if not result.get("success", False):
+            raise ValueError(result.get("message", "Unknown error during reversal"))
+
+        credit_memo = result.get("credit_memo")
+        return {
+            "sales_invoice_no": sales_invoice.invoice_no,
+            "credit_memo_no": result.get("credit_memo_no"),
+            "credit_memo_id": credit_memo.id if credit_memo else None,
+            "transaction_no": result.get("transaction_no", "N/A"),
+            "posted_sales_invoice": result.get("posted_sales_invoice"),
+        }
+
+
 class SalesViewSet(viewsets.ModelViewSet):
     """
     Sales Invoice ViewSet with granular page permissions
@@ -731,7 +951,7 @@ class SalesViewSet(viewsets.ModelViewSet):
 
     @staticmethod
     def _annotate_posted_sales_invoice_ledger_links(queryset):
-        """Link PostedSalesInvoice → SalesInvoice → CustomerLedgerEntry (salesperson)."""
+        """Link PostedSalesInvoice → SalesInvoice → CustomerLedgerEntry (salesperson + Closed)."""
         sales_invoice_no = (
             SalesInvoice.objects.filter(
                 customer_invoice_no=OuterRef("customer_invoice_no"),
@@ -772,11 +992,21 @@ class SalesViewSet(viewsets.ModelViewSet):
             .order_by("-id")
             .values("user_id")[:1]
         )
+        # BC 1302 Closed = NOT EXISTS(open Cust. Ledger Entry for this invoice).
+        # Annotate as _ledger_closed (property name "closed" cannot be set via setattr).
+        open_cle = CustomerLedgerEntry.objects.filter(
+            customer_id=OuterRef("customer_id"),
+            open=True,
+        ).filter(
+            Q(document_no=OuterRef("linked_sales_invoice_no"))
+            | Q(document_no=OuterRef("no"))
+        )
         return queryset.annotate(
             user_name=Subquery(ledger_user_name, output_field=CharField()),
             ledger_user_id=Subquery(
                 ledger_user_id, output_field=models.IntegerField()
             ),
+            _ledger_closed=~Exists(open_cle),
         )
 
     @staticmethod
@@ -1329,159 +1559,28 @@ class SalesViewSet(viewsets.ModelViewSet):
         2. Automatically posting the credit memo with all reversal entries
         """
         try:
-            sales_invoice = self.get_object()
-
-            # Check user permission to reverse sales invoices
-            # This permission is controlled in User Setup (can_reverse_sales_invoice)
-            from authentication.models import UserSetup
-
-            try:
-                user_setup = UserSetup.objects.get(user=request.user)
-            except UserSetup.DoesNotExist:
-                # If no setup exists, deny by default (security-first approach)
-                return Response(
-                    {
-                        "error": "Permission denied",
-                        "detail": "You do not have permission to reverse sales invoices. Please contact your administrator to enable this permission in your User Setup.",
-                    },
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-
-            # Check the permission flag
-            if not user_setup.can_reverse_sales_invoice:
-                return Response(
-                    {
-                        "error": "Permission denied",
-                        "detail": "You do not have permission to reverse sales invoices. Please contact your administrator to enable this permission in your User Setup.",
-                    },
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-
-            # Validate sales invoice is posted
-            if sales_invoice.status != "Posted":
-                return Response(
-                    {
-                        "error": "Cannot reverse sales invoice",
-                        "detail": f"Sales invoice {sales_invoice.invoice_no} is not posted. Only posted invoices can be reversed.",
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            # Check if already reversed by finding PostedSalesInvoice and checking for credit memos
-            customer_invoice_no = getattr(sales_invoice, "customer_invoice_no", None)
-
-            # Try to find by customer_invoice_no first (most reliable)
-            if customer_invoice_no:
-                posted_sales_invoice = PostedSalesInvoice.objects.filter(
-                    customer_invoice_no=customer_invoice_no,
-                    customer=sales_invoice.customer,
-                ).first()
-            else:
-                # Fallback: match by customer and document_date
-                posted_sales_invoice = PostedSalesInvoice.objects.filter(
-                    customer=sales_invoice.customer,
-                    document_date=sales_invoice.document_date,
-                ).first()
-
-            if posted_sales_invoice:
-                # Check if already reversed
-                if posted_sales_invoice.reversed:
-                    return Response(
-                        {
-                            "error": "Sales invoice already reversed",
-                            "detail": f"Sales invoice {sales_invoice.invoice_no} has already been reversed on {posted_sales_invoice.reversed_date}.",
-                        },
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-
-                # Check if there are posted credit memos
-                if posted_sales_invoice.credit_memos.filter(status="Posted").exists():
-                    return Response(
-                        {
-                            "error": "Sales invoice already reversed",
-                            "detail": f"Sales invoice {sales_invoice.invoice_no} already has credit memos posted against it.",
-                        },
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-
-            # Get reason from request (optional)
-            reason = request.data.get(
-                "reason", f"Manual reversal by {request.user.username}"
+            result = execute_sales_invoice_reversal(
+                self.get_object(),
+                request,
+                reason=request.data.get("reason"),
+            )
+            return Response(
+                {
+                    "message": "Sales invoice reversed successfully",
+                    "sales_invoice_no": result["sales_invoice_no"],
+                    "credit_memo_no": result["credit_memo_no"],
+                    "credit_memo_id": result["credit_memo_id"],
+                    "status": "Posted",
+                    "transaction_no": result["transaction_no"],
+                },
+                status=status.HTTP_200_OK,
             )
 
-            # Find the PostedSalesInvoice if not already found
-            if not posted_sales_invoice:
-                return Response(
-                    {
-                        "error": "Posted sales invoice not found",
-                        "detail": f"Could not find posted invoice for {sales_invoice.invoice_no}. The invoice may not have been properly posted.",
-                    },
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-
-            # Create wrapper object (similar to ReversalInvoiceWrapper in admin)
-            class ReversalInvoiceWrapper:
-                """Wrapper to make SalesInvoice compatible with reversal processor"""
-
-                def __init__(self, sales_invoice, posted_sales_invoice):
-                    self.no = sales_invoice.invoice_no
-                    self.invoice_no = sales_invoice.invoice_no
-                    self.customer = sales_invoice.customer
-                    self.document_date = sales_invoice.document_date
-                    self.posting_date = sales_invoice.posting_date
-                    self.vat_date = getattr(sales_invoice, "vat_date", None)
-                    self.due_date = getattr(sales_invoice, "due_date", None)
-                    self.customer_invoice_no = customer_invoice_no
-                    self.status = sales_invoice.status
-                    self.reversed = False
-                    # Use PostedSalesInvoiceLine objects which have 'amount' field
-                    self.posted_sales_invoice_lines = (
-                        posted_sales_invoice.posted_sales_invoice_lines.all()
-                    )
-                    # Add credit_memos as empty queryset
-                    self.credit_memos = SalesCreditMemo.objects.none()
-
-            invoice_wrapper = ReversalInvoiceWrapper(
-                sales_invoice, posted_sales_invoice
+        except PermissionError as e:
+            return Response(
+                {"error": "Permission denied", "detail": str(e)},
+                status=status.HTTP_403_FORBIDDEN,
             )
-
-            # Execute reversal using wrapper
-            # All operations wrapped in atomic transaction for complete rollback on failure
-            with transaction.atomic():
-                processor = SalesInvoiceReversalPostingProcessor(
-                    invoice_wrapper, request, reason=reason
-                )
-
-                result = processor.post()
-
-                if not result.get("success", False):
-                    error_msg = result.get("message", "Unknown error during reversal")
-                    raise Exception(error_msg)
-
-                # Reversal successful - continue with status updates
-                credit_memo = result.get("credit_memo")
-                credit_memo_no = result.get("credit_memo_no")
-                transaction_no = result.get("transaction_no", "N/A")
-                posted_sales_invoice = result.get(
-                    "posted_sales_invoice"
-                )  # Already marked as reversed in processor
-
-                # Keep status as "Posted" - the reversed boolean field indicates reversal
-                # This matches the purchase invoice reversal pattern
-                # PostedSalesInvoice is already marked as reversed in the processor
-
-                return Response(
-                    {
-                        "message": "Sales invoice reversed successfully",
-                        "sales_invoice_no": sales_invoice.invoice_no,
-                        "credit_memo_no": credit_memo_no,
-                        "credit_memo_id": credit_memo.id if credit_memo else None,
-                        "status": "Posted",
-                        "transaction_no": transaction_no,
-                    },
-                    status=status.HTTP_200_OK,
-                )
-
         except Exception as e:
             import traceback
             import logging
@@ -1492,7 +1591,6 @@ class SalesViewSet(viewsets.ModelViewSet):
             logger.error(f"Full traceback: {traceback.format_exc()}")
 
             error_message = str(e)
-            # Clean up error message
             if error_message.startswith("Error reversing invoice: "):
                 error_message = error_message.replace("Error reversing invoice: ", "")
             if error_message.startswith("❌ Error reversing invoice: "):

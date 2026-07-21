@@ -547,11 +547,36 @@ class PostedPurchaseInvoice(BaseModel):
 
     @property
     def closed(self):
-        # Check if any related vendor ledger entry is closed
-        vendor_ledger = VendorLedger.objects.filter(document_no=self.no).first()
-        if vendor_ledger:
-            return "Yes" if not vendor_ledger.open else "No"
-        return "No"
+        """
+        BC Posted Purchase Invoice Closed (FlowField):
+        True when no open Vendor Ledger Entry exists for this invoice.
+        Ledger document_no is usually PurchaseInvoice.invoice_no, not PostedPurchaseInvoice.no.
+        """
+        # List path annotates _ledger_closed for performance.
+        if "_ledger_closed" in self.__dict__:
+            return bool(self.__dict__["_ledger_closed"])
+
+        doc_nos = {self.no} if self.no else set()
+        if self.vendor_invoice_no and self.vendor_id:
+            purchase_invoice_no = (
+                PurchaseInvoice.objects.filter(
+                    vendor_invoice_no=self.vendor_invoice_no,
+                    vendor_id=self.vendor_id,
+                )
+                .values_list("invoice_no", flat=True)
+                .first()
+            )
+            if purchase_invoice_no:
+                doc_nos.add(purchase_invoice_no)
+        doc_nos.discard(None)
+        doc_nos.discard("")
+        if not doc_nos:
+            return True
+        return not VendorLedger.objects.filter(
+            vendor_id=self.vendor_id,
+            document_no__in=doc_nos,
+            open=True,
+        ).exists()
 
     def save(self, *args, **kwargs):
         with transaction.atomic():

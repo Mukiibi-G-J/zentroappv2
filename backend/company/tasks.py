@@ -363,6 +363,24 @@ def create_company_task(self, data):
                         )
                         assign_user_to_admin_group(user)
                         command_output = "skipped: template baseline"
+                        try:
+                            update_task_progress(
+                                self,
+                                72,
+                                "Refreshing navigation labels...",
+                                "refreshing_pages",
+                            )
+                            call_command("seed_pages", schema=company.schema_name)
+                            logger.info(
+                                "Refreshed page engine nav for %s after template clone",
+                                company.name,
+                            )
+                        except Exception as pages_refresh_error:
+                            logger.error(
+                                "Error refreshing pages after template clone for %s: %s",
+                                company.name,
+                                pages_refresh_error,
+                            )
                         _log_company_creation_phase(
                             "after_roles_permissions_user_groups",
                             t_start,
