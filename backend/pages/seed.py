@@ -188,23 +188,37 @@ def seed():
         dict(name='item_name',  caption='Item Name',  field_type='Text',    visible=True, editable=True,  primary_key=False, tab_index=1),
         dict(name='type',       caption='Type',       field_type='Enum',    visible=True, editable=True,  primary_key=False, tab_index=2),
         dict(
-            name='unit_of_measure',
-            caption='Unit of Measure',
+            name='item_category',
+            caption='Item Category',
             field_type='Code',
             visible=True,
             editable=True,
             primary_key=False,
             tab_index=3,
             has_table_relation=True,
+            related_table='ItemCategory',
+            related_field='code',
+            related_display_field='description',
+        ),
+        dict(
+            name='unit_of_measure',
+            caption='Unit of Measure',
+            field_type='Code',
+            visible=True,
+            editable=True,
+            primary_key=False,
+            tab_index=4,
+            has_table_relation=True,
             related_table='UnitOfMeasure',
             related_field='code',
             related_display_field='description',
         ),
-        dict(name='unit_price', caption='Unit Price', field_type='Decimal', visible=True, editable=True,  primary_key=False, tab_index=4),
-        dict(name='inventory',  caption='Inventory',  field_type='Integer', visible=True, editable=False, primary_key=False, tab_index=5),
-        dict(name='blocked',    caption='Blocked',    field_type='Boolean', visible=True, editable=True,  primary_key=False, tab_index=6),
+        dict(name='unit_price', caption='Unit Price', field_type='Decimal', visible=True, editable=True,  primary_key=False, tab_index=5),
+        dict(name='inventory',  caption='Inventory',  field_type='Integer', visible=True, editable=False, primary_key=False, tab_index=6),
+        dict(name='blocked',    caption='Blocked',    field_type='Boolean', visible=True, editable=True,  primary_key=False, tab_index=7),
     ])
     _ensure_table_relation('Item', 'unit_of_measure', 'UnitOfMeasure')
+    _ensure_table_relation('Item', 'item_category', 'ItemCategory')
 
     cust_page, _ = Page.objects.get_or_create(
         name='CustomerList',
@@ -778,6 +792,7 @@ def seed():
     ).delete()
     inv_setup = _seed_inventory_setup_page()
     global_uom_list = _seed_unit_of_measure_list()
+    item_category_list = _seed_item_category_list()
     _seed_inventory_setup_uom_action(inv_setup, global_uom_list)
     _wire_relation_lookup_fields(
         item_card,
@@ -793,6 +808,16 @@ def seed():
             part_control_name='ItemUnitOfMeasurePart',
             lookup_page=global_uom_list,
         )
+        _wire_relation_lookup_fields(
+            item_list,
+            ('item_category',),
+            lookup_page=item_category_list,
+        )
+    _wire_relation_lookup_fields(
+        item_card,
+        ('item_category',),
+        lookup_page=item_category_list,
+    )
     _wire_relation_lookup_fields(
         item_card,
         ('sales_unit_of_measure', 'purchase_unit_of_measure'),
@@ -2894,8 +2919,8 @@ def _wire_relation_lookup_fields(
     page: Page,
     field_names: tuple[str, ...],
     *,
-    part_control_name: str,
     lookup_page: Page,
+    part_control_name: str = '',
 ) -> None:
     """Enable BC-style relation footer on fields and wire the full-list lookup page."""
     for name in field_names:
@@ -2903,17 +2928,18 @@ def _wire_relation_lookup_fields(
         if not field:
             continue
         field.relation_lookup_footer = True
-        field.relation_part_control_name = part_control_name
+        if part_control_name:
+            field.relation_part_control_name = part_control_name
         field.has_lookup_page = True
         field.lookup_page = lookup_page
-        field.save(
-            update_fields=[
-                'relation_lookup_footer',
-                'relation_part_control_name',
-                'has_lookup_page',
-                'lookup_page',
-            ],
-        )
+        update_fields = [
+            'relation_lookup_footer',
+            'has_lookup_page',
+            'lookup_page',
+        ]
+        if part_control_name:
+            update_fields.append('relation_part_control_name')
+        field.save(update_fields=update_fields)
 
 
 PERMISSION_OBJECT_TYPE_RELATIONS = (
@@ -5336,6 +5362,7 @@ def _seed_role_centre_pages(
         ('NavUserSettings', 'User settings', 'UserSettingsList', 'Settings', 'Setup'),
         ('NavUserSetup', 'User Setup', 'UserSetupList', 'UserCog', 'Setup'),
         ('NavUnitsOfMeasure', 'Units of Measure', 'UnitOfMeasureList', 'Ruler', 'Setup'),
+        ('NavItemCategories', 'Item Categories', 'ItemCategoryList', 'Tags', 'Setup'),
     ], prune=True)
     # Advanced setup stays on Debug Admin RC only — not Business Manager.
     PageAction.objects.filter(
@@ -5403,6 +5430,7 @@ def _seed_debug_admin_rc(
         ('NavUserSetup', 'User Setup', 'UserSetupList', 'UserCog', 'Setup'),
         ('NavInventorySetup', 'Inventory Setup', 'InventorySetupCard', 'Boxes', 'Setup'),
         ('NavUnitsOfMeasure', 'Units of Measure', 'UnitOfMeasureList', 'Ruler', 'Setup'),
+        ('NavItemCategories', 'Item Categories', 'ItemCategoryList', 'Tags', 'Setup'),
         ('NavManufacturingSetup', 'Manufacturing Setup', 'ManufacturingSetupCard', 'Wrench', 'Setup'),
         ('NavGLSetup', 'G/L Setup', 'GeneralLedgerSetupCard', 'Layers', 'Setup'),
         ('NavNoSeries', 'No. Series', 'NoSeriesList', 'FileText', 'Setup'),
@@ -6752,10 +6780,18 @@ def _seed_item_card() -> Page:
         dict(name='item_name', caption='Item Name', field_type='Text', visible=True, editable=True, primary_key=False, tab_index=1),
         dict(name='type', caption='Type', field_type='Enum', visible=True, editable=True, primary_key=False, tab_index=2,
              enum_values='Inventory,Service,Non-Inventory'),
-        dict(name='description', caption='Description', field_type='Text', visible=True, editable=True, primary_key=False, tab_index=3),
-        dict(name='bar_code_no', caption='Barcode', field_type='Code', visible=True, editable=True, primary_key=False, tab_index=4),
-        dict(name='blocked', caption='Blocked', field_type='Boolean', visible=True, editable=True, primary_key=False, tab_index=5),
+        dict(
+            name='item_category', caption='Item Category', field_type='Code',
+            visible=True, editable=True, primary_key=False, tab_index=3,
+            has_table_relation=True, related_table='ItemCategory',
+            related_field='code', related_display_field='description',
+            relation_lookup_footer=True,
+        ),
+        dict(name='description', caption='Description', field_type='Text', visible=True, editable=True, primary_key=False, tab_index=4),
+        dict(name='bar_code_no', caption='Barcode', field_type='Code', visible=True, editable=True, primary_key=False, tab_index=5),
+        dict(name='blocked', caption='Blocked', field_type='Boolean', visible=True, editable=True, primary_key=False, tab_index=6),
     ])
+    _ensure_table_relation('Item', 'item_category', 'ItemCategory')
 
     pricing_ctrl, _ = PageControl.objects.update_or_create(
         page=item_card,
@@ -7008,6 +7044,7 @@ def _seed_item_list_page_actions(items_page: Page) -> None:
     _seed_ribbon_actions(items_page, (
         ('ItemListNew', 'New', '#new', 'Home', 'Plus'),
         ('ItemListDelete', 'Delete', '#delete', 'Home', 'Trash2'),
+        ('ItemListSelectMore', 'Select More', '#select-more', 'Home', 'ListChecks'),
         (
             'ItemListAdjustInventory',
             'Adjust Inventory',
@@ -7480,6 +7517,129 @@ def _seed_unit_of_measure_list() -> Page:
     _seed_ribbon_actions(page, (
         ('UomListNew', 'New', '#new', 'Home', 'Plus'),
         ('UomListDelete', 'Delete', '#delete', 'Home', 'Trash2'),
+    ))
+    return page
+
+
+def _seed_item_category_card() -> Page:
+    """BC-style Item Category Card (Code, Description, Parent Category)."""
+    card, _ = Page.objects.update_or_create(
+        name='ItemCategoryCard',
+        defaults={
+            'caption': 'Item Category Card',
+            'source_table': 'ItemCategory',
+            'page_type': 'Card',
+            'editable': True,
+            'insert_allowed': True,
+            'delete_allowed': True,
+            'modify_allowed': True,
+            'title_field': 'description',
+        },
+    )
+    general_ctrl, _ = PageControl.objects.update_or_create(
+        page=card,
+        name='ItemCategoryGeneralGroup',
+        defaults={
+            'control_type': 'Group',
+            'caption': 'General',
+            'source_table': 'ItemCategory',
+            'show_caption': True,
+            'editable': True,
+            'visible': True,
+            'tab_index': 0,
+        },
+    )
+    PageControlField.objects.filter(page=card, page_control=general_ctrl).delete()
+    _seed_fields(general_ctrl, card, [
+        dict(name='code', caption='Code', field_type='Code',
+             visible=True, editable=True, primary_key=True, required=True, tab_index=0),
+        dict(name='description', caption='Description', field_type='Text',
+             visible=True, editable=True, primary_key=False, required=True, tab_index=1),
+        dict(
+            name='parent',
+            caption='Parent Category',
+            field_type='Code',
+            visible=True,
+            editable=True,
+            primary_key=False,
+            tab_index=2,
+            has_table_relation=True,
+            related_table='ItemCategory',
+            related_field='code',
+            related_display_field='description',
+            relation_lookup_footer=True,
+        ),
+    ])
+    _ensure_table_relation('ItemCategory', 'parent', 'ItemCategory')
+    return card
+
+
+def _seed_item_category_list() -> Page:
+    """BC-style Item Categories list linked to Item Category Card."""
+    card = _seed_item_category_card()
+    page, _ = Page.objects.update_or_create(
+        name='ItemCategoryList',
+        defaults={
+            'caption': 'Item Categories',
+            'source_table': 'ItemCategory',
+            'page_type': 'List',
+            'editable': True,
+            'insert_allowed': True,
+            'delete_allowed': True,
+            'modify_allowed': True,
+            'card_page': card,
+        },
+    )
+    page.card_page = card
+    page.editable = True
+    page.insert_allowed = True
+    page.delete_allowed = True
+    page.modify_allowed = True
+    page.save(update_fields=['card_page', 'editable', 'insert_allowed', 'delete_allowed', 'modify_allowed'])
+
+    ctrl, _ = PageControl.objects.get_or_create(
+        page=page,
+        name='ItemCategoryListRepeater',
+        defaults={
+            'control_type': 'Repeater',
+            'caption': 'Item Categories',
+            'source_table': 'ItemCategory',
+            'show_caption': False,
+            'editable': True,
+            'visible': True,
+        },
+    )
+    ctrl.editable = True
+    ctrl.save(update_fields=['editable'])
+    PageControlField.objects.filter(page=page, page_control=ctrl).delete()
+    _seed_fields(ctrl, page, [
+        dict(name='code', caption='Code', field_type='Code',
+             visible=True, editable=True, primary_key=True, required=True, tab_index=0, freeze_column=True),
+        dict(name='description', caption='Description', field_type='Text',
+             visible=True, editable=True, primary_key=False, required=True, tab_index=1),
+        dict(
+            name='parent',
+            caption='Parent Category',
+            field_type='Code',
+            visible=True,
+            editable=True,
+            primary_key=False,
+            tab_index=2,
+            has_table_relation=True,
+            related_table='ItemCategory',
+            related_field='code',
+            related_display_field='description',
+        ),
+    ])
+    _ensure_table_relation('ItemCategory', 'parent', 'ItemCategory')
+    _wire_relation_lookup_fields(
+        card,
+        ('parent',),
+        lookup_page=page,
+    )
+    _seed_ribbon_actions(page, (
+        ('ItemCategoryListNew', 'New', '#new', 'Home', 'Plus'),
+        ('ItemCategoryListDelete', 'Delete', '#delete', 'Home', 'Trash2'),
     ))
     return page
 

@@ -71,6 +71,13 @@ def _enforce_source_table_permission(request, source_table: str, permission_type
 def _friendly_db_error_message(exc, source_table=None):
     """Turn raw database errors into user-facing page data messages."""
     err = str(exc)
+    if isinstance(exc, IntegrityError) and (
+        'not-null constraint' in err.lower() or 'violates not-null' in err.lower()
+    ):
+        if 'column "code"' in err.lower() or "column 'code'" in err.lower():
+            label = _SOURCE_TABLE_LABELS.get(source_table or '', 'Record')
+            return f'{label} requires a Code before it can be saved.'
+        return 'A required field is missing.'
     if isinstance(exc, IntegrityError) and 'unique constraint' in err.lower():
         match = _DUPLICATE_KEY_RE.search(err)
         if match:
@@ -86,6 +93,33 @@ def _friendly_db_error_message(exc, source_table=None):
             return 'A record with this system ID already exists.'
         return 'This record already exists.'
     return err
+
+
+def _merge_create_defaults_from_current_values(defaults: dict, model, record_values: dict) -> dict:
+    """Carry values typed before the first save (e.g. Description before Code)."""
+    if not record_values:
+        return defaults
+    skip = {'SystemId', 'system_id', 'id', 'indentation', 'SystemCreatedAt', 'SystemModifiedAt'}
+    for key, raw in record_values.items():
+        if key in defaults or key in skip:
+            continue
+        if not _model_has_direct_field(model, key):
+            continue
+        if raw is None or raw == '':
+            continue
+        defaults[key] = raw
+    return defaults
+
+
+def _validate_page_primary_keys_for_create(page: Page, defaults: dict) -> str | None:
+    """Return an error message when a page primary-key field is missing on create."""
+    pk_fields = PageControlField.objects.filter(page=page, primary_key=True)
+    for pcf in pk_fields:
+        val = defaults.get(pcf.name)
+        if val is None or (isinstance(val, str) and not val.strip()):
+            caption = (pcf.caption or pcf.name or 'Code').strip()
+            return f'Enter {caption} before creating the record.'
+    return None
 
 
 def _page_data_error_response(exc, source_table=None):
@@ -146,6 +180,18 @@ def _serialize_relation_row(model, obj, related_field, display_field):
             'Caption': display_name,
             'Code': str(value),
             'Name': display_name,
+        }
+    if model.__name__ == 'ItemCategory':
+        level = int(getattr(obj, 'level', 0) or 0)
+        code = str(value)
+        caption = getattr(obj, display_field, None) if display_field else None
+        display_name = str(caption) if caption is not None else code
+        return {
+            'Value': code,
+            'Caption': display_name,
+            'Code': code,
+            'Name': display_name,
+            'Indentation': level,
         }
     caption = getattr(obj, display_field, None) if display_field else None
     return {
@@ -348,7 +394,11 @@ class TableRelationsView(APIView):
 
             results = []
             select_related = ['unit_of_measure'] if model.__name__ == 'ItemUnitOfMeasure' else []
-            for obj in qs.select_related(*select_related).order_by(order_field):
+            if model.__name__ == 'ItemCategory':
+                relation_qs = qs.select_related(*select_related).order_by('tree_id', 'lft')
+            else:
+                relation_qs = qs.select_related(*select_related).order_by(order_field)
+            for obj in relation_qs:
                 row = _serialize_relation_row(model, obj, related_field, display_field)
                 if row:
                     results.append(row)
@@ -433,6 +483,7 @@ MODEL_REGISTRY: dict[str, tuple[str, str]] = {
     'Location': ('items', 'Location'),
     'UnitOfMeasure': ('items', 'UnitOfMeasure'),
     'ItemUnitOfMeasure': ('items', 'ItemUnitOfMeasure'),
+    'ItemCategory': ('items', 'ItemCategory'),
     'ItemTrackingCodes': ('items', 'ItemTrackingCodes'),
     'TrackingSpecification': ('items', 'TrackingSpecification'),
     # Restaurant module
@@ -1428,6 +1479,10 @@ def _serialize_record(obj, fields: list[PageControlField], request=None) -> dict
         row[field.name] = _serialize_field_value(obj, field, request)
     if obj.__class__.__name__ == 'G_LAccount':
         row['indentation'] = getattr(obj, 'indentation', 0) or 0
+    if obj.__class__.__name__ == 'ItemCategory':
+        row['indentation'] = int(getattr(obj, 'level', 0) or 0)
+        # parent_id is the related category code (to_field='code').
+        row.setdefault('parent', getattr(obj, 'parent_id', None) or '')
     if obj.__class__.__name__ == 'CustomUser':
         row['id'] = obj.pk
     if obj.__class__.__name__ == 'ItemUnitOfMeasure':
@@ -3665,6 +3720,8 @@ class PageDataView(APIView):
                 qs = qs.order_by('no')
             elif source_table == 'G_LAccount':
                 qs = qs.order_by('no')
+            elif source_table == 'ItemCategory':
+                qs = qs.select_related('parent').order_by('tree_id', 'lft')
             elif source_table == 'Dimension':
                 qs = qs.order_by('code')
             elif source_table == 'DimensionValue':
@@ -4197,6 +4254,25 @@ class PageDataRecordView(APIView):
                             record_values=fk_record_values, model=model,
                         )
                         defaults = {field_name: value}
+                    defaults = _merge_create_defaults_from_current_values(
+                        defaults, model, fk_record_values,
+                    )
+                    pk_error = _validate_page_primary_keys_for_create(page, defaults)
+                    if pk_error:
+                        return Response({'error': pk_error}, status=status.HTTP_400_BAD_REQUEST)
+                    # Resolve any relation values merged from the client (e.g. parent category).
+                    for key in list(defaults.keys()):
+                        try:
+                            resolved_name, resolved_value = _resolve_fk_write(
+                                page, key, defaults[key], obj=None,
+                                record_values={**fk_record_values, **defaults},
+                                model=model,
+                            )
+                        except ValueError as e:
+                            return _page_data_error_response(e, source_table=source_table)
+                        if resolved_name != key:
+                            defaults.pop(key, None)
+                        defaults[resolved_name] = resolved_value
                     if field_name == 'item' and _model_has_item_and_description(model):
                         defaults = _apply_item_line_defaults_to_payload(defaults, model=model)
                         if model.__name__ in ('SalesInvoiceLine', 'SalesOrderLine'):

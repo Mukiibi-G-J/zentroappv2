@@ -60,6 +60,8 @@ ZENTRO_PAGE_REGISTRY: dict[str, tuple[int, str]] = {
     'ItemUnitOfMeasureList': (10206, 'inventory'),
     'ItemUnitOfMeasureSubform': (10207, 'inventory'),
     'UnitOfMeasureList': (10208, 'inventory'),
+    'ItemCategoryList': (10216, 'inventory'),
+    'ItemCategoryCard': (10217, 'inventory'),
     'InventorySetupCard': (10209, 'inventory'),
     'ItemJournalCard': (10210, 'inventory'),
     'ItemTrackingLinesWorksheet': (10211, 'inventory'),

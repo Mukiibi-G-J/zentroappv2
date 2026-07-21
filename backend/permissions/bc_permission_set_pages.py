@@ -94,6 +94,8 @@ BC_PERMISSION_SET_PAGES: list[tuple[str, str, str, list[tuple[str, str]]]] = [
             ('ItemList', 'RIMD'),
             ('ItemCard', 'RIMD'),
             ('ItemUnitOfMeasureList', 'RIMD'),
+            ('ItemCategoryList', 'RIMD'),
+            ('ItemCategoryCard', 'RIMD'),
             ('InventoryAdjustmentJournalList', 'RIMD'),
             ('ItemLedgerEntryList', 'R'),
             ('UnitOfMeasureList', 'RIMD'),
@@ -106,6 +108,8 @@ BC_PERMISSION_SET_PAGES: list[tuple[str, str, str, list[tuple[str, str]]]] = [
         [
             ('ItemList', 'R'),
             ('ItemCard', 'R'),
+            ('ItemCategoryList', 'R'),
+            ('ItemCategoryCard', 'R'),
             ('ItemLedgerEntryList', 'R'),
         ],
     ),
