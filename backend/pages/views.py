@@ -77,6 +77,26 @@ def _friendly_db_error_message(exc, source_table=None):
         if 'column "code"' in err.lower() or "column 'code'" in err.lower():
             label = _SOURCE_TABLE_LABELS.get(source_table or '', 'Record')
             return f'{label} requires a Code before it can be saved.'
+        col_match = re.search(
+            r'column "(?P<col>[^"]+)"|column \'(?P<col2>[^\']+)\'',
+            err,
+            re.IGNORECASE,
+        )
+        col = (col_match.group('col') or col_match.group('col2') or '').strip() if col_match else ''
+        col_labels = {
+            'vendor_id': 'Vendor',
+            'vendor': 'Vendor',
+            'customer_id': 'Customer',
+            'customer': 'Customer',
+            'global_dimension_1_id': 'Branch',
+            'dimension_set_id': 'Dimension Set',
+            'payment_method_id': 'Payment Method',
+            'invoice_no': 'No.',
+        }
+        if col in col_labels:
+            return f'{col_labels[col]} is required before creating the record.'
+        if col:
+            return f'{col.replace("_", " ").strip()} is required before creating the record.'
         return 'A required field is missing.'
     if isinstance(exc, IntegrityError) and 'unique constraint' in err.lower():
         match = _DUPLICATE_KEY_RE.search(err)
@@ -112,9 +132,19 @@ def _merge_create_defaults_from_current_values(defaults: dict, model, record_val
 
 
 def _validate_page_primary_keys_for_create(page: Page, defaults: dict) -> str | None:
-    """Return an error message when a page primary-key field is missing on create."""
+    """
+    Require user-entered primary keys on Card create only (e.g. Item Category Code).
+
+    Documents / worksheets assign No. via number series in model.save() — never block those.
+    Also skip read-only / No. Series PK fields on cards.
+    """
+    page_type = (getattr(page, 'page_type', None) or '').strip()
+    if page_type and page_type != 'Card':
+        return None
     pk_fields = PageControlField.objects.filter(page=page, primary_key=True)
     for pcf in pk_fields:
+        if not pcf.editable or (pcf.no_series_code or '').strip():
+            continue
         val = defaults.get(pcf.name)
         if val is None or (isinstance(val, str) and not val.strip()):
             caption = (pcf.caption or pcf.name or 'Code').strip()
@@ -1142,8 +1172,11 @@ def _apply_purchase_line_no_field_update(obj, value, record_values=None) -> list
 def _purchase_line_no_create_defaults(value, record_values: dict) -> dict:
     """Build model defaults when the first persisted field on a new line is No."""
     line_type = record_values.get('type') or 'item'
+    defaults: dict = {'type': line_type}
     fk_attr, related = _lookup_purchase_line_no_target(line_type, value)
-    defaults = {'type': line_type, fk_attr: related}
+    if not fk_attr:
+        return defaults
+    defaults[fk_attr] = related
     for attr in ('item', 'resource', 'gl_account'):
         if attr != fk_attr:
             defaults[attr] = None
@@ -1947,6 +1980,10 @@ def _resolve_fk_write(
     """Resolve a string code value to a FK object when the field has a table relation."""
     if value is None or value == '':
         return field_name, None
+    # Already resolved (e.g. create path resolved vendor, then re-walks defaults).
+    # Re-filtering with a model instance uses str(obj) like "VENDOR-000022 - Name" and fails.
+    if isinstance(value, django_models.Model):
+        return field_name, value
     pcf = PageControlField.objects.filter(
         page=page, name=field_name, has_table_relation=True
     ).first()
@@ -2517,16 +2554,11 @@ def _apply_purchase_invoice_line_defaults(payload: dict, request) -> dict:
         from purchases.models import PurchaseInvoice
         purchase_invoice = PurchaseInvoice.objects.filter(pk=payload['purchase_invoice_id']).first()
 
-    if line_type == 'item':
-        from items.models import Item
-        if not payload.get('item'):
-            placeholder = Item.objects.filter(blocked=False).order_by('no').first()
-            if placeholder:
-                payload['item'] = placeholder
-        if not payload.get('location_code'):
-            loc = _resolve_branch_location_for_request(request)
-            if loc:
-                payload['location_code'] = loc
+    # Empty Add Line must stay blank — never auto-pick the first Item as a placeholder.
+    if line_type == 'item' and not payload.get('location_code'):
+        loc = _resolve_branch_location_for_request(request)
+        if loc:
+            payload['location_code'] = loc
 
     vendor_no = None
     if purchase_invoice and getattr(purchase_invoice, 'vendor', None):
@@ -4246,6 +4278,12 @@ class PageDataRecordView(APIView):
                             status=status.HTTP_400_BAD_REQUEST,
                         )
                     if model.__name__ == 'PurchaseInvoiceLine' and field_name == 'no':
+                        # Clearing No. must not invent a new line (would hit NOT NULL on type/FKs).
+                        if value is None or value == '':
+                            return Response(
+                                {'error': 'Record not found'},
+                                status=status.HTTP_404_NOT_FOUND,
+                            )
                         defaults = _purchase_line_no_create_defaults(value, fk_record_values)
                         defaults = _apply_purchase_invoice_line_defaults(defaults, request)
                     else:
@@ -4254,6 +4292,15 @@ class PageDataRecordView(APIView):
                             record_values=fk_record_values, model=model,
                         )
                         defaults = {field_name: value}
+                    if (
+                        model.__name__ == 'PurchaseInvoiceLine'
+                        and field_name == 'type'
+                        and (value is None or value == '')
+                    ):
+                        return Response(
+                            {'error': 'Type is required.'},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
                     defaults = _merge_create_defaults_from_current_values(
                         defaults, model, fk_record_values,
                     )
@@ -4425,6 +4472,11 @@ class PageDataRecordView(APIView):
                             if field_name == 'item':
                                 extra_fields = _sync_item_driven_line_fields(obj)
                             elif field_name == 'type':
+                                if value is None or value == '':
+                                    return Response(
+                                        {'error': 'Type is required.'},
+                                        status=status.HTTP_400_BAD_REQUEST,
+                                    )
                                 extra_fields = _sync_purchase_line_type_switch(obj)
                             elif field_name == 'resource':
                                 extra_fields = _sync_resource_driven_purchase_line_fields(obj)
