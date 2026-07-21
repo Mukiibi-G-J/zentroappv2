@@ -546,14 +546,17 @@ export function DynamicListPart({
         'unit_cost',
       ])
       if (field.Name === 'type') {
+        // Blank "Select Type" must not PATCH null (NOT NULL on create) or wipe the line.
+        if (normalized == null || normalized === '') return
+        const previousType = normalizeListFieldSaveValue(field, line[field.Name])
         void lines.updateLineField(line.SystemId, field.Name, normalized)
-        if (line.no != null && line.no !== '') {
+        // Only when switching between real types (item → resource). Re-selecting the same
+        // type, or setting type for the first time, must not wipe No. / UOM / Location.
+        const typeSwitched =
+          previousType != null
+          && previousType !== normalized
+        if (typeSwitched && line.no != null && line.no !== '') {
           void lines.updateLineField(line.SystemId, 'no', '')
-        }
-        for (const clearField of ['item_unit_of_measure', 'location_code']) {
-          if (line[clearField] != null && line[clearField] !== '') {
-            void lines.updateLineField(line.SystemId, clearField, '')
-          }
         }
         return
       }

@@ -34,6 +34,7 @@ import {
 import { useSession } from '@/context/SessionContext'
 import { pageDataService } from '@/services/pagedata.service'
 import { isFieldEditable } from '@/lib/fieldVisibility'
+import { missingPrimaryKeyForCreate } from '@/lib/cardPage'
 import type { Page, PageAction, PageControl, PageControlField } from '@/types/page'
 import { extractErrorMessage } from '@/services/pagedata.service'
 import { isSetupSingletonCardPage, SETUP_CARD_PAGE_NAMES } from '@/lib/setupPages'
@@ -74,12 +75,20 @@ export default function DynamicCardPage({ pageId, systemId }: Props) {
   )
 
   const navigateBack = () => {
+    // Explicit return (e.g. POS) wins; otherwise prefer the list we came from.
     if (returnPath?.startsWith('/')) {
       router.push(returnPath)
       return
     }
-    if (listPage) router.push(listDashboardPath(listPage))
-    else if (isSetupCard(page?.Name)) router.push('/dashboard')
+    if (listPage) {
+      router.push(listDashboardPath(listPage))
+      return
+    }
+    if (listPageIdFromUrl != null) {
+      router.push(`/dashboard?page=${listPageIdFromUrl}`)
+      return
+    }
+    if (isSetupCard(page?.Name)) router.push('/dashboard')
     else router.back()
   }
 
@@ -179,6 +188,15 @@ export default function DynamicCardPage({ pageId, systemId }: Props) {
   useEffect(() => {
     if (record) setLocalRecord(record)
   }, [record])
+
+  // New cards must start blank — never keep Parent Category (or other fields) from a prior record.
+  useEffect(() => {
+    if (!isNew) return
+    setLocalRecord(null)
+    setRecordCreated(false)
+    hasCreatedRef.current = false
+    ctxPrefillStartedRef.current = false
+  }, [isNew, systemId])
 
   useEffect(() => {
     if (page?.PageType === 'Document') {
@@ -332,12 +350,30 @@ export default function DynamicCardPage({ pageId, systemId }: Props) {
 
     const isFirstSave = isNew && !hasCreatedRef.current
     if (isFirstSave) {
+      const missingPk = missingPrimaryKeyForCreate(page, currentData, field, normalized)
+      if (missingPk) {
+        setLocalRecord({
+          ...currentData,
+          SystemId: pendingId,
+          [field.Name]: normalized,
+        })
+        toast.error(`Enter ${missingPk.Caption || 'Code'} before creating the record.`)
+        return
+      }
       hasCreatedRef.current = true
       setRecordCreated(true)
     }
 
     updateField.mutate(
-      { systemId: pendingId, field, value: normalized },
+      {
+        systemId: pendingId,
+        field,
+        value: normalized,
+        recordValues: {
+          ...currentData,
+          [field.Name]: normalized,
+        },
+      },
       {
         onSuccess: async (response) => {
           if (response.record) setLocalRecord(response.record)

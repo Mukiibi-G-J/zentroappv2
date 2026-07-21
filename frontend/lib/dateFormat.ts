@@ -80,6 +80,19 @@ export function formatDisplayDate(value: string | null | undefined): string {
   return `${day}-${month}-${date.getFullYear()}`
 }
 
+/** Human-readable local date/time for list columns, e.g. 7/21/2026, 4:34 AM. */
+export function formatDisplayDateTime(value: string | null | undefined): string {
+  if (!value) return ''
+  const date = new Date(String(value))
+  if (Number.isNaN(date.getTime())) return String(value)
+  const datePart = date.toLocaleDateString()
+  const timePart = date.toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+  return `${datePart}, ${timePart}`
+}
+
 export function isSameCalendarDay(a: Date, b: Date): boolean {
   return (
     a.getFullYear() === b.getFullYear() &&

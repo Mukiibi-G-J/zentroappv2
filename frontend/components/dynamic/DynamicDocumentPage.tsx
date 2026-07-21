@@ -21,6 +21,7 @@ import { isFieldEditable } from '@/lib/fieldVisibility'
 import { isDocumentReadOnly } from '@/lib/recordStatus'
 import {
   getCardRecordPath,
+  getPageRouteId,
   listDashboardPath,
   parseFromListPageId,
   resolveReturnListPage,
@@ -83,8 +84,15 @@ export default function DynamicDocumentPage({ pageId, systemId }: Props) {
   )
 
   const navigateBack = () => {
-    if (listPage) router.push(listDashboardPath(listPage))
-    else router.back()
+    if (listPage) {
+      router.push(listDashboardPath(listPage))
+      return
+    }
+    if (listPageIdFromUrl != null) {
+      router.push(`/dashboard?page=${listPageIdFromUrl}`)
+      return
+    }
+    router.back()
   }
 
   const groups = page?.PageControls.filter((c) => c.ControlType === 'Group') ?? []
@@ -106,17 +114,26 @@ export default function DynamicDocumentPage({ pageId, systemId }: Props) {
   const factBoxes = page?.PageControls.filter((c) => c.ControlType === 'FactBox') ?? []
   const headerGroup = groups[0]
 
+  const [pendingId] = useState(() => (isNew ? crypto.randomUUID() : systemId))
+  const [recordCreated, setRecordCreated] = useState(!isNew)
+  const hasCreatedRef = useRef(!isNew)
+
+  const recordFetchId = isNew && !recordCreated ? undefined : pendingId
+
   const {
     data: record,
     isLoading: recordLoading,
     isError: recordError,
     error: recordFetchError,
     refetch: refetchRecord,
-  } = usePageDataRecord(pageId, headerGroup?.PageControlId, isNew ? undefined : systemId)
+  } = usePageDataRecord(
+    pageId,
+    headerGroup?.PageControlId,
+    // After soft-create, props.systemId stays "new" — fetch by pendingId once saved.
+    recordFetchId,
+  )
 
   const [localRecord, setLocalRecord] = useState<DataRecord | null>(null)
-  const [pendingId] = useState(() => (isNew ? crypto.randomUUID() : systemId))
-  const [recordCreated, setRecordCreated] = useState(!isNew)
   const [postingPreview, setPostingPreview] = useState<JournalPreviewContent | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
   const [paymentPickOpen, setPaymentPickOpen] = useState(false)
@@ -124,7 +141,6 @@ export default function DynamicDocumentPage({ pageId, systemId }: Props) {
   const [pendingPostProceed, setPendingPostProceed] = useState<(() => void) | null>(null)
   const [paymentPickSaving, setPaymentPickSaving] = useState(false)
   const [receiptDialogSystemId, setReceiptDialogSystemId] = useState<string | null>(null)
-  const hasCreatedRef = useRef(!isNew)
 
   useEffect(() => {
     if (record) setLocalRecord(record)
@@ -138,7 +154,9 @@ export default function DynamicDocumentPage({ pageId, systemId }: Props) {
     repeaterControlId: repeaterControl?.PageControlId ?? 0,
     linkField: partControl?.LinkField ?? '',
     headerSystemId,
-    onMutate: () => { void refetchRecord() },
+    onMutate: () => {
+      if (recordFetchId) void refetchRecord()
+    },
   })
 
   useSyncHeaderTotalFromLines(setLocalRecord, {
@@ -163,14 +181,16 @@ export default function DynamicDocumentPage({ pageId, systemId }: Props) {
   }
 
   const isPosted = isDocumentReadOnly(currentData, page?.Name)
-  const headerReadOnly = isPosted || (!page?.ModifyAllowed && !isNew)
+  const headerReadOnly = isPosted || (!page?.ModifyAllowed && recordCreated)
+  // After first save we keep this instance mounted; only the URL/title change.
+  const showAsNew = isNew && !recordCreated
 
   const title = useMemo(() => {
-    if (isNew) return `New ${page?.Caption ?? ''}`
+    if (showAsNew) return `New ${page?.Caption ?? ''}`
     const tf = page?.TitleField
     if (tf && currentData[tf]) return String(currentData[tf])
     return page?.Caption ?? '—'
-  }, [page, currentData, isNew])
+  }, [page, currentData, showAsNew])
 
   const cardFields = useMemo(() => groups.flatMap((g) => g.Fields), [groups])
   const paymentMethodField = useMemo(
@@ -181,12 +201,23 @@ export default function DynamicDocumentPage({ pageId, systemId }: Props) {
     ? { fromList: String(listPageIdFromUrl) }
     : undefined)
 
+  const syncCreatedRecordUrl = useCallback(() => {
+    const path = getCardRecordPath(
+      pageId,
+      pendingId,
+      page?.PageType,
+      listPageIdFromUrl ? { fromList: String(listPageIdFromUrl) } : undefined,
+    )
+    // Avoid router.replace — that remounts the document and reloads relations.
+    window.history.replaceState(window.history.state ?? {}, '', path)
+  }, [listPageIdFromUrl, page?.PageType, pageId, pendingId])
+
   const handleFieldBlur = (control: PageControl, field: PageControlField, value: unknown) => {
     if (headerReadOnly) return
     if (isNew && !page?.InsertAllowed) return
-    if (!isNew && control.Editable === false) return
+    if (recordCreated && control.Editable === false) return
     if (!isFieldEditable(field, currentData, page?.Name)) return
-    if (!isNew && value === (localRecord ?? record)?.[field.Name]) return
+    if (recordCreated && value === (localRecord ?? record)?.[field.Name]) return
 
     const isFirstSave = isNew && !hasCreatedRef.current
     if (isFirstSave) {
@@ -199,13 +230,7 @@ export default function DynamicDocumentPage({ pageId, systemId }: Props) {
       {
         onSuccess: (response) => {
           if (response.record) setLocalRecord(response.record)
-          if (isFirstSave) {
-            router.replace(
-              getCardRecordPath(pageId, pendingId, page?.PageType, listPageIdFromUrl
-                ? { fromList: String(listPageIdFromUrl) }
-                : undefined),
-            )
-          }
+          if (isFirstSave) syncCreatedRecordUrl()
         },
         onError: (err: unknown) => {
           if (isFirstSave) {
@@ -227,7 +252,7 @@ export default function DynamicDocumentPage({ pageId, systemId }: Props) {
         page?.Name === 'PaymentJournalCard'
         && isPaymentJournalPrintAction(action.Name, relativeUrl)
       ) {
-        if (isNew) {
+        if (showAsNew) {
           toast.error('Save the payment before printing a receipt.')
           return
         }
@@ -240,7 +265,7 @@ export default function DynamicDocumentPage({ pageId, systemId }: Props) {
         return
       }
 
-      if (isNew) {
+      if (showAsNew) {
         toast.error('Save the document before using this action.')
         return
       }
@@ -264,7 +289,7 @@ export default function DynamicDocumentPage({ pageId, systemId }: Props) {
         setActionLoading(false)
       }
     },
-    [allPages, cardFields, currentData, isNew, page?.Name, pendingId, returnUrl, router],
+    [allPages, cardFields, currentData, showAsNew, page?.Name, pendingId, returnUrl, router],
   )
 
   const paymentPickSubtitle = useMemo(() => {
@@ -327,6 +352,30 @@ export default function DynamicDocumentPage({ pageId, systemId }: Props) {
       setReceiptDialogSystemId(pendingId)
     },
     [page?.Name, pendingId],
+  )
+
+  const handleNavigateCommand = useCallback(
+    (content: { PageName?: string; SystemId?: string; Message?: string }) => {
+      const pageName = (content.PageName || '').trim()
+      const targetSystemId = (content.SystemId || '').trim()
+      if (!pageName || !targetSystemId) {
+        toast.error('Credit memo was created but could not be opened.')
+        return
+      }
+      const target = allPages.find((p) => p.Name === pageName)
+      if (!target) {
+        toast.error(`Page ${pageName} is not available. Re-run seed_pages.`)
+        return
+      }
+      router.push(
+        getCardRecordPath(
+          getPageRouteId(target),
+          targetSystemId,
+          target.PageType,
+        ),
+      )
+    },
+    [allPages, router],
   )
 
   const handlePaymentMethodPick = useCallback(
@@ -407,14 +456,15 @@ export default function DynamicDocumentPage({ pageId, systemId }: Props) {
           onNavigateAction={runDocumentNavigateAction}
           onPreview={setPostingPreview}
           onServerActionSuccess={handleServerActionSuccess}
+          onNavigateCommand={handleNavigateCommand}
           actionLoading={actionLoading}
-          disabled={isNew || isPosted}
+          disabled={showAsNew || isPosted}
           shouldInterceptAction={shouldInterceptDocumentPost}
           onInterceptedAction={handleInterceptedPostAction}
         />
       )}
 
-      {recordError && !isNew ? (
+      {recordError && !showAsNew ? (
         <ErrorBanner
           variant="card"
           message={recordErrorMessage}
@@ -432,7 +482,7 @@ export default function DynamicDocumentPage({ pageId, systemId }: Props) {
                 control={group}
                 data={currentData}
                 readOnly={headerReadOnly}
-                isNew={isNew}
+                isNew={showAsNew}
                 systemId={pendingId}
                 onFieldBlur={(field, value) => handleFieldBlur(group, field, value)}
               />
@@ -457,8 +507,10 @@ export default function DynamicDocumentPage({ pageId, systemId }: Props) {
                 documentHeader={
                   page?.Name === 'PurchaseInvoice'
                   || page?.Name === 'PostedPurchaseInvoice'
+                  || page?.Name === 'PurchaseCreditMemo'
                   || page?.Name === 'SalesInvoice'
                   || page?.Name === 'PostedSalesInvoice'
+                  || page?.Name === 'SalesCreditMemo'
                     ? currentData
                     : undefined
                 }

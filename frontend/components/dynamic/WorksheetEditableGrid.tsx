@@ -35,6 +35,8 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import type { Page, PageAction, PageControlField } from '@/types/page'
 import type { DataRecord } from '@/types/pagedata'
 
+const EMPTY_RECORDS: DataRecord[] = []
+
 const stickySelectBase =
   'w-10 min-w-10 shrink-0 px-2 text-center sticky left-0 z-20 overflow-visible shadow-[2px_0_4px_-1px_rgba(0,0,0,0.08)]'
 
@@ -127,21 +129,29 @@ export default function WorksheetEditableGrid({
     return fieldFilter ? fields.filter(fieldFilter) : fields
   }, [fieldFilter, listControl?.Fields, page.ContextFilterField])
 
-  const { data: records = [], isLoading, refetch, isFetching } = usePageDataList(
+  const { data, isLoading, refetch, isFetching } = usePageDataList(
     pageId,
     listControl?.PageControlId,
     search,
     500,
     lineFilters,
   )
+  // Stable empty fallback — `data ?? []` allocates a new array every render and
+  // combined with onRecordsChange → parent setState causes max update depth.
+  const records = data ?? EMPTY_RECORDS
 
   const updateField = useUpdateField(pageId, listControl?.PageControlId)
   const deleteRecord = useDeleteRecord(pageId, listControl?.PageControlId ?? 0)
   const createRecord = useCreateRecord(pageId, listControl?.PageControlId ?? 0, listControl?.Fields ?? [])
+  /** Latest in-flight value per row+field — blocks duplicate identical saves only. */
+  const pendingFieldSaves = useRef(new Map<string, unknown>())
+
+  const onRecordsChangeRef = useRef(onRecordsChange)
+  onRecordsChangeRef.current = onRecordsChange
 
   useEffect(() => {
-    onRecordsChange?.(records)
-  }, [records, onRecordsChange])
+    onRecordsChangeRef.current?.(records)
+  }, [records])
 
   useEffect(() => {
     if (records.length === 0) {
@@ -267,9 +277,24 @@ export default function WorksheetEditableGrid({
         return
       }
 
+      const saveKey = `${record.SystemId}:${field.Name}`
+      const inFlight = pendingFieldSaves.current.get(saveKey)
+      // Only skip an identical in-flight save — a newer value must still PATCH
+      // (browser autofill can blur between keystrokes and would otherwise drop the final text).
+      if (inFlight !== undefined && listFieldValuesEqual(inFlight, normalized, field)) return
+      pendingFieldSaves.current.set(saveKey, normalized)
+
       const mutationOpts = {
         onError: (err: unknown) => toast.error(extractApiErrorMessage(err)),
-        onSuccess: () => onFieldSaved?.(record, field, normalized),
+        onSuccess: () => {
+          if (pendingFieldSaves.current.get(saveKey) !== normalized) return
+          onFieldSaved?.(record, field, normalized)
+        },
+        onSettled: () => {
+          if (pendingFieldSaves.current.get(saveKey) === normalized) {
+            pendingFieldSaves.current.delete(saveKey)
+          }
+        },
       }
 
       const dependentFields = getDependentRelationFields(listControl?.Fields ?? [], field.Name)
@@ -278,7 +303,10 @@ export default function WorksheetEditableGrid({
         for (const dep of dependentFields) {
           void loadContextRelationOptions(dep, { ...record, [field.Name]: normalized })
           if (getRecordFieldValue(record, dep.Name)) {
-            updateField.mutate({ systemId: record.SystemId, field: dep, value: null }, mutationOpts)
+            updateField.mutate(
+              { systemId: record.SystemId, field: dep, value: null },
+              { onError: mutationOpts.onError },
+            )
           }
         }
         return

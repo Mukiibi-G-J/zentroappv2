@@ -25,7 +25,7 @@ function PageRouter({ pageId }: { pageId: number }) {
   if (page?.PageType === 'Card') {
     const listPage = resolveListPageForCard(pages, page)
     if (listPage) {
-      return <DynamicListPage pageId={listPage.PageId} />
+      return <DynamicListPage key={listPage.PageId} pageId={listPage.PageId} />
     }
   }
 
@@ -39,7 +39,7 @@ function PageRouter({ pageId }: { pageId: number }) {
     case 'POS':
       return <DynamicPOSPage pageId={pageId} />
     default:
-      return <DynamicListPage pageId={pageId} />
+      return <DynamicListPage key={pageId} pageId={pageId} />
   }
 }
 

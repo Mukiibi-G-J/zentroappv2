@@ -108,6 +108,13 @@ export function useUpdateField(pageId: number, controlId?: number, options?: { c
       recordValues?: Record<string, unknown>
     }) =>
       pageDataService.update(pageId, systemId, field.Name, value, options?.listPageId, recordValues),
+    onMutate: async ({ systemId, field, value }) => {
+      // Keep the grid showing what the user typed while the PATCH is in flight.
+      syncRecordInListCaches(pageId, systemId, {
+        SystemId: systemId,
+        [field.Name]: value,
+      } as DataRecord)
+    },
     onSuccess: (response, { systemId }) => {
       if (response.record) {
         if (options?.cardPage) {
@@ -125,10 +132,19 @@ export function useUpdateField(pageId: number, controlId?: number, options?: { c
         if (options?.listPageId && options.listPageId !== pageId) {
           syncRecordInListCaches(options.listPageId, systemId, response.record)
         }
+        // Cache already has the row — mark dependents stale without an immediate refetch
+        // (refetch after every keystroke made Item Tracking / worksheets feel stuck).
+        qc.invalidateQueries({ queryKey: ['pagedata', 'infinite', pageId], refetchType: 'none' })
+        if (options?.listPageId && options.listPageId !== pageId && !options?.cardPage) {
+          qc.invalidateQueries({
+            queryKey: ['pagedata', 'infinite', options.listPageId],
+            refetchType: 'none',
+          })
+        }
+        return
       }
       qc.invalidateQueries({ queryKey: ['pagedata', 'infinite', pageId] })
       qc.invalidateQueries({ queryKey: ['pagedata', pageId] })
-      // Card updates merge into the list cache; refetching the list drops card-only fields.
       if (options?.listPageId && options.listPageId !== pageId && !options?.cardPage) {
         qc.invalidateQueries({ queryKey: ['pagedata', 'infinite', options.listPageId] })
         qc.invalidateQueries({ queryKey: ['pagedata', options.listPageId] })
@@ -199,7 +215,7 @@ export function usePageDataRecord(
       ? ['pagedata', 'record', pageId, 'card', systemId, branchKey]
       : ['pagedata', 'record', pageId, controlId, systemId, branchKey],
     queryFn: () => pageDataService.getRecord(pageId, cardPage ? undefined : controlId, systemId!),
-    enabled: !!pageId && !!systemId,
+    enabled: !!pageId && !!systemId && systemId !== 'new' && systemId !== 'undefined',
     staleTime: 0,
   })
 }

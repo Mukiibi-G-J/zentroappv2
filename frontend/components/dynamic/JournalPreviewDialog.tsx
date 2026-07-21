@@ -36,6 +36,7 @@ export interface JournalPreviewContent {
   EntrySets?: Record<string, PreviewDetailRow[]>
   Message?: string
   BatchName?: string
+  DialogTitle?: string
 }
 
 interface Props {
@@ -204,6 +205,40 @@ const DETAIL_COLUMNS: Record<string, { key: string; label: string; align?: 'righ
     { key: 'DebitAmount', label: 'Debit Amount', align: 'right' },
     { key: 'CreditAmount', label: 'Credit Amount', align: 'right' },
   ],
+  vat_entry: [
+    { key: 'PostingDate', label: 'Posting Date' },
+    { key: 'DocumentType', label: 'Document Type' },
+    { key: 'DocumentNo', label: 'Document No.' },
+    { key: 'Type', label: 'Type' },
+    { key: 'VatBusPostingGroup', label: 'VAT Bus. Posting Group' },
+    { key: 'VatProdPostingGroup', label: 'VAT Prod. Posting Group' },
+    { key: 'Base', label: 'Base', align: 'right' },
+    { key: 'Amount', label: 'Amount', align: 'right' },
+    { key: 'VatPercent', label: 'VAT %', align: 'right' },
+    { key: 'VatAccountNo', label: 'VAT Account No.' },
+  ],
+  item_ledger_entry: [
+    { key: 'PostingDate', label: 'Posting Date' },
+    { key: 'EntryType', label: 'Entry Type' },
+    { key: 'DocumentType', label: 'Document Type' },
+    { key: 'DocumentNo', label: 'Document No.' },
+    { key: 'ItemNo', label: 'Item No.' },
+    { key: 'Description', label: 'Description' },
+    { key: 'Quantity', label: 'Quantity', align: 'right' },
+    { key: 'LocationCode', label: 'Location Code' },
+    { key: 'LotNo', label: 'Lot No.' },
+  ],
+  value_entry: [
+    { key: 'PostingDate', label: 'Posting Date' },
+    { key: 'EntryType', label: 'Entry Type' },
+    { key: 'DocumentType', label: 'Document Type' },
+    { key: 'DocumentNo', label: 'Document No.' },
+    { key: 'ItemNo', label: 'Item No.' },
+    { key: 'Description', label: 'Description' },
+    { key: 'ValuedQuantity', label: 'Valued Quantity', align: 'right' },
+    { key: 'CostAmount', label: 'Cost Amount', align: 'right' },
+    { key: 'SalesAmount', label: 'Sales Amount', align: 'right' },
+  ],
 }
 
 function formatCellValue(key: string, value: unknown): string {
@@ -270,7 +305,9 @@ export default function JournalPreviewDialog({ open, preview, onClose }: Props) 
               </button>
             )}
             <h2 className="text-base font-semibold text-mainTextColor truncate">
-              {showDetail ? selectedTable?.TableName : 'Posting Preview'}
+              {showDetail
+                ? selectedTable?.TableName
+                : (preview.DialogTitle || 'Posting Preview')}
             </h2>
           </div>
           <button

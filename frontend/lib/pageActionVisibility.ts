@@ -9,6 +9,19 @@ const INVENTORY_ONLY_ITEM_ACTIONS = new Set([
   'OpenItemAdjustments',
 ])
 
+/** Actions that remain clickable on posted / read-only documents. */
+const POSTED_DOCUMENT_ALLOWED_ACTIONS = new Set([
+  'create_corrective_credit_memo',
+  'reverse_transactions',
+  'find_entries',
+])
+
+export function isPostedDocumentAllowedAction(action: PageAction): boolean {
+  const name = (action.Name || '').trim().toLowerCase()
+  if (POSTED_DOCUMENT_ALLOWED_ACTIONS.has(name)) return true
+  return name.startsWith('reverse_') || name.startsWith('create_corrective_')
+}
+
 /** Whether a field or action should show for the current record (VisibleWhenField / VisibleWhenValues). */
 export function isControlFieldVisible(
   field: Pick<PageControlField, 'VisibleWhenField' | 'VisibleWhenValues'>,

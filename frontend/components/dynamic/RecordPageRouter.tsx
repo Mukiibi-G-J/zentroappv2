@@ -29,9 +29,10 @@ export default function RecordPageRouter({ pageId, systemId }: Props) {
 
   if (isLoading) return <RecordSkeleton />
 
+  // Key by systemId so New / record switches reset local field state (e.g. Parent Category).
   if (isCardPage(page)) {
-    return <DynamicCardPage pageId={pageId} systemId={systemId} />
+    return <DynamicCardPage key={`${pageId}:${systemId}`} pageId={pageId} systemId={systemId} />
   }
 
-  return <DynamicDetailPage pageId={pageId} systemId={systemId} />
+  return <DynamicDetailPage key={`${pageId}:${systemId}`} pageId={pageId} systemId={systemId} />
 }

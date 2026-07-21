@@ -33,6 +33,7 @@ import { getRibbonActions, getRowMenuActions, supportsEditListToggle, isInlineEd
 import { drillDownDefaultsForNewRow } from '@/lib/listInlineCreate'
 import { listFieldValuesEqual, normalizeListFieldSaveValue } from '@/lib/listFieldValue'
 import { extractErrorMessage } from '@/services/pagedata.service'
+import { formatDisplayDateTime } from '@/lib/dateFormat'
 import { todayIsoDate, yesterdayIsoDate } from '@/lib/listPageFilters'
 import ListScopeFilterBar from '@/components/dynamic/ListScopeFilterBar'
 import { findWorksheetLinesControl } from '@/lib/worksheetControls'
@@ -73,6 +74,11 @@ import type { PageAction, PageControlField } from '@/types/page'
 import type { DataRecord } from '@/types/pagedata'
 import { colWidthPx, worksheetFrozenFieldProps } from '@/lib/worksheetColumns'
 import { coaIndentStyle, coaRowTextClass, isChartOfAccountsList, isCoaNameField } from '@/lib/chartOfAccountsList'
+import {
+  isItemCategoryList,
+  itemCategoryCodeClass,
+  itemCategoryIndentStyle,
+} from '@/lib/itemCategoryList'
 import { getCardRecordPath, buildListReturnPath, getPageRouteId, listDashboardPath } from '@/lib/pageRoutes'
 import { canPrintSalesInvoiceList } from '@/lib/salesInvoicePrint'
 import { SalesInvoiceReceiptDialog } from '@/components/sales/SalesInvoiceReceiptDialog'
@@ -118,10 +124,17 @@ function formatValue(value: unknown, field: PageControlField): string {
   if (field.FieldType === 'Date' && value) {
     try { return new Date(String(value)).toLocaleDateString() } catch { return String(value) }
   }
+  if (field.FieldType === 'DateTime' && value) {
+    return formatDisplayDateTime(String(value))
+  }
   if (field.FieldType === 'Decimal')
     return Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   if (field.FieldType === 'Integer') return Number(value).toLocaleString()
-  return String(value)
+  const text = String(value)
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(text)) {
+    return formatDisplayDateTime(text)
+  }
+  return text
 }
 
 function ListSkeleton() {
@@ -211,6 +224,13 @@ export default function DynamicListPage({ pageId }: Props) {
   useEffect(() => {
     if (listSearchOpen) listSearchInputRef.current?.focus()
   }, [listSearchOpen])
+
+  // Leaving / switching list pages must exit multi-select.
+  useEffect(() => {
+    setMultiSelectMode(false)
+    setSelectedIds(new Set())
+    setRowMenu(null)
+  }, [pageId])
 
   const { data: allPages = [] } = usePages()
   const showPrintAction = canPrintSalesInvoiceList(page)
@@ -345,24 +365,23 @@ export default function DynamicListPage({ pageId }: Props) {
   const isItemJournalList = isItemJournalListPage(page)
 
   const displayRibbonActions = useMemo(() => {
-    if (!isItemJournalList) return ribbonActions
-    return ribbonActions
-      .map((a) =>
-        isSelectMoreAction(a)
-          ? { ...a, Caption: multiSelectMode ? 'Select One' : 'Select More' }
-          : a,
-      )
-      .filter((a) => {
-        if (isSelectMoreAction(a)) return true
-        if (!isItemJournalServerAction(a)) return true
-        if (multiSelectMode) {
-          return [...selectedIds].some((id) => {
-            const rec = records.find((r) => String(r.SystemId) === id)
-            return recordIsOpen(rec)
-          })
-        }
-        return isPageActionVisible(a, selectedRecord)
-      })
+    const withSelectCaption = ribbonActions.map((a) =>
+      isSelectMoreAction(a)
+        ? { ...a, Caption: multiSelectMode ? 'Select One' : 'Select More' }
+        : a,
+    )
+    if (!isItemJournalList) return withSelectCaption
+    return withSelectCaption.filter((a) => {
+      if (isSelectMoreAction(a)) return true
+      if (!isItemJournalServerAction(a)) return true
+      if (multiSelectMode) {
+        return [...selectedIds].some((id) => {
+          const rec = records.find((r) => String(r.SystemId) === id)
+          return recordIsOpen(rec)
+        })
+      }
+      return isPageActionVisible(a, selectedRecord)
+    })
   }, [
     isItemJournalList,
     ribbonActions,
@@ -744,7 +763,7 @@ export default function DynamicListPage({ pageId }: Props) {
 
   const handleListHashAction = useCallback(
     (action: PageAction) => {
-      if (isItemJournalList && isSelectMoreAction(action)) {
+      if (isSelectMoreAction(action)) {
         handleToggleSelectMore()
         return
       }
@@ -771,7 +790,7 @@ export default function DynamicListPage({ pageId }: Props) {
         setExportItemsOpen(true)
       }
     },
-    [handleToggleSelectMore, isItemJournalList, isItemList],
+    [handleToggleSelectMore, isItemList],
   )
 
   useEffect(() => {
@@ -1239,6 +1258,7 @@ export default function DynamicListPage({ pageId }: Props) {
     router.push(
       getCardRecordPath(page.CardPageId, systemId, resolveCardPageType(), {
         fromList: String(getPageRouteId(page)),
+        return: listReturnPath,
       }),
     )
   }
@@ -1273,11 +1293,15 @@ export default function DynamicListPage({ pageId }: Props) {
     if (page.CardPageId) {
       const query: Record<string, string> = {
         fromList: String(getPageRouteId(page)),
+        return: listReturnPath,
       }
-      const ctx = searchParams.get('ctx')
-      const ctxLabel = searchParams.get('ctxLabel')
-      if (ctx) query.ctx = ctx
-      if (ctxLabel) query.ctxLabel = ctxLabel
+      // Only forward drill-down ctx when this list is context-scoped (not Item Categories).
+      if (page.ContextFilterField) {
+        const ctx = searchParams.get('ctx')
+        const ctxLabel = searchParams.get('ctxLabel')
+        if (ctx) query.ctx = ctx
+        if (ctxLabel) query.ctxLabel = ctxLabel
+      }
       router.push(
         getCardRecordPath(page.CardPageId, 'new', resolveCardPageType(), query),
       )
@@ -1319,10 +1343,7 @@ export default function DynamicListPage({ pageId }: Props) {
     if (!page?.CardPageId) return
     if (inlineEditingActive && !isDocumentCardList) return
     setSelectedId(String(record.SystemId))
-    const cardSystemId = isPostedSalesHistory
-      ? salesInvoiceSystemIdFromRecord(record as Record<string, unknown>)
-      : String(record.SystemId)
-    openCardFromList(cardSystemId)
+    openCardFromList(String(record.SystemId))
   }
 
   const handleRequestDelete = (systemId?: string) => {
@@ -1411,14 +1432,10 @@ export default function DynamicListPage({ pageId }: Props) {
   if (pageLoading) return <ListSkeleton />
 
   const coaList = isChartOfAccountsList(page?.SourceTable)
+  const itemCategoryList = isItemCategoryList(page?.SourceTable)
   const rowMenuActions = getRowMenuActions(page)
-  const hasRowMenuItems =
-    Boolean(page?.CardPageId)
-    || showPrintAction
-    || rowMenuActions.length > 0
-    || Boolean(page?.DeleteAllowed)
-    || isItemJournalList
-    || canImpersonateUsers
+  // Row ⋮ always offered — Select More is available on every list page.
+  const hasRowMenuItems = true
   const scopeActions = (page?.PageActions ?? []).filter(
     (a) => a.Visible && a.RibbonTab === 'Scope' && (a.ActionRelativeUrl || '').trim(),
   )
@@ -1745,9 +1762,7 @@ export default function DynamicListPage({ pageId }: Props) {
                 : undefined
             }
             onServerAction={handleListServerAction}
-            onHashAction={
-              isItemList || isItemJournalList ? handleListHashAction : undefined
-            }
+            onHashAction={handleListHashAction}
             insertAllowed={page.InsertAllowed}
             deleteAllowed={
               page.DeleteAllowed
@@ -1926,11 +1941,13 @@ export default function DynamicListPage({ pageId }: Props) {
                                   role={page?.CardPageId && !inlineEditingActive ? 'link' : undefined}
                                   tabIndex={page?.CardPageId && !inlineEditingActive ? 0 : undefined}
                                   onClick={(e) => {
+                                    if (multiSelectMode) return
                                     if (page?.CardPageId && !inlineEditingActive) {
                                       handleOpenCardFromPrimary(e, record)
                                     }
                                   }}
                                   onKeyDown={(e) => {
+                                    if (multiSelectMode) return
                                     if (
                                       page?.CardPageId
                                       && !inlineEditingActive
@@ -1941,11 +1958,23 @@ export default function DynamicListPage({ pageId }: Props) {
                                     }
                                   }}
                                   className={cn(
-                                    'truncate font-medium font-mono',
-                                    page?.CardPageId && !inlineEditingActive
-                                      ? 'cursor-pointer text-s1 underline decoration-s1/40 underline-offset-2'
-                                      : 'text-mainTextColor',
+                                    'truncate',
+                                    itemCategoryList && firstField.Name === 'code'
+                                      ? itemCategoryCodeClass(record)
+                                      : 'font-medium font-mono',
+                                    !(itemCategoryList && firstField.Name === 'code') && (
+                                      multiSelectMode
+                                        ? 'text-mainTextColor'
+                                        : page?.CardPageId && !inlineEditingActive
+                                          ? 'cursor-pointer text-s1 underline decoration-s1/40 underline-offset-2'
+                                          : 'text-mainTextColor'
+                                    ),
                                   )}
+                                  style={
+                                    itemCategoryList && firstField.Name === 'code'
+                                      ? itemCategoryIndentStyle(record)
+                                      : undefined
+                                  }
                                 >
                                   {formatValue(record[firstField.Name], firstField)}
                                 </span>
@@ -2196,11 +2225,8 @@ export default function DynamicListPage({ pageId }: Props) {
                       e.stopPropagation()
                       const rec = records.find((r) => r.SystemId === rowMenu.systemId)
                       if (rec) {
-                        const cardSystemId = isPostedSalesHistory
-                          ? salesInvoiceSystemIdFromRecord(rec as Record<string, unknown>)
-                          : String(rec.SystemId)
                         router.push(
-                          getCardRecordPath(page.CardPageId!, cardSystemId, resolveCardPageType(), {
+                          getCardRecordPath(page.CardPageId!, String(rec.SystemId), resolveCardPageType(), {
                             fromList: String(getPageRouteId(page)),
                           }),
                         )
@@ -2272,6 +2298,26 @@ export default function DynamicListPage({ pageId }: Props) {
                     Delete
                   </button>
                 )}
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setSelectedId(rowMenu.systemId)
+                    if (!multiSelectMode) {
+                      setSelectedIds(new Set([rowMenu.systemId]))
+                      setMultiSelectMode(true)
+                    } else {
+                      setMultiSelectMode(false)
+                      setSelectedIds(new Set())
+                    }
+                    setRowMenu(null)
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-gray-50 text-mainTextColor"
+                >
+                  <ListChecks size={13} className="text-s1" />
+                  {multiSelectMode ? 'Select One' : 'Select More'}
+                </button>
               </>
             )}
           </div>,

@@ -293,6 +293,7 @@ export default function DynamicField({
         inputMode={field.FieldType === 'Decimal' ? 'decimal' : 'numeric'}
         value={displayValue}
         disabled={isDisabled}
+        autoComplete="off"
         className={`${base} text-right tabular-nums ${className ?? ''}`}
         onFocus={() => {
           handleFocus()
@@ -340,6 +341,10 @@ export default function DynamicField({
       type="text"
       value={String(local)}
       disabled={isDisabled}
+      autoComplete="off"
+      autoCorrect="off"
+      autoCapitalize="off"
+      spellCheck={false}
       placeholder={isDisabled ? '' : (field.Tooltip ?? `Enter ${field.Caption.toLowerCase()}…`)}
       className={`${base} ${codeInputClass} ${className ?? ''}`}
       onFocus={handleFocus}

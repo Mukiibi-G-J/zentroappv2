@@ -7,11 +7,18 @@ import { cn } from '@/lib/utils'
 import { useInvokeAction } from '@/hooks/usePageAction'
 import { isRibbonImageUrl, resolveRibbonIcon } from '@/lib/ribbonIcon'
 import { actionsForRibbonTab, defaultRibbonTab, ribbonTabsFromActions } from '@/lib/ribbonTabs'
-import { filterVisiblePageActions, isPageActionEnabled, pageActionDisabledReason } from '@/lib/pageActionVisibility'
+import { filterVisiblePageActions, isPageActionEnabled, isPostedDocumentAllowedAction, pageActionDisabledReason } from '@/lib/pageActionVisibility'
+import { isNavigateActionResponse, isPreviewActionResponse } from '@/lib/pageActionResponse'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import type { PageAction } from '@/types/page'
 import type { DataRecord, ActionResult } from '@/types/pagedata'
 import type { JournalPreviewContent } from './JournalPreviewDialog'
+
+export type NavigateCommandContent = {
+  PageName?: string
+  SystemId?: string
+  Message?: string
+}
 
 interface Props {
   pageId: number
@@ -22,6 +29,7 @@ interface Props {
   onNavigateAction: (action: PageAction) => void
   onPreview?: (preview: JournalPreviewContent) => void
   onServerActionSuccess?: (action: PageAction, response: ActionResult) => void
+  onNavigateCommand?: (content: NavigateCommandContent) => void
   actionLoading?: boolean
   disabled?: boolean
   /** When true, ribbon sits inside a card shell (no outer border/radius). */
@@ -56,6 +64,7 @@ export default function CardRibbon({
   onNavigateAction,
   onPreview,
   onServerActionSuccess,
+  onNavigateCommand,
   actionLoading,
   disabled,
   embedded = false,
@@ -100,18 +109,22 @@ export default function CardRibbon({
       { actionId: action.Name, systemId },
       {
         onSuccess: (response) => {
-          if (
-            typeof response === 'object'
-            && response !== null
-            && 'Command' in response
-            && response.Command === 'PREVIEW'
-          ) {
+          if (isPreviewActionResponse(response)) {
             const content = 'Content' in response ? response.Content : null
             if (content && typeof content === 'object' && 'Entries' in content) {
               onPreview?.(content as JournalPreviewContent)
             } else {
               toast.error('Preview returned no entries')
             }
+            return
+          }
+
+          if (isNavigateActionResponse(response)) {
+            const content = (response.Content ?? {}) as NavigateCommandContent
+            if (response.Message || content.Message) {
+              toast.success(String(response.Message || content.Message))
+            }
+            onNavigateCommand?.(content)
             return
           }
 
@@ -177,7 +190,10 @@ export default function CardRibbon({
         ) : (
           tabActions.map((action) => {
             const actionEnabled = isPageActionEnabled(action, record)
-            const isDisabled = disabled || anyLoading || !actionEnabled
+            const isDisabled =
+              (Boolean(disabled) && !isPostedDocumentAllowedAction(action))
+              || anyLoading
+              || !actionEnabled
             const isThisPending = pendingActionName === action.Name && mutationPending
             const disabledReason = pageActionDisabledReason(action, record)
 

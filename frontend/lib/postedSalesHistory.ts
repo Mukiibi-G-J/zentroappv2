@@ -114,7 +114,7 @@ export function quickRangeDates(key: QuickRangeKey): { from: string; to: string 
   }
 }
 
-/** Resolve SalesInvoice system id for card navigation / receipt print from a posted list row. */
+/** Resolve SalesInvoice system id for receipt print from a posted list row. */
 export function salesInvoiceSystemIdFromRecord(
   record: Record<string, unknown>,
 ): string {

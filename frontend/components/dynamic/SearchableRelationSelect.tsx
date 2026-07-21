@@ -114,10 +114,19 @@ function RelationMenuList(props: MenuListProps<RelationOption, false, GroupBase<
 function RelationOptionRow(props: OptionProps<RelationOption, false>) {
   const { data } = props
   const showQty = isItemUomOption(data)
+  const indent = Number(data.indentation ?? 0)
+  const indentStyle =
+    !showQty && indent > 0 ? { paddingLeft: `${indent * 1.25}rem` } : undefined
+  const codeClass =
+    !showQty && indent <= 0
+      ? 'font-semibold uppercase tracking-wide text-mainTextColor'
+      : !showQty
+        ? 'font-medium uppercase tracking-wide text-s1'
+        : 'font-medium text-mainTextColor'
   return (
     <components.Option {...props}>
-      <div className="flex items-center gap-3 text-sm">
-        <span className={`${showQty ? 'w-20' : 'w-28'} font-medium text-mainTextColor truncate`}>
+      <div className="flex items-center gap-3 text-sm" style={indentStyle}>
+        <span className={`${showQty ? 'w-20' : 'w-28'} truncate ${codeClass}`}>
           {showQty ? (data.code || data.value) : data.value}
         </span>
         {showQty ? (
@@ -176,6 +185,7 @@ function buildSelectStyles(compact: boolean, wideMenu: boolean): StylesConfig<Re
 }
 
 function optionMatchesValue(option: RelationOption, value: string): boolean {
+  if (!value) return false
   return (
     option.value === value
     || option.code === value
@@ -263,15 +273,15 @@ export default function SearchableRelationSelect({
     (typed: string): string | null => {
       const q = typed.trim()
       if (!q) return null
+      const lower = q.toLowerCase()
+      // Exact match only — loose includes() was auto-picking unrelated codes on blur.
       const match = allOptions.find(
         (o) =>
-          o.value.toLowerCase() === q.toLowerCase()
-          || o.label.toLowerCase() === q.toLowerCase()
-          || (o.code?.toLowerCase() === q.toLowerCase())
-          || (o.name?.toLowerCase() === q.toLowerCase())
-          || (o.caption?.toLowerCase() === q.toLowerCase())
-          || (o.name?.toLowerCase().includes(q.toLowerCase()))
-          || (o.caption?.toLowerCase().includes(q.toLowerCase())),
+          o.value.toLowerCase() === lower
+          || o.label.toLowerCase() === lower
+          || (o.code?.toLowerCase() === lower)
+          || (o.name?.toLowerCase() === lower)
+          || (o.caption?.toLowerCase() === lower),
       )
       return match?.value ?? null
     },

@@ -1,4 +1,5 @@
 import type { Page, PageAction, PageControlField } from '@/types/page'
+import type { DataRecord } from '@/types/pagedata'
 
 export function getRibbonActions(page: Pick<Page, 'PageActions'> | null | undefined): PageAction[] {
   return (page?.PageActions ?? []).filter(
@@ -7,6 +8,37 @@ export function getRibbonActions(page: Pick<Page, 'PageActions'> | null | undefi
       && action.Visible !== false
       && (action.RibbonTab || 'Home') !== 'Row',
   )
+}
+
+/** Primary-key fields on a card/list page (e.g. Item Category Code). */
+export function getPrimaryKeyFields(
+  page: Pick<Page, 'PageControls'> | null | undefined,
+): PageControlField[] {
+  return (page?.PageControls ?? []).flatMap((c) => c.Fields.filter((f) => f.PrimaryKey))
+}
+
+export function isEmptyFieldValue(value: unknown): boolean {
+  return value === null || value === undefined || String(value).trim() === ''
+}
+
+/**
+ * First create on Card pages requires user-entered primary keys (e.g. Item Category Code).
+ * Skips auto-numbered / read-only PKs. Documents do not use this helper.
+ */
+export function missingPrimaryKeyForCreate(
+  page: Pick<Page, 'PageType' | 'PageControls'> | null | undefined,
+  data: DataRecord,
+  fieldBeingSaved: PageControlField,
+  valueBeingSaved: unknown,
+): PageControlField | null {
+  if (page?.PageType && page.PageType !== 'Card') return null
+  const next: DataRecord = { ...data, [fieldBeingSaved.Name]: valueBeingSaved }
+  for (const pk of getPrimaryKeyFields(page)) {
+    // System / No. Series assigns these on save — user cannot enter them first.
+    if (pk.Editable === false || Boolean((pk.NoSeriesCode ?? '').trim())) continue
+    if (isEmptyFieldValue(next[pk.Name])) return pk
+  }
+  return null
 }
 
 /** Row ⋮ menu actions (BC navigation / Entry group on list pages). */

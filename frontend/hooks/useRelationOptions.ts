@@ -13,6 +13,7 @@ export interface RelationOption {
   code?: string | null
   name?: string | null
   quantityPerUnit?: string | null
+  indentation?: number
 }
 
 export function mapTableRelationValue(v: {
@@ -21,6 +22,7 @@ export function mapTableRelationValue(v: {
   Code?: string | null
   Name?: string | null
   QuantityPerUnit?: string | null
+  Indentation?: number | null
 }): RelationOption {
   return {
     value: v.Value,
@@ -29,6 +31,7 @@ export function mapTableRelationValue(v: {
     code: v.Code ?? null,
     name: v.Name ?? null,
     quantityPerUnit: v.QuantityPerUnit ?? null,
+    indentation: Number.isFinite(Number(v.Indentation)) ? Number(v.Indentation) : 0,
   }
 }
 

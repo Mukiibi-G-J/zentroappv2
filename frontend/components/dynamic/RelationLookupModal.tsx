@@ -33,7 +33,12 @@ import { listFieldValuesEqual, normalizeListFieldSaveValue } from '@/lib/listFie
 import { extractErrorMessage } from '@/services/pagedata.service'
 import { getRecordFieldValue } from '@/lib/recordFieldValue'
 import { relationValueFromRecord } from '@/lib/relationValue'
-import { getCardRecordPath, getPageRouteId } from '@/lib/pageRoutes'
+import {
+  isItemCategoryList,
+  itemCategoryCodeClass,
+  itemCategoryIndentStyle,
+} from '@/lib/itemCategoryList'
+import { getCardRecordPath, getPageRouteId, listDashboardPath } from '@/lib/pageRoutes'
 import type { Page, PageControlField } from '@/types/page'
 import type { DataRecord } from '@/types/pagedata'
 
@@ -276,18 +281,23 @@ export default function RelationLookupModal({
     return createRecord.mutateAsync(payload)
   }
 
+  const cardNavQuery = (extra?: Record<string, string>): Record<string, string> => ({
+    fromList: String(getPageRouteId(lookupPage)),
+    // Prefer returning to this list (not browser history / parent card).
+    return: returnPath?.startsWith('/') ? returnPath : listDashboardPath(lookupPage),
+    ...extra,
+  })
+
   const handleAddNew = () => {
     if (!lookupPage.InsertAllowed) return
     if (lookupPage.CardPageId) {
-      const query: Record<string, string> = { fromList: String(getPageRouteId(lookupPage)) }
-      if (returnPath?.startsWith('/')) query.return = returnPath
       onClose()
       router.push(
         getCardRecordPath(
           lookupPage.CardPageId,
           'new',
           cardPage?.PageType ?? 'Card',
-          query,
+          cardNavQuery(),
         ),
       )
       return
@@ -358,13 +368,17 @@ export default function RelationLookupModal({
     if (pending || (editListMode && isFieldEditable(field))) {
       return renderInlineEditor(record, field)
     }
+    const categoryCode =
+      isItemCategoryList(lookupPage.SourceTable) && field.Name === 'code'
     return (
       <span
         className={cn(
           'block truncate',
-          field === firstField && 'font-medium font-mono',
-          isSelected && 'text-mainTextColor',
+          field === firstField && !categoryCode && 'font-medium font-mono',
+          categoryCode && itemCategoryCodeClass(record),
+          isSelected && !categoryCode && 'text-mainTextColor',
         )}
+        style={categoryCode ? itemCategoryIndentStyle(record) : undefined}
       >
         {renderReadOnlyValue(record, field)}
       </span>
@@ -403,16 +417,13 @@ export default function RelationLookupModal({
       toast.error('No card page is configured for this list.')
       return
     }
-    const query: Record<string, string> = { fromList: String(getPageRouteId(lookupPage)) }
-    if (mode === 'view') query.mode = 'view'
-    if (returnPath?.startsWith('/')) query.return = returnPath
     onClose()
     router.push(
       getCardRecordPath(
         lookupPage.CardPageId,
         systemId,
         cardPage?.PageType ?? 'Card',
-        query,
+        cardNavQuery(mode === 'view' ? { mode: 'view' } : undefined),
       ),
     )
   }

@@ -25,6 +25,7 @@ import {
   resolveReturnListPage,
 } from '@/lib/pageRoutes'
 import { isFieldEditable } from '@/lib/fieldVisibility'
+import { missingPrimaryKeyForCreate } from '@/lib/cardPage'
 import { isSetupSingletonCardPage } from '@/lib/setupPages'
 import type { Page, PageAction, PageControl, PageControlField } from '@/types/page'
 import type { DataRecord } from '@/types/pagedata'
@@ -61,8 +62,15 @@ export default function DynamicDetailPage({ pageId, systemId }: Props) {
   )
 
   const navigateBack = () => {
-    if (listPage) router.push(listDashboardPath(listPage))
-    else if (isSetupSingletonCardPage(page)) router.push('/dashboard')
+    if (listPage) {
+      router.push(listDashboardPath(listPage))
+      return
+    }
+    if (listPageIdFromUrl != null) {
+      router.push(`/dashboard?page=${listPageIdFromUrl}`)
+      return
+    }
+    if (isSetupSingletonCardPage(page)) router.push('/dashboard')
     else router.back()
   }
 
@@ -143,12 +151,30 @@ export default function DynamicDetailPage({ pageId, systemId }: Props) {
 
     const isFirstSave = isNew && !hasCreatedRef.current
     if (isFirstSave) {
+      const missingPk = missingPrimaryKeyForCreate(page, currentData, field, normalized)
+      if (missingPk) {
+        setLocalRecord({
+          ...currentData,
+          SystemId: pendingId,
+          [field.Name]: normalized,
+        })
+        toast.error(`Enter ${missingPk.Caption || 'Code'} before creating the record.`)
+        return
+      }
       hasCreatedRef.current = true
       setRecordCreated(true)
     }
 
     updateField.mutate(
-      { systemId: pendingId, field, value: normalized },
+      {
+        systemId: pendingId,
+        field,
+        value: normalized,
+        recordValues: {
+          ...currentData,
+          [field.Name]: normalized,
+        },
+      },
       {
         onSuccess: (response) => {
           if (response.record) {

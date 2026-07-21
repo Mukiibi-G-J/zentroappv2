@@ -13,7 +13,7 @@ export function isDocumentReadOnly(
   data: DataRecord | null | undefined,
   pageName?: string,
 ): boolean {
-  if (pageName === 'PostedPurchaseInvoice') return true
+  if (pageName === 'PostedPurchaseInvoice' || pageName === 'PostedSalesInvoice') return true
   if (!data) return false
   if (isPostedRecord(data)) return true
 

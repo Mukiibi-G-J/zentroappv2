@@ -98,6 +98,7 @@ export function useDocumentLines(options: UseDocumentLinesOptions): UseDocumentL
       const pending = prev.filter((line) => pendingLineIds.has(line.SystemId))
       if (pending.length === 0) return serverLines
       const serverIds = new Set(serverLines.map((line) => line.SystemId))
+      // Keep client-only pending rows, then server rows — never duplicate SystemIds.
       return [
         ...pending.filter((line) => !serverIds.has(line.SystemId)),
         ...serverLines,
@@ -115,8 +116,18 @@ export function useDocumentLines(options: UseDocumentLinesOptions): UseDocumentL
 
   const errorMessage = error instanceof Error ? error.message : 'Failed to load lines'
 
+  const upsertLine = useCallback((record: DataRecord) => {
+    setLines((prev) => {
+      const idx = prev.findIndex((line) => line.SystemId === record.SystemId)
+      if (idx === -1) return [...prev, record]
+      const next = [...prev]
+      next[idx] = record
+      return next
+    })
+  }, [])
+
   const addLine = useCallback(async () => {
-    if (!headerSystemId) return
+    if (!headerSystemId || isAdding) return
     setIsAdding(true)
     try {
       if (deferLineCreate) {
@@ -141,7 +152,8 @@ export function useDocumentLines(options: UseDocumentLinesOptions): UseDocumentL
         payload,
         headerSystemId,
       )
-      setLines((prev) => [...prev, record])
+      // Upsert: invalidate/refetch can land before this setState and already include `record`.
+      upsertLine(record)
       qc.invalidateQueries({ queryKey: ['pagedata', 'infinite', partPageId] })
       onMutate?.()
     } catch (err) {
@@ -150,7 +162,18 @@ export function useDocumentLines(options: UseDocumentLinesOptions): UseDocumentL
     } finally {
       setIsAdding(false)
     }
-  }, [deferLineCreate, headerSystemId, linkField, lines, onMutate, partPageId, repeaterControlId, qc])
+  }, [
+    deferLineCreate,
+    headerSystemId,
+    isAdding,
+    linkField,
+    lines,
+    onMutate,
+    partPageId,
+    repeaterControlId,
+    qc,
+    upsertLine,
+  ])
 
   const updateLineField = useCallback(
     async (systemId: string, field: string, value: unknown) => {
@@ -201,9 +224,7 @@ export function useDocumentLines(options: UseDocumentLinesOptions): UseDocumentL
           lines.find((line) => line.SystemId === systemId) ?? {},
         )
         if (response.record) {
-          setLines((prev) =>
-            prev.map((line) => (line.SystemId === systemId ? response.record : line)),
-          )
+          upsertLine(response.record)
         }
         qc.invalidateQueries({ queryKey: ['pagedata', 'infinite', partPageId] })
         onMutate?.()
@@ -223,6 +244,7 @@ export function useDocumentLines(options: UseDocumentLinesOptions): UseDocumentL
       permissionLineReadyToSave,
       qc,
       repeaterControlId,
+      upsertLine,
       withParentLink,
     ],
   )
