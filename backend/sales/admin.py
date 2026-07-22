@@ -789,30 +789,77 @@ class SalesInvoiceProcessor:
                 continue
 
             if isinstance(tracking_requirements, dict):
-                # Check if tracking_code is provided on the line
-                if not line.tracking_code:
+                tracking_specs = line.tracking_specifications
+                # Lot-only POS path: single lot stored on line.tracking_code
+                has_lot_on_line = bool(line.tracking_code and str(line.tracking_code).strip())
+                uses_specs = tracking_specs.exists()
+
+                if not uses_specs and not has_lot_on_line:
                     raise Exception(
-                        f"Item {line.item.item_name} requires tracking code"
+                        f"Item {line.item.item_name} requires tracking specifications"
                     )
 
-                # Validate specific tracking requirements
-                if tracking_requirements.get("serial_no") and not line.tracking_code:
-                    raise Exception(
-                        f"Serial number required for item {line.item.item_name}"
-                    )
-                if tracking_requirements.get("lot_no") and not line.tracking_code:
-                    raise Exception(
-                        f"Lot number required for item {line.item.item_name}"
-                    )
-                if tracking_requirements.get("expiry_date") and not line.tracking_code:
-                    raise Exception(
-                        f"Expiry date required for item {line.item.item_name}"
-                    )
+                if uses_specs:
+                    for spec in tracking_specs:
+                        if tracking_requirements.get("serial_no") and not spec.serial_no:
+                            raise Exception(
+                                f"Serial number required for item {line.item.item_name}"
+                            )
+                        if tracking_requirements.get("lot_no") and not spec.lot_no:
+                            raise Exception(
+                                f"Lot number required for item {line.item.item_name}"
+                            )
+                        if (
+                            tracking_requirements.get("expiry_date")
+                            and not spec.expiry_date
+                        ):
+                            raise Exception(
+                                f"Expiry date required for item {line.item.item_name}"
+                            )
+                        if spec.serial_no and int(spec.quantity_base or 0) != 1:
+                            raise Exception(
+                                f"Quantity (Base) must be 1 when Serial No. is stated "
+                                f"for item {line.item.item_name}"
+                            )
 
-                # Get the unit of measure
+                    if not line.item_unit_of_measure:
+                        raise Exception(
+                            f"Unit of measure is required for item {line.item.item_name} "
+                            f"in document {self.invoice.invoice_no}"
+                        )
+                    expected_quantity = int(line.quantity) * int(
+                        line.item_unit_of_measure.quantity_per_unit or 1
+                    )
+                    total_quantity = (
+                        tracking_specs.aggregate(total=Sum("quantity_base"))["total"]
+                        or 0
+                    )
+                    if total_quantity != expected_quantity:
+                        raise Exception(
+                            f"Quantity mismatch for item {line.item.item_name} in document "
+                            f"{self.invoice.invoice_no}: Expected {expected_quantity}, "
+                            f"but tracking specifications total {total_quantity}."
+                        )
+                else:
+                    # Legacy lot pick on line.tracking_code (no serial worksheet)
+                    if tracking_requirements.get("serial_no"):
+                        raise Exception(
+                            f"Serial number required for item {line.item.item_name}. "
+                            f"Open Item Tracking Lines and assign a unique serial per unit."
+                        )
+                    if tracking_requirements.get("lot_no") and not has_lot_on_line:
+                        raise Exception(
+                            f"Lot number required for item {line.item.item_name}"
+                        )
+                    if tracking_requirements.get("expiry_date") and not has_lot_on_line:
+                        raise Exception(
+                            f"Expiry date required for item {line.item.item_name}"
+                        )
+
                 if not line.item_unit_of_measure:
                     raise Exception(
-                        f"Unit of measure is required for item {line.item.item_name} in document {self.invoice.invoice_no}"
+                        f"Unit of measure is required for item {line.item.item_name} "
+                        f"in document {self.invoice.invoice_no}"
                     )
 
         return True
@@ -1032,27 +1079,31 @@ class SalesInvoiceProcessor:
 
         return total_cost
 
-    def _reduce_inventory_quantities(self, item, quantity_to_reduce, location):
+    def _reduce_inventory_quantities(
+        self, item, quantity_to_reduce, location, *, lot_no=None, serial_no=None
+    ):
         """Actually reduce the remaining quantities in the database."""
         from items.models import ItemLedgerEntries
 
-        # For items with tracking (lot numbers), order by expiry date first (FEFO - First Expired, First Out)
-        # For items without tracking, use FIFO (First In, First Out) based on created_at
-        if item.tracking_code:
-            # Items with tracking: order by expiry_date (earliest first), then by created_at
-            entries = ItemLedgerEntries.objects.filter(
-                item=item, remaining_quantity__gt=0, location=location
-            ).order_by(
-                models.F("expiry_date").asc(
-                    nulls_last=True
-                ),  # Items without expiry date go last
+        lot = (lot_no or "").strip() if lot_no else ""
+        serial = (serial_no or "").strip() if serial_no else ""
+
+        entries = ItemLedgerEntries.objects.filter(
+            item=item, remaining_quantity__gt=0, location=location
+        )
+        if serial:
+            entries = entries.filter(serial_no__iexact=serial)
+        if lot:
+            entries = entries.filter(lot_no=lot)
+
+        if item.tracking_code and not serial:
+            # Lot / FEFO when no specific serial
+            entries = entries.order_by(
+                models.F("expiry_date").asc(nulls_last=True),
                 "created_at",
             )
         else:
-            # Items without tracking: use FIFO based on created_at
-            entries = ItemLedgerEntries.objects.filter(
-                item=item, remaining_quantity__gt=0, location=location
-            ).order_by("created_at")
+            entries = entries.order_by("created_at")
 
         remaining = quantity_to_reduce
 
@@ -1065,11 +1116,10 @@ class SalesInvoiceProcessor:
             entry.save()
             remaining -= reduction
 
-        # Note: This method should not be called if there's insufficient inventory
-        # as we now check for this before posting. This is just a safety check.
         if remaining > 0:
+            label = f" (serial {serial})" if serial else (f" (lot {lot})" if lot else "")
             raise Exception(
-                f"Insufficient inventory for {item.item_name}. "
+                f"Insufficient inventory for {item.item_name}{label}. "
                 f"Shortage: {remaining} units"
             )
 
@@ -1757,17 +1807,106 @@ class SalesInvoiceProcessor:
                                 )
 
                             # Generate Item Ledger Entry
-                            # Get the sales line to check for tracking code
                             sales_line = self.lines.get(
                                 id=item_line["sales_invoice_line"]
                             )
+                            tracking_specs = TrackingSpecification.objects.filter(
+                                sales_invoice_line=sales_line,
+                            )
+                            quantity = (
+                                item_line["quantity"]
+                                * item_line["quantity_per_iuom"]
+                            )
 
-                            if sales_line.tracking_code:
-                                # Item has tracking code, create entry with tracking info
-                                quantity = (
-                                    item_line["quantity"]
-                                    * item_line["quantity_per_iuom"]
-                                )
+                            if tracking_specs.exists():
+                                total_spec_qty = sum(
+                                    spec.quantity_base for spec in tracking_specs
+                                ) or quantity
+                                for spec in tracking_specs:
+                                    spec_qty = int(spec.quantity_base or 0)
+                                    if spec_qty <= 0:
+                                        continue
+                                    unit_price = (
+                                        item_line["amount"] / total_spec_qty
+                                        if total_spec_qty
+                                        else 0
+                                    )
+                                    cost_share = (
+                                        (actual_cost * spec_qty / total_spec_qty)
+                                        if total_spec_qty
+                                        else 0
+                                    )
+                                    sales_share = (
+                                        (net_line_amount * spec_qty / total_spec_qty)
+                                        if total_spec_qty
+                                        else 0
+                                    )
+                                    total = spec_qty * unit_price
+                                    self.item_entries.extend(
+                                        [
+                                            {
+                                                "posting_date": self.invoice.posting_date,
+                                                "entry_type": EntryType.Sales.value,
+                                                "item": item_line["item"],
+                                                "document_no": self.invoice.invoice_no,
+                                                "description": f"Invoice {self.invoice.invoice_no}",
+                                                "unit_of_measure": item_line[
+                                                    "item_unit_of_measure"
+                                                ],
+                                                "unit_price": unit_price,
+                                                "date": self.invoice.posting_date,
+                                                "user": self.user,
+                                                "receipt_no": self.receipt_no,
+                                                "lot_no": spec.lot_no,
+                                                "expiry_date": spec.expiry_date,
+                                                "location": item_line["location"],
+                                                "quantity": -spec_qty,
+                                                "remaining_quantity": 0,
+                                                "cost_amount": cost_share,
+                                                "sales_amount": sales_share,
+                                                "purchase_amount": 0,
+                                                "total": total,
+                                                "serial_no": spec.serial_no,
+                                                "global_dimension_1": line_dim
+                                                or self.global_dimension_1_value,
+                                                "document_type": DocumentType.Sales.value,
+                                                "transaction_no": transaction_no,
+                                            }
+                                        ]
+                                    )
+                                    self.value_entries.extend(
+                                        [
+                                            {
+                                                "posting_date": self.invoice.posting_date,
+                                                "entry_type": EntryType.Sales.value,
+                                                "document_no": self.invoice.invoice_no,
+                                                "cost_amount": cost_share,
+                                                "cost_amount_non_invtbl": 0,
+                                                "cost_per_unit": (
+                                                    cost_share / spec_qty
+                                                    if spec_qty > 0
+                                                    else 0
+                                                ),
+                                                "item_ledger_entry_quantity": -spec_qty,
+                                                "invoiced_quantity": -spec_qty,
+                                                "valued_quantity": -spec_qty,
+                                                "item": item_line["item"],
+                                                "general_product_posting_group": item_line[
+                                                    "genProductPostingGroup"
+                                                ],
+                                                "inventory_posting_group": item_line[
+                                                    "item"
+                                                ].inventory_posting_group,
+                                                "global_dimension_1": line_dim
+                                                or self.global_dimension_1_value,
+                                                "transaction_no": transaction_no,
+                                                "sales_amount": sales_share,
+                                                "purchase_amount": 0,
+                                            }
+                                        ]
+                                    )
+                            elif sales_line.tracking_code:
+                                # Legacy: lot picked into line.tracking_code
                                 unit_price = item_line["amount"] / quantity
                                 total = quantity * unit_price
 
@@ -1786,16 +1925,16 @@ class SalesInvoiceProcessor:
                                             "date": self.invoice.posting_date,
                                             "user": self.user,
                                             "receipt_no": self.receipt_no,
-                                            "lot_no": sales_line.tracking_code,  # Use tracking_code as lot_no
-                                            "expiry_date": None,  # Could be extended if needed
+                                            "lot_no": sales_line.tracking_code,
+                                            "expiry_date": None,
                                             "location": item_line["location"],
                                             "quantity": -quantity,
                                             "remaining_quantity": 0,
                                             "cost_amount": actual_cost,
-                                            "sales_amount": net_line_amount,  # Net amount after invoice discount
+                                            "sales_amount": net_line_amount,
                                             "purchase_amount": 0,
                                             "total": total,
-                                            "serial_no": None,  # Could be extended if needed
+                                            "serial_no": None,
                                             "global_dimension_1": line_dim
                                             or self.global_dimension_1_value,
                                             "document_type": DocumentType.Sales.value,
@@ -1830,7 +1969,7 @@ class SalesInvoiceProcessor:
                                             "global_dimension_1": line_dim
                                             or self.global_dimension_1_value,
                                             "transaction_no": transaction_no,
-                                            "sales_amount": net_line_amount,  # Net amount after invoice discount
+                                            "sales_amount": net_line_amount,
                                             "purchase_amount": 0,
                                         }
                                     ]
@@ -3792,9 +3931,30 @@ class SalesInvoicePostingProcessor:
                 quantity_to_reduce = (
                     line.quantity * line.item_unit_of_measure.quantity_per_unit
                 )
-                processor._reduce_inventory_quantities(
-                    line.item, quantity_to_reduce, line.location_code
-                )
+                tracking_specs = list(line.tracking_specifications)
+                if tracking_specs:
+                    for spec in tracking_specs:
+                        spec_qty = int(spec.quantity_base or 0)
+                        if spec_qty <= 0:
+                            continue
+                        processor._reduce_inventory_quantities(
+                            line.item,
+                            spec_qty,
+                            line.location_code,
+                            lot_no=spec.lot_no,
+                            serial_no=spec.serial_no,
+                        )
+                elif line.tracking_code:
+                    processor._reduce_inventory_quantities(
+                        line.item,
+                        quantity_to_reduce,
+                        line.location_code,
+                        lot_no=line.tracking_code,
+                    )
+                else:
+                    processor._reduce_inventory_quantities(
+                        line.item, quantity_to_reduce, line.location_code
+                    )
 
             # Create Resource Ledger Entries for resource lines
             for line in self.invoice.lines.all():

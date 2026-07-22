@@ -808,6 +808,25 @@ class SalesInvoiceSerializer(serializers.ModelSerializer):
                                 }
                             )
 
+                    from sales.price_permissions import validate_sales_line_unit_price
+
+                    request = self.context.get("request")
+                    try:
+                        line_data["unit_price"] = validate_sales_line_unit_price(
+                            getattr(request, "user", None) if request else None,
+                            unit_price=line_data["unit_price"],
+                            item=line_data.get("item"),
+                            resource=line_data.get("resource"),
+                            line_label=f"line {i + 1}",
+                        )
+                    except Exception as exc:
+                        # Django ValidationError → DRF ValidationError
+                        from django.core.exceptions import ValidationError as DjangoValidationError
+
+                        if isinstance(exc, DjangoValidationError):
+                            raise serializers.ValidationError(exc.message_dict if hasattr(exc, "message_dict") else exc.messages)
+                        raise
+
                 discount_input = line_data.pop("line_discount_amount", None) or line_data.pop("lineDiscountAmount", None)
                 try:
                     if discount_input is None or discount_input == "":

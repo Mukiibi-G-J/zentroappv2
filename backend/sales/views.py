@@ -1759,6 +1759,14 @@ class SalesViewSet(viewsets.ModelViewSet):
                             "unit_of_measure": unit_of_measure,
                             "tracking_code": None,
                         }
+                        from sales.price_permissions import validate_sales_line_unit_price
+
+                        prepared_line_data["unit_price"] = validate_sales_line_unit_price(
+                            request.user,
+                            unit_price=prepared_line_data["unit_price"],
+                            resource=resource,
+                            line_label=f"resource {getattr(resource, 'code', '') or getattr(resource, 'name', '')}".strip(),
+                        )
                         from dimension.models import get_merged_line_dimensions
 
                         # Prefer X-Branch-Id (selected branch) over user.global_dimension_1
@@ -1842,6 +1850,14 @@ class SalesViewSet(viewsets.ModelViewSet):
                             "line_discount_amount": discount_amount,
                             "location_code": loc,
                         }
+                        from sales.price_permissions import validate_sales_line_unit_price
+
+                        prepared_line_data["unit_price"] = validate_sales_line_unit_price(
+                            request.user,
+                            unit_price=prepared_line_data["unit_price"],
+                            item=item,
+                            line_label=f"item {getattr(item, 'no', '') or item.item_name}",
+                        )
                         from dimension.models import get_merged_line_dimensions
 
                         # Prefer X-Branch-Id (selected branch) over user.global_dimension_1
@@ -1884,9 +1900,35 @@ class SalesViewSet(viewsets.ModelViewSet):
                         line.save()
                         processed_line_ids.add(line_id)
                     else:
-                        SalesInvoiceLine.objects.create(
+                        line = SalesInvoiceLine.objects.create(
                             sales_invoice=sale, **prepared_line_data
                         )
+
+                    # POS / API: attach serial tracking specs (one SN per unit).
+                    serial_nos = line_data.get("serial_nos") or line_data.get("serial_numbers")
+                    if serial_nos and prepared_line_data.get("type") == "item":
+                        from items.models import TrackingSpecification
+
+                        if not isinstance(serial_nos, (list, tuple)):
+                            serial_nos = [serial_nos]
+                        cleaned = [str(s).strip() for s in serial_nos if str(s).strip()]
+                        TrackingSpecification.objects.filter(
+                            sales_invoice_line=line
+                        ).delete()
+                        for sn in cleaned:
+                            TrackingSpecification(
+                                sales_invoice=sale,
+                                sales_invoice_line=line,
+                                item=line.item,
+                                serial_no=sn,
+                                quantity_base=1,
+                                description="",
+                                location_code=line.location_code,
+                                user=request.user if request.user.is_authenticated else None,
+                            ).save()
+                        if cleaned:
+                            line.tracking_code = None
+                            line.save(update_fields=["tracking_code"])
                 lines_to_delete = set(existing_lines.keys()) - processed_line_ids
                 # Optionally delete lines not present in request
                 # if lines_to_delete:

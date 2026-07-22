@@ -7,7 +7,8 @@ export interface ItemTrackingCode {
 }
 
 export interface POSTrackingOption {
-  lot_no: string
+  lot_no?: string
+  serial_no?: string
   document_no: string
   remaining_quantity: number
   expiry_date: string | null
@@ -21,10 +22,14 @@ export interface POSCartLine {
   name: string
   quantity: number
   unitPrice: number
+  /** Catalog / item-card price used for below-original checks. */
+  originalPrice: number
   unitOfMeasure: string
   lineDiscountAmount: number
   trackingCode?: ItemTrackingCode | null
   selectedLotNo?: string
+  /** One serial per unit when require_serial_no. */
+  selectedSerialNos?: string[]
 }
 
 export interface POSCustomer {
@@ -50,6 +55,7 @@ export interface POSSalesSetup {
   allow_price_editing?: boolean
   line_discounts_enabled?: boolean
   disable_price_editing?: boolean
+  prevent_price_below_original?: boolean
   vat_enabled?: boolean
   enable_multiple_branches?: boolean
   branch_values?: { id: number; code: string; description: string }[]

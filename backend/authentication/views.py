@@ -1809,6 +1809,7 @@ class UserSetupViewSet(viewsets.ModelViewSet):
         user_setup.can_see_buying_price = True
         user_setup.can_see_profit_margin = True
         user_setup.can_see_item_cost = True
+        user_setup.can_edit_sales_price = False
         user_setup.can_post_previous_dates = True
         user_setup.can_reverse_purchase_invoice = True
         user_setup.can_reverse_sales_invoice = True

@@ -10,6 +10,8 @@ export interface TrackingSpecification {
   description?: string | null
   purchase_invoice?: number | null
   purchase_invoice_line?: number | null
+  sales_invoice?: number | null
+  sales_invoice_line?: number | null
 }
 
 export interface TrackingSpecificationSummary {
@@ -31,6 +33,9 @@ export interface PurchaseTrackingContext {
   mode?: 'open' | 'posted'
   purchaseInvoiceId?: number
   purchaseInvoiceLineId?: number
+  salesInvoiceId?: number
+  salesInvoiceLineId?: number
+  itemJournalId?: number
   vendorInvoiceNo?: string
   itemNo: string
   itemName: string

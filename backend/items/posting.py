@@ -213,56 +213,66 @@ class ItemJournalFinalPoster:
             self.journal_entry.entry_type == EntryType.NegativeAdjustment.name
             and self.journal_entry.item_id
         ):
-            tracking_specs = (
-                TrackingSpecification.objects.filter(item_journal=self.journal_entry)
-                .exclude(lot_no__isnull=True)
-                .exclude(lot_no="")
-                .order_by("expiry_date", "id")
-            )
-            if tracking_specs.exists():
+            tracking_specs = TrackingSpecification.objects.filter(
+                item_journal=self.journal_entry
+            ).order_by("expiry_date", "id")
+            from django.db.models import Q
+
+            has_tracking = tracking_specs.filter(
+                (Q(lot_no__isnull=False) & ~Q(lot_no=""))
+                | (Q(serial_no__isnull=False) & ~Q(serial_no=""))
+            ).exists()
+            if has_tracking:
                 self._reduce_inventory_from_tracking_specs(tracking_specs)
                 return
 
         self._reduce_inventory_fifo()
 
     def _reduce_inventory_from_tracking_specs(self, tracking_specs):
-        """Reduce remaining qty from selected lots for tracked negative adjustments."""
+        """Reduce remaining qty from selected lots/serials for tracked negative adjustments."""
         total_reduced = 0
         for spec in tracking_specs:
             lot_no = (spec.lot_no or "").strip()
-            qty_for_lot = int(spec.quantity_base or 0)
-            if not lot_no or qty_for_lot <= 0:
+            serial_no = (spec.serial_no or "").strip()
+            qty_for_spec = int(spec.quantity_base or 0)
+            if qty_for_spec <= 0:
+                continue
+            if not lot_no and not serial_no:
                 continue
 
-            remaining_for_lot = qty_for_lot
-            lot_entries = ItemLedgerEntries.objects.filter(
+            remaining_for_spec = qty_for_spec
+            entries = ItemLedgerEntries.objects.filter(
                 item=self.journal_entry.item,
-                lot_no=lot_no,
                 remaining_quantity__gt=0,
             )
+            if serial_no:
+                entries = entries.filter(serial_no__iexact=serial_no)
+            if lot_no:
+                entries = entries.filter(lot_no=lot_no)
             if self.journal_entry.location_code_id:
-                lot_entries = lot_entries.filter(
+                entries = entries.filter(
                     location_id=self.journal_entry.location_code_id
                 )
             if self.journal_entry.global_dimension_1_id:
-                lot_entries = lot_entries.filter(
+                entries = entries.filter(
                     global_dimension_1_id=self.journal_entry.global_dimension_1_id
                 )
-            lot_entries = lot_entries.order_by("expiry_date", "created_at")
+            entries = entries.order_by("expiry_date", "created_at")
 
-            for entry in lot_entries:
-                if remaining_for_lot <= 0:
+            for entry in entries:
+                if remaining_for_spec <= 0:
                     break
-                reduction = min(entry.remaining_quantity, remaining_for_lot)
+                reduction = min(entry.remaining_quantity, remaining_for_spec)
                 entry.remaining_quantity -= reduction
                 entry.save(update_fields=["remaining_quantity", "updated_at"])
-                remaining_for_lot -= reduction
+                remaining_for_spec -= reduction
                 total_reduced += reduction
 
-            if remaining_for_lot > 0:
+            if remaining_for_spec > 0:
+                label = f"Serial '{serial_no}'" if serial_no else f"Lot '{lot_no}'"
                 raise Exception(
-                    f"Lot '{lot_no}' has insufficient inventory for negative adjustment. "
-                    f"Missing {remaining_for_lot} base units."
+                    f"{label} has insufficient inventory for negative adjustment. "
+                    f"Missing {remaining_for_spec} base units."
                 )
 
         # Calculate the actual quantity based on unit of measure conversion

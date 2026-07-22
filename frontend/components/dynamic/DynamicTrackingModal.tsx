@@ -41,7 +41,7 @@ export default function DynamicTrackingModal({
   const trackingModalKey =
     context.mode === 'posted'
       ? `${worksheetPage.PageId}-${context.vendorInvoiceNo}-${context.itemNo}`
-      : `${worksheetPage.PageId}-${context.purchaseInvoiceLineId}`
+      : `${worksheetPage.PageId}-${context.purchaseInvoiceLineId ?? ''}-${context.salesInvoiceLineId ?? ''}-${context.itemJournalId ?? ''}`
 
   return (
     <DynamicDialogModal

@@ -4,6 +4,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { formatDecimalDisplay } from '@/lib/formatNumber'
+
 import { usePageDataInfinite } from '@/hooks/usePageData'
 
 import { usePages } from '@/hooks/usePage'
@@ -17,6 +19,8 @@ import {
   itemRequiresTracking,
 
   pickAvailableLots,
+
+  pickAvailableSerials,
 
 } from '@/services/items.service'
 
@@ -112,19 +116,28 @@ function lineRequiresTracking(line: POSCartLine): boolean {
 
 
 
+function lineTrackingComplete(line: POSCartLine): boolean {
+  if (!lineRequiresTracking(line)) return true
+  if (line.trackingCode?.require_serial_no) {
+    const serials = line.selectedSerialNos ?? []
+    return serials.length === line.quantity && serials.every((s) => s.trim())
+  }
+  return Boolean(line.selectedLotNo?.trim())
+}
+
 function validateTrackingLines(cart: POSCartLine[]): string | null {
 
-  const missing = cart.filter(
-
-    (line) => lineRequiresTracking(line) && !line.selectedLotNo?.trim(),
-
-  )
+  const missing = cart.filter((line) => !lineTrackingComplete(line))
 
   if (!missing.length) return null
 
   const names = missing.map((l) => l.name).join(', ')
 
-  return `Select a lot for: ${names}`
+  const serialMissing = missing.some((l) => l.trackingCode?.require_serial_no)
+
+  return serialMissing
+    ? `Select serial number(s) for: ${names}`
+    : `Select a lot for: ${names}`
 
 }
 
@@ -173,6 +186,8 @@ function normalizeSetup(raw: POSSalesSetup): POSSalesSetup {
     allow_price_editing:
 
       raw.allow_price_editing ?? (raw.disable_price_editing != null ? !raw.disable_price_editing : true),
+
+    prevent_price_below_original: raw.prevent_price_below_original ?? false,
 
   }
 
@@ -254,6 +269,8 @@ function buildSalePayload(
 
       tracking_code: line.selectedLotNo ?? '',
 
+      serial_nos: line.selectedSerialNos ?? [],
+
       description: '',
 
     })),
@@ -305,6 +322,8 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
   const [saleDate, setSaleDate] = useState(todayIsoDate)
 
   const [canPostPreviousDates, setCanPostPreviousDates] = useState(true)
+
+  const [canEditSalesPrice, setCanEditSalesPrice] = useState(false)
 
   const [checkoutOpen, setCheckoutOpen] = useState(false)
 
@@ -467,6 +486,8 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
       setCompanyInfo(company)
 
       setCanPostPreviousDates(userSetup?.canPostPreviousDates ?? true)
+
+      setCanEditSalesPrice(userSetup?.canEditSalesPrice ?? false)
 
 
 
@@ -671,6 +692,8 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
             unitPrice,
 
+            originalPrice: unitPrice,
+
             unitOfMeasure,
 
             lineDiscountAmount: 0,
@@ -712,6 +735,38 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
     )
 
   }, [])
+
+
+
+  const updateLinePrice = useCallback((clientId: string, unitPrice: number) => {
+
+    const target = cart.find((l) => l.clientId === clientId)
+
+    if (!target) return
+
+    let nextPrice = Math.max(0, unitPrice)
+
+    const original = target.originalPrice ?? target.unitPrice
+
+    if (salesSetup.prevent_price_below_original && nextPrice < original) {
+
+      nextPrice = original
+
+      setError(`Cannot set price below original (${formatDecimalDisplay(original)})`)
+
+    } else {
+
+      setError(null)
+
+    }
+
+    setCart((prev) =>
+
+      prev.map((l) => (l.clientId === clientId ? { ...l, unitPrice: nextPrice } : l)),
+
+    )
+
+  }, [cart, salesSetup.prevent_price_below_original])
 
 
 
@@ -759,11 +814,15 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
       const entries = await fetchAllItemLedgerEntries(line.no)
 
-      setTrackingOptions(pickAvailableLots(entries))
+      if (line.trackingCode?.require_serial_no) {
+        setTrackingOptions(pickAvailableSerials(entries))
+      } else {
+        setTrackingOptions(pickAvailableLots(entries))
+      }
 
     } catch (e) {
 
-      setError(e instanceof Error ? e.message : 'Failed to load lots')
+      setError(e instanceof Error ? e.message : 'Failed to load tracking options')
 
       setTrackingOptions([])
 
@@ -785,7 +844,40 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
       prev.map((l) =>
 
-        l.clientId === trackingClientId ? { ...l, selectedLotNo: lotNo } : l,
+        l.clientId === trackingClientId
+          ? { ...l, selectedLotNo: lotNo, selectedSerialNos: undefined }
+          : l,
+
+      ),
+
+    )
+
+    setTrackingOpen(false)
+
+    setTrackingClientId(null)
+
+    setTrackingOptions([])
+
+  }, [trackingClientId])
+
+
+
+  const confirmSerials = useCallback((serialNos: string[]) => {
+
+    if (!trackingClientId) return
+
+    setCart((prev) =>
+
+      prev.map((l) =>
+
+        l.clientId === trackingClientId
+          ? {
+              ...l,
+              selectedSerialNos: serialNos,
+              selectedLotNo: undefined,
+              quantity: serialNos.length || l.quantity,
+            }
+          : l,
 
       ),
 
@@ -913,6 +1005,8 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
             quantity: line.quantity,
 
             unitPrice: line.unit_price,
+
+            originalPrice: detail?.unit_price ?? line.unit_price,
 
             unitOfMeasure: detail?.unit_of_measure ?? 'PCS',
 
@@ -1298,6 +1392,10 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
     canPostPreviousDates,
 
+    canEditPrice:
+
+      Boolean(canEditSalesPrice) && salesSetup.allow_price_editing !== false,
+
     checkoutOpen,
 
     setCheckoutOpen,
@@ -1336,6 +1434,8 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
     updateLineQuantity,
 
+    updateLinePrice,
+
     removeLine,
 
     clearCart,
@@ -1365,6 +1465,8 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
     openTrackingModal,
 
     selectTracking,
+
+    confirmSerials,
 
     closeTrackingModal,
 

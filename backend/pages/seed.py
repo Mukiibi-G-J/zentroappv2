@@ -792,6 +792,7 @@ def seed():
     ).delete()
     inv_setup = _seed_inventory_setup_page()
     global_uom_list = _seed_unit_of_measure_list()
+    item_tracking_code_list = _seed_item_tracking_code_list()
     item_category_list = _seed_item_category_list()
     _seed_inventory_setup_uom_action(inv_setup, global_uom_list)
     _wire_relation_lookup_fields(
@@ -799,6 +800,11 @@ def seed():
         ('unit_of_measure',),
         part_control_name='ItemUnitOfMeasurePart',
         lookup_page=global_uom_list,
+    )
+    _wire_relation_lookup_fields(
+        item_card,
+        ('tracking_code',),
+        lookup_page=item_tracking_code_list,
     )
     item_list = Page.objects.filter(name='ItemList').first()
     if item_list:
@@ -3103,28 +3109,32 @@ def _seed_user_setup_page() -> Page:
             visible=True, editable=True, primary_key=False, tab_index=4,
         ),
         dict(
-            name='can_post_previous_dates', caption='Post Previous Dates', field_type='Boolean',
+            name='can_edit_sales_price', caption='Edit Sales Price', field_type='Boolean',
             visible=True, editable=True, primary_key=False, tab_index=5,
         ),
         dict(
-            name='can_reverse_purchase_invoice', caption='Reverse Purchase Invoice', field_type='Boolean',
+            name='can_post_previous_dates', caption='Post Previous Dates', field_type='Boolean',
             visible=True, editable=True, primary_key=False, tab_index=6,
         ),
         dict(
-            name='can_reverse_sales_invoice', caption='Reverse Sales Invoice', field_type='Boolean',
+            name='can_reverse_purchase_invoice', caption='Reverse Purchase Invoice', field_type='Boolean',
             visible=True, editable=True, primary_key=False, tab_index=7,
         ),
         dict(
-            name='can_reverse_item_journal', caption='Reverse Item Journal', field_type='Boolean',
+            name='can_reverse_sales_invoice', caption='Reverse Sales Invoice', field_type='Boolean',
             visible=True, editable=True, primary_key=False, tab_index=8,
         ),
         dict(
-            name='can_view_only_their_sales', caption='View Only Their Sales', field_type='Boolean',
+            name='can_reverse_item_journal', caption='Reverse Item Journal', field_type='Boolean',
             visible=True, editable=True, primary_key=False, tab_index=9,
         ),
         dict(
-            name='user__can_switch_branch', caption='Can Switch Branch', field_type='Boolean',
+            name='can_view_only_their_sales', caption='View Only Their Sales', field_type='Boolean',
             visible=True, editable=True, primary_key=False, tab_index=10,
+        ),
+        dict(
+            name='user__can_switch_branch', caption='Can Switch Branch', field_type='Boolean',
+            visible=True, editable=True, primary_key=False, tab_index=11,
         ),
     ])
     return user_setup_page
@@ -3921,6 +3931,20 @@ def _seed_item_journal_pages() -> tuple[Page, Page, Page, Page]:
             'visible': True,
             'ribbon_tab': 'Home',
             'image_url': 'CircleCheck',
+            'visible_when_field': 'status',
+            'visible_when_values': 'Open',
+        },
+    )
+    PageAction.objects.update_or_create(
+        page=card,
+        name='ItemTrackingLines',
+        defaults={
+            'caption': 'Item Tracking Lines',
+            'action_relative_url': '#item-tracking-lines',
+            'ribbon_tab': 'Home',
+            'tooltip': 'Specify lot or serial details for this adjustment',
+            'visible': True,
+            'image_url': 'Barcode',
             'visible_when_field': 'status',
             'visible_when_values': 'Open',
         },
@@ -7517,6 +7541,63 @@ def _seed_unit_of_measure_list() -> Page:
     _seed_ribbon_actions(page, (
         ('UomListNew', 'New', '#new', 'Home', 'Plus'),
         ('UomListDelete', 'Delete', '#delete', 'Home', 'Trash2'),
+    ))
+    return page
+
+
+def _seed_item_tracking_code_list() -> Page:
+    """BC Page 6502 — Item Tracking Codes list (SN / Lot / Expiry)."""
+    page, _ = Page.objects.update_or_create(
+        name='ItemTrackingCodeList',
+        defaults={
+            'caption': 'Item Tracking Codes',
+            'source_table': 'ItemTrackingCodes',
+            'page_type': 'List',
+            'editable': True,
+            'insert_allowed': True,
+            'delete_allowed': True,
+            'modify_allowed': True,
+            'card_page': None,
+        },
+    )
+    page.card_page = None
+    page.editable = True
+    page.insert_allowed = True
+    page.delete_allowed = True
+    page.modify_allowed = True
+    page.save(update_fields=['card_page', 'editable', 'insert_allowed', 'delete_allowed', 'modify_allowed'])
+
+    ctrl, _ = PageControl.objects.get_or_create(
+        page=page,
+        name='ItemTrackingCodeListRepeater',
+        defaults={
+            'control_type': 'Repeater',
+            'caption': 'Item Tracking Codes',
+            'source_table': 'ItemTrackingCodes',
+            'show_caption': False,
+            'editable': True,
+            'visible': True,
+        },
+    )
+    ctrl.editable = True
+    ctrl.source_table = 'ItemTrackingCodes'
+    ctrl.save(update_fields=['editable', 'source_table'])
+    PageControlField.objects.filter(page=page, page_control=ctrl).delete()
+    _seed_fields(ctrl, page, [
+        dict(name='code', caption='Code', field_type='Code',
+             visible=True, editable=True, primary_key=True, required=True, tab_index=0, freeze_column=True),
+        dict(name='description', caption='Description', field_type='Text',
+             visible=True, editable=True, primary_key=False, required=True, tab_index=1),
+        dict(name='require_serial_no', caption='SN Specific Tracking', field_type='Boolean',
+             visible=True, editable=True, primary_key=False, tab_index=2),
+        dict(name='require_lot_no', caption='Lot Specific Tracking', field_type='Boolean',
+             visible=True, editable=True, primary_key=False, tab_index=3),
+        dict(name='require_expiry_date', caption='Expiry Date Required', field_type='Boolean',
+             visible=True, editable=True, primary_key=False, tab_index=4),
+    ])
+    _seed_ribbon_actions(page, (
+        ('ItemTrackingCodeListNew', 'New', '#new', 'Home', 'Plus'),
+        ('ItemTrackingCodeListDelete', 'Delete', '#delete', 'Home', 'Trash2'),
     ))
     return page
 

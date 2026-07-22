@@ -784,11 +784,11 @@ class SalesInvoiceLine(BaseModel):
 
     @property
     def tracking_specifications(self):
-        """Get tracking specifications for this line"""
+        """Tracking specs for this line (linked by line FK; item is synced on save)."""
         from items.models import TrackingSpecification
 
         return TrackingSpecification.objects.filter(
-            sales_invoice=self.sales_invoice, item=self.item
+            sales_invoice_line=self,
         )
 
     @property
@@ -903,7 +903,7 @@ class SalesInvoiceLine(BaseModel):
                     _("Line discounts are disabled in Sales & Receivables Setup")
                 )
 
-        # Tracking specs only for item lines
+        # Tracking specs only for item lines (per-line quantity, BC-style)
         if (
             self.type == "item"
             and self.item_id
@@ -912,18 +912,10 @@ class SalesInvoiceLine(BaseModel):
             total_quantity = sum(
                 spec.quantity_base for spec in self.tracking_specifications
             )
-            same_invoice_lines = SalesInvoiceLine.objects.filter(
-                sales_invoice=self.sales_invoice, type="item", item_id=self.item_id
-            )
-            expected_quantity = 0
-            for line in same_invoice_lines:
-                if (
-                    line.item_unit_of_measure
-                    and line.item_unit_of_measure.quantity_per_unit
-                ):
-                    expected_quantity += (
-                        line.quantity * line.item_unit_of_measure.quantity_per_unit
-                    )
+            qpu = 1
+            if self.item_unit_of_measure_id:
+                qpu = self.item_unit_of_measure.quantity_per_unit or 1
+            expected_quantity = int(self.quantity or 0) * int(qpu or 1)
             if total_quantity != expected_quantity:
                 raise ValidationError(
                     f"Total quantity in tracking specifications ({total_quantity}) "

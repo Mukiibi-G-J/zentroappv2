@@ -412,6 +412,7 @@ class UserSetupAdmin(admin.ModelAdmin):
         "can_see_buying_price",
         "can_see_profit_margin",
         "can_see_item_cost",
+        "can_edit_sales_price",
         "can_post_previous_dates",
         "can_reverse_purchase_invoice",
         "can_reverse_sales_invoice",
@@ -423,6 +424,7 @@ class UserSetupAdmin(admin.ModelAdmin):
         "can_see_buying_price",
         "can_see_profit_margin",
         "can_see_item_cost",
+        "can_edit_sales_price",
         "can_post_previous_dates",
         "can_reverse_purchase_invoice",
         "can_reverse_sales_invoice",
@@ -449,8 +451,12 @@ class UserSetupAdmin(admin.ModelAdmin):
                     "can_see_buying_price",
                     "can_see_profit_margin",
                     "can_see_item_cost",
+                    "can_edit_sales_price",
                 ),
-                "description": "Control what pricing information the user can see",
+                "description": (
+                    "Control what pricing information the user can see, "
+                    "and whether they can edit sales/POS unit prices"
+                ),
             },
         ),
         (

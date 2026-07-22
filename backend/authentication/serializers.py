@@ -404,6 +404,7 @@ class AuthTokenViewSerializer(TokenObtainPairSerializer):
                 "canSeeBuyingPrice": user_setup.can_see_buying_price,
                 "canSeeProfitMargin": user_setup.can_see_profit_margin,
                 "canSeeItemCost": user_setup.can_see_item_cost,
+                "canEditSalesPrice": user_setup.can_edit_sales_price,
                 "canReversePurchaseInvoice": user_setup.can_reverse_purchase_invoice,
                 "canReverseSalesInvoice": user_setup.can_reverse_sales_invoice,
                 "canReverseItemJournal": user_setup.can_reverse_item_journal,
@@ -415,6 +416,7 @@ class AuthTokenViewSerializer(TokenObtainPairSerializer):
                 "canSeeBuyingPrice": True,
                 "canSeeProfitMargin": True,
                 "canSeeItemCost": True,
+                "canEditSalesPrice": False,
                 "canReversePurchaseInvoice": True,
                 "canReverseSalesInvoice": True,
                 "canReverseItemJournal": False,
@@ -495,6 +497,7 @@ class UserSetupSerializer(serializers.ModelSerializer):
     canSeeBuyingPrice = serializers.BooleanField(source="can_see_buying_price")
     canSeeProfitMargin = serializers.BooleanField(source="can_see_profit_margin")
     canSeeItemCost = serializers.BooleanField(source="can_see_item_cost")
+    canEditSalesPrice = serializers.BooleanField(source="can_edit_sales_price")
     canPostPreviousDates = serializers.BooleanField(source="can_post_previous_dates")
     canReversePurchaseInvoice = serializers.BooleanField(
         source="can_reverse_purchase_invoice"
@@ -519,6 +522,7 @@ class UserSetupSerializer(serializers.ModelSerializer):
             "canSeeBuyingPrice",
             "canSeeProfitMargin",
             "canSeeItemCost",
+            "canEditSalesPrice",
             "canPostPreviousDates",
             "canReversePurchaseInvoice",
             "canReverseSalesInvoice",

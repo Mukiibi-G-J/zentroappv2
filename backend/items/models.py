@@ -2143,16 +2143,190 @@ def _expected_purchase_line_quantity(purchase_line):
     return int(purchase_line.quantity or 0) * int(qpu or 1)
 
 
+def _expected_sales_line_quantity(sales_line):
+    qpu = 1
+    if getattr(sales_line, 'item_unit_of_measure_id', None):
+        qpu = sales_line.item_unit_of_measure.quantity_per_unit or 1
+    return int(sales_line.quantity or 0) * int(qpu or 1)
+
+
+def _item_requires_serial_no(item) -> bool:
+    tracking = getattr(item, 'tracking_code', None) if item is not None else None
+    return bool(tracking and getattr(tracking, 'require_serial_no', False))
+
+
+def _item_requires_lot_no(item) -> bool:
+    tracking = getattr(item, 'tracking_code', None) if item is not None else None
+    return bool(tracking and getattr(tracking, 'require_lot_no', False))
+
+
+def _validate_serial_quantity_base(item, quantity_base: int) -> None:
+    """BC: Quantity (Base) must be 1 when Serial No. tracking is required."""
+    if _item_requires_serial_no(item) and quantity_base != 1:
+        raise ValidationError(
+            {
+                'quantity_base': (
+                    'Quantity (Base) must be 1 when Serial No. is stated.'
+                ),
+            },
+        )
+
+
+_NEGATIVE_ENTRY_TYPES = frozenset({
+    'NegativeAdjustment',
+    'Negative Adjustment',
+    'Sales',
+})
+
+
+def _is_outbound_tracking_context(*, sales_invoice_line=None, item_journal=None) -> bool:
+    if sales_invoice_line is not None:
+        return True
+    if item_journal is not None:
+        return getattr(item_journal, 'entry_type', None) in _NEGATIVE_ENTRY_TYPES
+    return False
+
+
+def _serial_remaining_in_stock(item, serial_no: str, *, location=None) -> int:
+    from django.db.models import Sum
+    from django.db.models.functions import Coalesce
+
+    qs = ItemLedgerEntries.objects.filter(
+        item=item,
+        serial_no__iexact=str(serial_no).strip(),
+        remaining_quantity__gt=0,
+    )
+    if location is not None:
+        qs = qs.filter(location=location)
+    return int(
+        qs.aggregate(total=Coalesce(Sum('remaining_quantity'), 0))['total'] or 0
+    )
+
+
+def _validate_inbound_serial_unique(serial_no: str, *, item=None, exclude_pk=None) -> None:
+    """Inbound (purchase / +adj): serial must not already exist in stock or open inbound specs."""
+    serial = str(serial_no).strip()
+    if not serial:
+        return
+
+    if item is not None and _serial_remaining_in_stock(item, serial) > 0:
+        raise ValidationError(
+            {'serial_no': f'Serial No. "{serial}" already exists in inventory.'},
+        )
+
+    qs = TrackingSpecification.objects.filter(serial_no__iexact=serial).filter(
+        models.Q(purchase_invoice_line__isnull=False)
+        | models.Q(
+            item_journal__isnull=False,
+            item_journal__entry_type='PositiveAdjustment',
+        )
+    )
+    if exclude_pk:
+        qs = qs.exclude(pk=exclude_pk)
+    if qs.exists():
+        raise ValidationError(
+            {'serial_no': f'Serial No. "{serial}" is already assigned. Enter a unique serial number.'},
+        )
+
+
+def _validate_outbound_serial_available(
+    serial_no: str,
+    *,
+    item,
+    location=None,
+    exclude_pk=None,
+) -> None:
+    """Outbound (sales / −adj): serial must exist in stock with remaining qty."""
+    serial = str(serial_no).strip()
+    if not serial:
+        return
+    available = _serial_remaining_in_stock(item, serial, location=location)
+    if available <= 0:
+        raise ValidationError(
+            {
+                'serial_no': (
+                    f'Serial No. "{serial}" is not available in inventory for this item.'
+                ),
+            },
+        )
+    # Same serial cannot be assigned twice on open outbound docs while still in stock once.
+    outbound_qs = TrackingSpecification.objects.filter(serial_no__iexact=serial).filter(
+        models.Q(sales_invoice_line__isnull=False)
+        | models.Q(
+            item_journal__isnull=False,
+            item_journal__entry_type='NegativeAdjustment',
+        )
+    )
+    if exclude_pk:
+        outbound_qs = outbound_qs.exclude(pk=exclude_pk)
+    if outbound_qs.exists() and available <= outbound_qs.count():
+        raise ValidationError(
+            {'serial_no': f'Serial No. "{serial}" is already selected on another line.'},
+        )
+
+
+def _validate_unique_serial_no(
+    serial_no: str | None,
+    *,
+    item=None,
+    location=None,
+    outbound: bool = False,
+    exclude_pk=None,
+) -> None:
+    if not serial_no or not str(serial_no).strip():
+        return
+    if outbound:
+        _validate_outbound_serial_available(
+            serial_no, item=item, location=location, exclude_pk=exclude_pk,
+        )
+    else:
+        _validate_inbound_serial_unique(serial_no, item=item, exclude_pk=exclude_pk)
+
+
+def _expected_journal_quantity(journal):
+    qpu = 1
+    if getattr(journal, 'item_unit_of_measure_id', None):
+        qpu = journal.item_unit_of_measure.quantity_per_unit or 1
+    return int(journal.quantity or 0) * int(qpu or 1)
+
+
+def _validate_journal_tracking_quantity(item_journal, quantity_base, *, exclude_pk=None):
+    journal = ItemJournal.objects.select_related(
+        'item_unit_of_measure', 'item__tracking_code', 'location_code',
+    ).get(
+        id=item_journal.id if hasattr(item_journal, 'id') else item_journal
+    )
+    expected_quantity = _expected_journal_quantity(journal)
+    line_quantity = _parse_positive_quantity_base(quantity_base)
+    _validate_serial_quantity_base(getattr(journal, 'item', None), line_quantity)
+
+    specifications = TrackingSpecification.objects.filter(item_journal=journal.id)
+    if exclude_pk:
+        specifications = specifications.exclude(pk=exclude_pk)
+    total_quantity = specifications.aggregate(total=Sum('quantity_base'))['total'] or 0
+    assigned_quantity = int(total_quantity) + line_quantity
+
+    if assigned_quantity > expected_quantity:
+        raise ValidationError(
+            'Quantity in tracking specification must match journal quantity. '
+            f'Expected: {expected_quantity}, assigned: {assigned_quantity}.'
+        )
+    return line_quantity
+
+
 def _validate_purchase_tracking_quantity(purchase_invoice_line, quantity_base, *, exclude_pk=None):
     PurchaseInvoiceLine = apps.get_model("purchases", "PurchaseInvoiceLine")
 
-    purchase_line = PurchaseInvoiceLine.objects.select_related("item_unit_of_measure").get(
+    purchase_line = PurchaseInvoiceLine.objects.select_related(
+        "item_unit_of_measure", "item__tracking_code",
+    ).get(
         id=purchase_invoice_line.id
         if hasattr(purchase_invoice_line, "id")
         else purchase_invoice_line
     )
     expected_quantity = _expected_purchase_line_quantity(purchase_line)
     line_quantity = _parse_positive_quantity_base(quantity_base)
+    _validate_serial_quantity_base(getattr(purchase_line, 'item', None), line_quantity)
 
     specifications = TrackingSpecification.objects.filter(
         purchase_invoice_line=purchase_line.id
@@ -2165,6 +2339,36 @@ def _validate_purchase_tracking_quantity(purchase_invoice_line, quantity_base, *
     if assigned_quantity > expected_quantity:
         raise ValidationError(
             "Quantity in tracking specification must match purchase line quantity. "
+            f"Expected: {expected_quantity}, assigned: {assigned_quantity}."
+        )
+    return line_quantity
+
+
+def _validate_sales_tracking_quantity(sales_invoice_line, quantity_base, *, exclude_pk=None):
+    SalesInvoiceLine = apps.get_model("sales", "SalesInvoiceLine")
+
+    sales_line = SalesInvoiceLine.objects.select_related(
+        "item_unit_of_measure", "item__tracking_code",
+    ).get(
+        id=sales_invoice_line.id
+        if hasattr(sales_invoice_line, "id")
+        else sales_invoice_line
+    )
+    expected_quantity = _expected_sales_line_quantity(sales_line)
+    line_quantity = _parse_positive_quantity_base(quantity_base)
+    _validate_serial_quantity_base(getattr(sales_line, 'item', None), line_quantity)
+
+    specifications = TrackingSpecification.objects.filter(
+        sales_invoice_line=sales_line.id
+    )
+    if exclude_pk:
+        specifications = specifications.exclude(pk=exclude_pk)
+    total_quantity = specifications.aggregate(total=Sum("quantity_base"))["total"] or 0
+    assigned_quantity = int(total_quantity) + line_quantity
+
+    if assigned_quantity > expected_quantity:
+        raise ValidationError(
+            "Quantity in tracking specification must match sales line quantity. "
             f"Expected: {expected_quantity}, assigned: {assigned_quantity}."
         )
     return line_quantity
@@ -2289,6 +2493,40 @@ class TrackingSpecification(BaseModel):
             if getattr(journal, 'item_id', None):
                 self.item_id = journal.item_id
 
+        # Serial No. stated → qty must be 1; inbound unique / outbound must exist in stock.
+        serial_stated = bool(self.serial_no and str(self.serial_no).strip())
+        if serial_stated:
+            qty = _parse_positive_quantity_base(self.quantity_base)
+            if qty != 1:
+                raise ValidationError(
+                    {
+                        'quantity_base': (
+                            'Quantity (Base) must be -1, 0 or 1 when Serial No. is stated.'
+                        ),
+                    },
+                )
+            outbound = _is_outbound_tracking_context(
+                sales_invoice_line=self.sales_invoice_line if self.sales_invoice_line_id else None,
+                item_journal=self.item_journal if self.item_journal_id else None,
+            )
+            item = self.item
+            location = getattr(self, 'location_code', None)
+            if outbound and self.sales_invoice_line_id:
+                item = item or getattr(self.sales_invoice_line, 'item', None)
+                location = location or getattr(self.sales_invoice_line, 'location_code', None)
+            elif self.item_journal_id:
+                item = item or getattr(self.item_journal, 'item', None)
+                location = location or getattr(self.item_journal, 'location_code', None)
+            elif self.purchase_invoice_line_id:
+                item = item or getattr(self.purchase_invoice_line, 'item', None)
+            _validate_unique_serial_no(
+                self.serial_no,
+                item=item,
+                location=location,
+                outbound=outbound,
+                exclude_pk=self.pk,
+            )
+
         if self.purchase_invoice_line:
             self.quantity_base = _validate_purchase_tracking_quantity(
                 self.purchase_invoice_line,
@@ -2296,8 +2534,17 @@ class TrackingSpecification(BaseModel):
                 exclude_pk=self.pk,
             )
         elif self.sales_invoice_line:
-            pass
+            self.quantity_base = _validate_sales_tracking_quantity(
+                self.sales_invoice_line,
+                self.quantity_base,
+                exclude_pk=self.pk,
+            )
         elif self.item_journal:
+            self.quantity_base = _validate_journal_tracking_quantity(
+                self.item_journal,
+                self.quantity_base,
+                exclude_pk=self.pk,
+            )
             # Auto-populate source_template and source_batch from item_journal
             if self.item_journal.journal_template_id:
                 self.source_template = self.item_journal.journal_template
@@ -2317,19 +2564,7 @@ class TrackingSpecification(BaseModel):
         super().save(*args, **kwargs)
 
     class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=["serial_no", "lot_no"],
-                name="unique_serial_lot_no",
-            )
-        ]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["serial_no"],
-                condition=models.Q(serial_no__isnull=False) & ~models.Q(serial_no=""),
-                name="unique_non_empty_serial_no",
-            )
-        ]
+        constraints = []
         verbose_name = "Tracking Specification"
         verbose_name_plural = "Tracking Specifications"
         db_table = "items_trackingspecification"

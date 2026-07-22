@@ -33,6 +33,7 @@ export type ItemImportStatus = {
 
 interface ItemLedgerApiEntry {
   lot_no?: string | null
+  serial_no?: string | null
   document_no?: string | null
   remaining_quantity?: number | null
   expiry_date?: string | null
@@ -223,16 +224,16 @@ export function pickAvailableLots(entries: ItemLedgerApiEntry[]): POSTrackingOpt
     if (dateA.getTime() !== dateB.getTime()) {
       return dateA.getTime() - dateB.getTime()
     }
-    return a.lot_no.localeCompare(b.lot_no)
+    return (a.lot_no ?? '').localeCompare(b.lot_no ?? '')
   })
 
   const fifoEntries: POSTrackingOption[] = []
   const usedLots = new Set<string>()
 
   for (const entry of sortedEntries) {
-    if (!usedLots.has(entry.lot_no)) {
+    if (!usedLots.has(entry.lot_no!)) {
       fifoEntries.push(entry)
-      usedLots.add(entry.lot_no)
+      usedLots.add(entry.lot_no!)
     } else {
       const existingEntry = fifoEntries.find((e) => e.lot_no === entry.lot_no)
       if (existingEntry) {
@@ -247,6 +248,36 @@ export function pickAvailableLots(entries: ItemLedgerApiEntry[]): POSTrackingOpt
   }
 
   return fifoEntries
+}
+
+/** Available serials in stock (remaining_quantity > 0), one option per serial. */
+export function pickAvailableSerials(entries: ItemLedgerApiEntry[]): POSTrackingOption[] {
+  const bySerial = new Map<string, POSTrackingOption>()
+  for (const entry of entries) {
+    const serial = entry.serial_no?.trim()
+    if (!serial) continue
+    if ((entry.remaining_quantity ?? 0) <= 0) continue
+    const isSalesEntry =
+      (entry.document_no && entry.document_no.startsWith('SIN-')) ||
+      entry.entry_type === 'Sale' ||
+      entry.document_type === 'Sales'
+    if (isSalesEntry) continue
+    const existing = bySerial.get(serial.toUpperCase())
+    if (!existing) {
+      bySerial.set(serial.toUpperCase(), {
+        serial_no: serial,
+        document_no: entry.document_no ?? '',
+        remaining_quantity: entry.remaining_quantity ?? 0,
+        expiry_date: entry.expiry_date ?? null,
+        entry_type: entry.entry_type ?? '',
+      })
+    } else {
+      existing.remaining_quantity += entry.remaining_quantity ?? 0
+    }
+  }
+  return Array.from(bySerial.values()).sort((a, b) =>
+    (a.serial_no ?? '').localeCompare(b.serial_no ?? ''),
+  )
 }
 
 export function itemRequiresTracking(tracking?: ItemTrackingCode | null): boolean {

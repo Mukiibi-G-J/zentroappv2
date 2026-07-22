@@ -62,10 +62,15 @@ export default function ItemTrackingWorksheetBody({
     [linesControl?.Fields, page.ContextFilterField],
   )
 
-  const lineFilters = useMemo(
-    () => ({ purchase_invoice_line: String(context.purchaseInvoiceLineId ?? '') }),
-    [context.purchaseInvoiceLineId],
-  )
+  const lineFilters = useMemo(() => {
+    if (context.itemJournalId) {
+      return { item_journal: String(context.itemJournalId) }
+    }
+    if (context.salesInvoiceLineId) {
+      return { sales_invoice_line: String(context.salesInvoiceLineId) }
+    }
+    return { purchase_invoice_line: String(context.purchaseInvoiceLineId ?? '') }
+  }, [context.itemJournalId, context.purchaseInvoiceLineId, context.salesInvoiceLineId])
 
   const updateField = useUpdateField(pageId, linesControl?.PageControlId)
 
@@ -171,9 +176,11 @@ export default function ItemTrackingWorksheetBody({
     (field: PageControlField, record: DataRecord) => {
       if (readOnly) return false
       if (field.Name === 'expiry_date' && lotExpiryLocked[record.SystemId]) return false
+      // Serial tracking: qty is always 1 per line (BC rule).
+      if (field.Name === 'quantity_base' && tracking.require_serial_no) return false
       return true
     },
-    [lotExpiryLocked, readOnly],
+    [lotExpiryLocked, readOnly, tracking.require_serial_no],
   )
 
   const handleFieldSaved = useCallback(
@@ -187,19 +194,47 @@ export default function ItemTrackingWorksheetBody({
   )
 
   const getCreatePayload = useCallback(
-    () => ({
-      purchase_invoice_line: context.purchaseInvoiceLineId,
-      purchase_invoice: context.purchaseInvoiceId,
-      // Keep item in sync with the invoice line (backend also enforces this on save).
-      item: context.itemNo,
-      quantity_base: summary.remaining_quantity > 0 ? summary.remaining_quantity : 1,
-      description: '',
-    }),
+    () => {
+      const qty = tracking.require_serial_no
+        ? 1
+        : summary.remaining_quantity > 0
+          ? summary.remaining_quantity
+          : 1
+      if (context.itemJournalId) {
+        return {
+          item_journal: context.itemJournalId,
+          item: context.itemNo,
+          quantity_base: qty,
+          description: '',
+        }
+      }
+      if (context.salesInvoiceLineId) {
+        return {
+          sales_invoice_line: context.salesInvoiceLineId,
+          sales_invoice: context.salesInvoiceId,
+          item: context.itemNo,
+          quantity_base: qty,
+          description: '',
+        }
+      }
+      return {
+        purchase_invoice_line: context.purchaseInvoiceLineId,
+        purchase_invoice: context.purchaseInvoiceId,
+        // Keep item in sync with the invoice line (backend also enforces this on save).
+        item: context.itemNo,
+        quantity_base: qty,
+        description: '',
+      }
+    },
     [
+      context.itemJournalId,
       context.itemNo,
       context.purchaseInvoiceId,
       context.purchaseInvoiceLineId,
+      context.salesInvoiceId,
+      context.salesInvoiceLineId,
       summary.remaining_quantity,
+      tracking.require_serial_no,
     ],
   )
 

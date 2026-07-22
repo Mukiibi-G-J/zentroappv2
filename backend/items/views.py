@@ -280,11 +280,12 @@ class TrackingSpecificationViewSet(viewsets.ModelViewSet):
 
     def _validate_negative_adjustment_lot(self, payload, instance=None):
         """
-        For negative adjustment journals, enforce that lot exists in available stock
-        for the same item/location/branch and has enough remaining quantity.
+        For negative adjustment journals, enforce that lot and/or serial exists in
+        available stock for the same item/location/branch.
         """
         item_journal_id = payload.get("item_journal")
         lot_no = payload.get("lot_no")
+        serial_no = payload.get("serial_no")
         quantity_base = payload.get("quantity_base")
 
         if instance is not None:
@@ -292,6 +293,8 @@ class TrackingSpecificationViewSet(viewsets.ModelViewSet):
                 item_journal_id = getattr(instance, "item_journal_id", None)
             if not lot_no:
                 lot_no = getattr(instance, "lot_no", None)
+            if not serial_no:
+                serial_no = getattr(instance, "serial_no", None)
             if quantity_base in (None, ""):
                 quantity_base = getattr(instance, "quantity_base", None)
 
@@ -299,9 +302,9 @@ class TrackingSpecificationViewSet(viewsets.ModelViewSet):
             return
 
         try:
-            journal = ItemJournal.objects.select_related("item", "location_code").get(
-                pk=item_journal_id
-            )
+            journal = ItemJournal.objects.select_related(
+                "item", "item__tracking_code", "location_code"
+            ).get(pk=item_journal_id)
         except ItemJournal.DoesNotExist:
             raise ValidationError("Item journal not found for this tracking specification.")
 
@@ -314,9 +317,24 @@ class TrackingSpecificationViewSet(viewsets.ModelViewSet):
         if journal.entry_type not in negative_codes:
             return
 
-        if not lot_no:
+        tracking = getattr(journal.item, "tracking_code", None) if journal.item_id else None
+        require_serial = bool(tracking and tracking.require_serial_no)
+        require_lot = bool(tracking and tracking.require_lot_no)
+
+        lot_no = (lot_no or "").strip() if lot_no else ""
+        serial_no = (serial_no or "").strip() if serial_no else ""
+
+        if require_serial and not serial_no:
+            raise ValidationError(
+                "Serial No. is required for negative adjustment tracking entries."
+            )
+        if require_lot and not lot_no:
             raise ValidationError(
                 "Lot No. is required for negative adjustment tracking entries."
+            )
+        if not require_serial and not require_lot and not lot_no and not serial_no:
+            raise ValidationError(
+                "Lot No. or Serial No. is required for negative adjustment tracking entries."
             )
 
         qty = int(quantity_base or 0)
@@ -324,31 +342,40 @@ class TrackingSpecificationViewSet(viewsets.ModelViewSet):
             raise ValidationError(
                 "Quantity (Base) must be greater than zero for negative adjustment tracking entries."
             )
+        if serial_no and qty != 1:
+            raise ValidationError(
+                "Quantity (Base) must be 1 when Serial No. is stated."
+            )
 
-        lot_entries = ItemLedgerEntries.objects.filter(
+        stock_entries = ItemLedgerEntries.objects.filter(
             item=journal.item,
-            lot_no=lot_no,
             remaining_quantity__gt=0,
         )
+        if serial_no:
+            stock_entries = stock_entries.filter(serial_no__iexact=serial_no)
+        if lot_no:
+            stock_entries = stock_entries.filter(lot_no=lot_no)
         if journal.location_code_id:
-            lot_entries = lot_entries.filter(location_id=journal.location_code_id)
+            stock_entries = stock_entries.filter(location_id=journal.location_code_id)
         if journal.global_dimension_1_id:
-            lot_entries = lot_entries.filter(
+            stock_entries = stock_entries.filter(
                 global_dimension_1_id=journal.global_dimension_1_id
             )
 
-        available_qty = lot_entries.aggregate(total=Coalesce(Sum("remaining_quantity"), 0))[
+        available_qty = stock_entries.aggregate(total=Coalesce(Sum("remaining_quantity"), 0))[
             "total"
         ]
         if available_qty <= 0:
+            label = f"Serial '{serial_no}'" if serial_no else f"Lot '{lot_no}'"
             raise ValidationError(
-                "Lot does not exist or has no available quantity in this location/branch."
+                f"{label} does not exist or has no available quantity in this location/branch."
             )
 
-        requested_qs = TrackingSpecification.objects.filter(
-            item_journal_id=journal.id,
-            lot_no=lot_no,
-        )
+        requested_qs = TrackingSpecification.objects.filter(item_journal_id=journal.id)
+        if serial_no:
+            requested_qs = requested_qs.filter(serial_no__iexact=serial_no)
+        elif lot_no:
+            requested_qs = requested_qs.filter(lot_no=lot_no)
         if instance is not None and getattr(instance, "id", None):
             requested_qs = requested_qs.exclude(id=instance.id)
         requested_other_qty = requested_qs.aggregate(
@@ -356,8 +383,9 @@ class TrackingSpecificationViewSet(viewsets.ModelViewSet):
         )["total"]
         requested_total = int(requested_other_qty or 0) + qty
         if requested_total > int(available_qty):
+            label = f"Serial '{serial_no}'" if serial_no else f"Lot '{lot_no}'"
             raise ValidationError(
-                f"Selected lot '{lot_no}' has insufficient quantity. "
+                f"Selected {label} has insufficient quantity. "
                 f"Available: {int(available_qty)}, requested: {requested_total}."
             )
 

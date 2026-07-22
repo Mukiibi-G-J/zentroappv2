@@ -78,7 +78,9 @@ export function POSMobile({ pos, pageActions }: POSMobileProps) {
             <POSCartPanel
               cart={pos.cart}
               subtotal={pos.subtotal}
+              canEditPrice={pos.canEditPrice}
               onUpdateQuantity={pos.updateLineQuantity}
+              onUpdatePrice={pos.updateLinePrice}
               onRemove={pos.removeLine}
               onClear={pos.clearCart}
               onCheckout={() => {
@@ -146,9 +148,13 @@ export function POSMobile({ pos, pageActions }: POSMobileProps) {
         itemName={pos.trackingLine?.name ?? ''}
         options={pos.trackingOptions}
         loading={pos.loadingTracking}
+        mode={pos.trackingLine?.trackingCode?.require_serial_no ? 'serial' : 'lot'}
+        requiredCount={pos.trackingLine?.quantity ?? 1}
         selectedLotNo={pos.trackingLine?.selectedLotNo}
+        selectedSerialNos={pos.trackingLine?.selectedSerialNos}
         onClose={pos.closeTrackingModal}
-        onSelect={pos.selectTracking}
+        onSelectLot={pos.selectTracking}
+        onConfirmSerials={pos.confirmSerials}
       />
     </>
   )

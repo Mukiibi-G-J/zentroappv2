@@ -52,6 +52,7 @@ class Command(BaseCommand):
                     user_setup.can_see_buying_price = True
                     user_setup.can_see_profit_margin = True
                     user_setup.can_see_item_cost = True
+                    user_setup.can_edit_sales_price = False
                     user_setup.can_reverse_purchase_invoice = True
 
                     if restrict_sales:
@@ -59,6 +60,7 @@ class Command(BaseCommand):
                         user_setup.can_see_buying_price = False
                         user_setup.can_see_profit_margin = False
                         user_setup.can_see_item_cost = False
+                        user_setup.can_edit_sales_price = False
                         user_setup.notes = (
                             "Sales staff - restricted financial access"
                         )
@@ -66,6 +68,7 @@ class Command(BaseCommand):
                         # Apply cashier restrictions
                         user_setup.can_see_buying_price = False
                         user_setup.can_see_profit_margin = False
+                        user_setup.can_edit_sales_price = False
                         user_setup.notes = "Cashier - POS access only"
 
                     user_setup.save()

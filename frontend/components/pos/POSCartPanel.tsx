@@ -1,13 +1,19 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { formatDecimalDisplay } from '@/lib/formatNumber'
+import {
+  formatAmountInput,
+  formatDecimalDisplay,
+  parseNumericInput,
+} from '@/lib/formatNumber'
 import type { POSCartLine } from '@/types/pos'
 
 interface POSCartPanelProps {
   cart: POSCartLine[]
   subtotal: number
+  canEditPrice?: boolean
   onUpdateQuantity: (clientId: string, quantity: number) => void
+  onUpdatePrice?: (clientId: string, unitPrice: number) => void
   onRemove: (clientId: string) => void
   onClear: () => void
   onCheckout: () => void
@@ -79,10 +85,75 @@ function QuantityStepper({
   )
 }
 
+function formatPriceDraft(value: number): string {
+  if (!Number.isFinite(value)) return ''
+  return value.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })
+}
+
+function PriceField({
+  unitPrice,
+  editable,
+  onChange,
+}: {
+  unitPrice: number
+  editable: boolean
+  onChange?: (price: number) => void
+}) {
+  const [draft, setDraft] = useState(formatPriceDraft(unitPrice))
+
+  useEffect(() => {
+    setDraft(formatPriceDraft(unitPrice))
+  }, [unitPrice])
+
+  if (!editable) {
+    return (
+      <p className="text-xs text-bodyText">{formatPriceDraft(unitPrice)} each</p>
+    )
+  }
+
+  const commit = (raw: string) => {
+    const cleaned = parseNumericInput(raw).replace(/[^\d.]/g, '')
+    const parsed = Number.parseFloat(cleaned)
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      setDraft(formatPriceDraft(unitPrice))
+      return
+    }
+    const rounded = Math.round(parsed * 100) / 100
+    onChange?.(rounded)
+    setDraft(formatPriceDraft(rounded))
+  }
+
+  return (
+    <div className="mt-0.5 flex items-center gap-1">
+      <input
+        type="text"
+        inputMode="decimal"
+        aria-label="Unit price"
+        value={draft}
+        onChange={(e) => setDraft(formatAmountInput(e.target.value))}
+        onBlur={() => commit(draft)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.currentTarget.blur()
+          }
+        }}
+        onFocus={(e) => e.target.select()}
+        className="h-7 w-28 rounded-lg border border-strokeColor bg-white px-2 text-right text-xs font-medium text-mainTextColor outline-none focus:border-s1 focus:ring-1 focus:ring-s1"
+      />
+      <span className="text-xs text-bodyText">each</span>
+    </div>
+  )
+}
+
 export function POSCartPanel({
   cart,
   subtotal,
+  canEditPrice = false,
   onUpdateQuantity,
+  onUpdatePrice,
   onRemove,
   onClear,
   onCheckout,
@@ -112,21 +183,37 @@ export function POSCartPanel({
           <ul className="divide-y divide-strokeColor">
             {cart.map((line) => {
               const needsTracking = lineRequiresTracking?.(line) ?? false
-              const missingLot = needsTracking && !line.selectedLotNo?.trim()
+              const needsSerial = Boolean(line.trackingCode?.require_serial_no)
+              const serials = line.selectedSerialNos ?? []
+              const trackingOk = needsSerial
+                ? serials.length === line.quantity && serials.every((s) => s.trim())
+                : Boolean(line.selectedLotNo?.trim())
+              const missingTracking = needsTracking && !trackingOk
+              const trackingLabel = needsSerial
+                ? serials.length
+                  ? `SN ${serials.join(', ')}`
+                  : 'Select serial *'
+                : line.selectedLotNo
+                  ? `Lot ${line.selectedLotNo}`
+                  : 'Select lot *'
               return (
                 <li key={line.clientId} className="flex items-start gap-3 px-4 py-3">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-mainTextColor">{line.name}</p>
-                    <p className="text-xs text-bodyText">{formatDecimalDisplay(line.unitPrice)} each</p>
+                    <PriceField
+                      unitPrice={line.unitPrice}
+                      editable={canEditPrice}
+                      onChange={(price) => onUpdatePrice?.(line.clientId, price)}
+                    />
                     {needsTracking && (
                       <button
                         type="button"
                         onClick={() => onSelectTracking?.(line.clientId)}
                         className={`mt-1 text-xs font-medium hover:underline ${
-                          missingLot ? 'text-amber-700' : 'text-s1'
+                          missingTracking ? 'text-amber-700' : 'text-s1'
                         }`}
                       >
-                        {line.selectedLotNo ? `Lot ${line.selectedLotNo}` : 'Select lot *'}
+                        {trackingLabel}
                       </button>
                     )}
                   </div>

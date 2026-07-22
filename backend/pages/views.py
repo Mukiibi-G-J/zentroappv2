@@ -2587,17 +2587,21 @@ def _apply_purchase_invoice_line_defaults(payload: dict, request) -> dict:
 
 def _apply_tracking_specification_defaults(payload: dict, request) -> dict:
     from purchases.models import PurchaseInvoiceLine
+    from sales.models import SalesInvoiceLine
+    from items.models import ItemJournal
 
-    line_id = payload.get('purchase_invoice_line') or payload.get('purchase_invoice_line_id')
-    if line_id:
+    item = None
+    purchase_line_id = payload.get('purchase_invoice_line') or payload.get('purchase_invoice_line_id')
+    if purchase_line_id:
         line = (
             PurchaseInvoiceLine.objects.select_related(
                 'purchase_invoice',
                 'item',
+                'item__tracking_code',
                 'item_unit_of_measure',
                 'location_code',
             )
-            .filter(pk=line_id)
+            .filter(pk=purchase_line_id)
             .first()
         )
         if line:
@@ -2606,13 +2610,66 @@ def _apply_tracking_specification_defaults(payload: dict, request) -> dict:
             payload['purchase_invoice_line'] = line
             if line.item_id:
                 payload['item'] = line.item
+                item = line.item
             if line.location_code_id:
                 payload['location_code'] = line.location_code
+
+    sales_line_id = payload.get('sales_invoice_line') or payload.get('sales_invoice_line_id')
+    if sales_line_id:
+        line = (
+            SalesInvoiceLine.objects.select_related(
+                'sales_invoice',
+                'item',
+                'item__tracking_code',
+                'item_unit_of_measure',
+                'location_code',
+            )
+            .filter(pk=sales_line_id)
+            .first()
+        )
+        if line:
+            payload['sales_invoice'] = line.sales_invoice
+            payload['sales_invoice_line'] = line
+            if line.item_id:
+                payload['item'] = line.item
+                item = line.item
+            if getattr(line, 'location_code_id', None):
+                payload['location_code'] = line.location_code
+
+    journal_id = payload.get('item_journal') or payload.get('item_journal_id')
+    if journal_id:
+        journal = (
+            ItemJournal.objects.select_related(
+                'item',
+                'item__tracking_code',
+                'item_unit_of_measure',
+                'location_code',
+            )
+            .filter(pk=journal_id)
+            .first()
+        )
+        if journal:
+            payload['item_journal'] = journal
+            if journal.item_id:
+                payload['item'] = journal.item
+                item = journal.item
+            if journal.location_code_id:
+                payload['location_code'] = journal.location_code
+
     if not payload.get('location_code'):
         location = _resolve_branch_location_for_request(request)
         if location:
             payload['location_code'] = location
-    if not payload.get('quantity_base'):
+
+    # Serial tracking: each line is one unit (BC Quantity Base = 1).
+    requires_serial = bool(
+        item
+        and getattr(item, 'tracking_code', None)
+        and item.tracking_code.require_serial_no
+    )
+    if requires_serial:
+        payload['quantity_base'] = 1
+    elif not payload.get('quantity_base'):
         payload['quantity_base'] = 1
     if payload.get('description') is None:
         payload['description'] = ''

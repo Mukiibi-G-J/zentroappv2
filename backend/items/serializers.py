@@ -656,12 +656,10 @@ class TrackingSpecificationSerializer(serializers.ModelSerializer):
         return None
 
     def validate_serial_no(self, value):
-        # if value == "":
-        #     return None  # Convert empty string to None
-
-        if value and TrackingSpecification.objects.filter(serial_no=value).exists():
-            raise serializers.ValidationError("This serial number already exists.")
-        return value
+        # Model.save enforces inbound uniqueness / outbound availability.
+        if not value or not str(value).strip():
+            return value
+        return str(value).strip()
 
     def update(self, instance, validated_data):
         # get creat user from request

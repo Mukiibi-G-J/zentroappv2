@@ -403,9 +403,46 @@ export function DynamicListPart({
       const expectedQuantity = (Number(line.quantity) || 0)
         * (Number(line.item_unit_of_measure__quantity_per_unit ?? 1) || 1)
 
-      // Sales invoice: pick an existing lot (same UX as POS) into line.tracking_code.
+      // Sales invoice: serial (or lot+serial) → Item Tracking Lines worksheet.
+      // Lot-only → POS-style lot picker into line.tracking_code.
       if (isSalesInvoiceSubform) {
         if (linesReadOnly) return
+        if (!documentHeader) {
+          if (!opts?.auto) toast.error('Save the invoice before entering tracking details')
+          return
+        }
+        const requiresSerial = Boolean(item.tracking_code.require_serial_no)
+        if (requiresSerial) {
+          const worksheetPage = await resolveTrackingWorksheetPage()
+          if (!worksheetPage?.PageId) {
+            if (!opts?.auto) {
+              toast.error('Run seed_pages to configure Item Tracking Lines worksheet')
+            }
+            return
+          }
+          const lineId = Number(line.id)
+          const invoiceId = Number(documentHeader.id)
+          if (!lineId || !invoiceId) {
+            if (!opts?.auto) {
+              toast.error('Save the line with an item before entering tracking details')
+            }
+            return
+          }
+          setTrackingWorksheetPageOverride(worksheetPage)
+          setSelectedRowId(line.SystemId)
+          setTrackingContext({
+            mode: 'open',
+            salesInvoiceId: invoiceId,
+            salesInvoiceLineId: lineId,
+            itemNo: item.no,
+            itemName: item.item_name,
+            trackingCode: item.tracking_code,
+            expectedQuantity,
+          })
+          setTrackingOpen(true)
+          return
+        }
+
         setSelectedRowId(line.SystemId)
         setSalesLotLineId(line.SystemId)
         setSalesLotItemName(item.item_name)

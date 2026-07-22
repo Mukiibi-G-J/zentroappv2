@@ -650,6 +650,11 @@ class UserSetup(BaseModel):
         help_text="Allow user to see item cost in transactions",
     )
 
+    can_edit_sales_price = models.BooleanField(
+        default=False,
+        help_text="Allow user to edit unit prices on Sales/POS",
+    )
+
     # Posting Permissions
     can_post_previous_dates = models.BooleanField(
         default=True,
@@ -704,6 +709,7 @@ class UserSetup(BaseModel):
                 "can_see_buying_price": True,
                 "can_see_profit_margin": True,
                 "can_see_item_cost": True,
+                "can_edit_sales_price": False,
                 "can_post_previous_dates": True,
                 "can_reverse_purchase_invoice": True,
                 "can_view_only_their_sales": True,

@@ -110,7 +110,7 @@ class NegativeAdjustmentLotSafetyTests(SimpleTestCase):
 
         mock_ile_filter.side_effect = _filter_side_effect
 
-        specs = [SimpleNamespace(lot_no="LOT-A", quantity_base=2)]
+        specs = [SimpleNamespace(lot_no="LOT-A", serial_no=None, quantity_base=2)]
         poster._reduce_inventory_from_tracking_specs(specs)
 
         self.assertEqual(lot_a_entry.remaining_quantity, 3)

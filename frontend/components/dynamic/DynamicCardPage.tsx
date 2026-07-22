@@ -33,12 +33,17 @@ import {
 } from '@/lib/pageRoutes'
 import { useSession } from '@/context/SessionContext'
 import { pageDataService } from '@/services/pagedata.service'
+import { pageService } from '@/services/page.service'
 import { isFieldEditable } from '@/lib/fieldVisibility'
 import { missingPrimaryKeyForCreate } from '@/lib/cardPage'
 import type { Page, PageAction, PageControl, PageControlField } from '@/types/page'
 import { extractErrorMessage } from '@/services/pagedata.service'
 import { isSetupSingletonCardPage, SETUP_CARD_PAGE_NAMES } from '@/lib/setupPages'
 import type { DataRecord } from '@/types/pagedata'
+import { isItemTrackingLinesAction, ITEM_TRACKING_LINES_WORKSHEET_PAGE_NAME } from '@/lib/documentLineActions'
+import { getItemByNo, itemRequiresTracking } from '@/services/items.service'
+import type { PurchaseTrackingContext } from '@/types/tracking'
+import DynamicTrackingModal from './DynamicTrackingModal'
 
 function isCardFieldEditable(
   field: PageControlField,
@@ -184,6 +189,9 @@ export default function DynamicCardPage({ pageId, systemId }: Props) {
     field: PageControlField
     autoNew: boolean
   } | null>(null)
+  const [trackingOpen, setTrackingOpen] = useState(false)
+  const [trackingContext, setTrackingContext] = useState<PurchaseTrackingContext | null>(null)
+  const [trackingWorksheetPage, setTrackingWorksheetPage] = useState<Page | null>(null)
 
   useEffect(() => {
     if (record) setLocalRecord(record)
@@ -512,6 +520,57 @@ export default function DynamicCardPage({ pageId, systemId }: Props) {
   )
 
   const runCardAction = async (action: PageAction) => {
+    if (isItemTrackingLinesAction(action) && page?.SourceTable === 'ItemJournal') {
+      if (isNew) {
+        toast.error('Save the journal before entering tracking details')
+        return
+      }
+      const itemNo = String(currentData.item ?? '').trim()
+      if (!itemNo) {
+        toast.error('Select an item first')
+        return
+      }
+      const journalId = Number(currentData.id)
+      if (!journalId) {
+        toast.error('Save the journal before entering tracking details')
+        return
+      }
+      setActionLoading(true)
+      try {
+        const item = await getItemByNo(itemNo)
+        if (!item?.tracking_code || !itemRequiresTracking(item.tracking_code)) {
+          toast.error('This item does not use item tracking')
+          return
+        }
+        let worksheetPage = allPages.find((p) => p.Name === ITEM_TRACKING_LINES_WORKSHEET_PAGE_NAME) ?? null
+        if (!worksheetPage?.PageId) {
+          const fresh = await pageService.getPages()
+          worksheetPage = fresh.find((p) => p.Name === ITEM_TRACKING_LINES_WORKSHEET_PAGE_NAME) ?? null
+        }
+        if (!worksheetPage?.PageId) {
+          toast.error('Run seed_pages to configure Item Tracking Lines worksheet')
+          return
+        }
+        const expectedQuantity = (Number(currentData.quantity) || 0)
+          * (Number(currentData.item_unit_of_measure__quantity_per_unit ?? 1) || 1)
+        setTrackingWorksheetPage(worksheetPage)
+        setTrackingContext({
+          mode: 'open',
+          itemJournalId: journalId,
+          itemNo: item.no,
+          itemName: item.item_name,
+          trackingCode: item.tracking_code,
+          expectedQuantity: expectedQuantity || Number(currentData.quantity) || 1,
+        })
+        setTrackingOpen(true)
+      } catch (err) {
+        toast.error(extractErrorMessage(err))
+      } finally {
+        setActionLoading(false)
+      }
+      return
+    }
+
     const relativeUrl = (action.ActionRelativeUrl || '').trim()
     if (!relativeUrl) return
 
@@ -733,6 +792,17 @@ export default function DynamicCardPage({ pageId, systemId }: Props) {
           }}
         />
       ) : null}
+
+      <DynamicTrackingModal
+        open={trackingOpen}
+        context={trackingContext}
+        worksheetPage={trackingWorksheetPage}
+        onClose={() => {
+          setTrackingOpen(false)
+          setTrackingContext(null)
+          setTrackingWorksheetPage(null)
+        }}
+      />
 
       <JournalPreviewDialog
         open={postingPreview !== null}

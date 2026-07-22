@@ -8,6 +8,7 @@ export interface UserSetup {
   canSeeBuyingPrice: boolean
   canSeeProfitMargin: boolean
   canSeeItemCost: boolean
+  canEditSalesPrice?: boolean
   canPostPreviousDates: boolean
   canReversePurchaseInvoice: boolean
   canReverseSalesInvoice: boolean

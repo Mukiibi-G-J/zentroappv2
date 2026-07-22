@@ -16,23 +16,26 @@ DEFAULT_TRACKING_CODES = (
     },
     {
         "code": "LOTALL",
-        "description": "Lot No. required",
+        "description": "Lot specific tracking",
         "require_serial_no": False,
         "require_lot_no": True,
         "require_expiry_date": False,
     },
     {
-        "code": "SERIAL",
-        "description": "Serial No. required",
+        "code": "SERIAL ALL",
+        "description": "SN specific tracking",
         "require_serial_no": True,
         "require_lot_no": False,
         "require_expiry_date": False,
     },
 )
 
+# Duplicates of SERIAL ALL — remapped / removed when unused.
+DEPRECATED_TRACKING_CODES = ("SERIAL", "SNALL")
+
 
 class Command(BaseCommand):
-    help = "Seed default Item Tracking Codes (ALL LOT, LOTALL, SERIAL)"
+    help = "Seed default Item Tracking Codes (ALL LOT, LOTALL, SERIAL ALL)"
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -72,11 +75,28 @@ class Command(BaseCommand):
                 else:
                     updated += 1
 
-            self.stdout.write(
-                self.style.SUCCESS(
-                    f"  {schema_name}: tracking codes created={created} updated={updated}"
-                )
-            )
+            canonical = ItemTrackingCodes.objects.filter(code="SERIAL ALL").first()
+            removed = 0
+            remapped = 0
+            for code in DEPRECATED_TRACKING_CODES:
+                qs = ItemTrackingCodes.objects.filter(code=code)
+                for row in qs:
+                    if canonical and row.items_tracking_code.exists():
+                        count = row.items_tracking_code.update(tracking_code=canonical)
+                        remapped += count
+                        self.stdout.write(
+                            f"  {schema_name}: remapped {count} item(s) "
+                            f"from '{code}' → 'SERIAL ALL'"
+                        )
+                    row.delete()
+                    removed += 1
+
+            msg = f"  {schema_name}: tracking codes created={created} updated={updated}"
+            if remapped:
+                msg += f" remapped_items={remapped}"
+            if removed:
+                msg += f" removed_deprecated={removed}"
+            self.stdout.write(self.style.SUCCESS(msg))
 
     def handle(self, *args, **options):
         clear = options.get("clear", False)
@@ -86,6 +106,7 @@ class Command(BaseCommand):
 
         if tenant:
             self._seed_schema(tenant, clear=clear)
+            self.stdout.write(self.style.SUCCESS("Done seeding Item Tracking Codes."))
             return
 
         TenantModel = get_tenant_model()
