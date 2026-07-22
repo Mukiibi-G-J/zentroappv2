@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import {
+  formatAmountDisplay,
   formatAmountInput,
   formatDecimalDisplay,
   parseNumericInput,
@@ -85,14 +86,6 @@ function QuantityStepper({
   )
 }
 
-function formatPriceDraft(value: number): string {
-  if (!Number.isFinite(value)) return ''
-  return value.toLocaleString(undefined, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  })
-}
-
 function PriceField({
   unitPrice,
   editable,
@@ -102,15 +95,15 @@ function PriceField({
   editable: boolean
   onChange?: (price: number) => void
 }) {
-  const [draft, setDraft] = useState(formatPriceDraft(unitPrice))
+  const [draft, setDraft] = useState(formatAmountDisplay(unitPrice))
 
   useEffect(() => {
-    setDraft(formatPriceDraft(unitPrice))
+    setDraft(formatAmountDisplay(unitPrice))
   }, [unitPrice])
 
   if (!editable) {
     return (
-      <p className="text-xs text-bodyText">{formatPriceDraft(unitPrice)} each</p>
+      <p className="text-xs text-bodyText">{formatAmountDisplay(unitPrice)} each</p>
     )
   }
 
@@ -118,12 +111,12 @@ function PriceField({
     const cleaned = parseNumericInput(raw).replace(/[^\d.]/g, '')
     const parsed = Number.parseFloat(cleaned)
     if (!Number.isFinite(parsed) || parsed < 0) {
-      setDraft(formatPriceDraft(unitPrice))
+      setDraft(formatAmountDisplay(unitPrice))
       return
     }
     const rounded = Math.round(parsed * 100) / 100
     onChange?.(rounded)
-    setDraft(formatPriceDraft(rounded))
+    setDraft(formatAmountDisplay(rounded))
   }
 
   return (

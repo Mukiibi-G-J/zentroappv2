@@ -46,6 +46,17 @@ export function formatDecimalDisplay(value: unknown, fractionDigits = 2): string
   })
 }
 
+/** Comma-grouped amount without forcing trailing `.00` (keeps real decimals). */
+export function formatAmountDisplay(value: unknown, maxFractionDigits = 2): string {
+  if (value === null || value === undefined || value === '') return ''
+  const n = Number(parseNumericInput(String(value)))
+  if (Number.isNaN(n)) return String(value)
+  return n.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: maxFractionDigits,
+  })
+}
+
 export function formatIntegerDisplay(value: unknown): string {
   if (value === null || value === undefined || value === '') return ''
   const n = Number(parseNumericInput(String(value)))

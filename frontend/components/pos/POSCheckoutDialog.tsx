@@ -6,7 +6,7 @@ import SearchableRelationSelect from '@/components/dynamic/SearchableRelationSel
 import RelationLookupModal from '@/components/dynamic/RelationLookupModal'
 import DatePicker from '@/components/ui/DatePicker'
 import { usePages } from '@/hooks/usePage'
-import { formatAmountInput, formatDecimalDisplay, parseNumericInput } from '@/lib/formatNumber'
+import { formatAmountDisplay, formatAmountInput, parseNumericInput } from '@/lib/formatNumber'
 import { PAGE_IDS } from '@/lib/pageIds'
 import { salesService } from '@/services/sales.service'
 import type { RelationOption } from '@/hooks/useRelationOptions'
@@ -154,7 +154,7 @@ export function POSCheckoutDialog({
   useEffect(() => {
     if (!open) return
     // Prefill once when the dialog opens; keep a string draft while the user edits.
-    setAmountDraft(formatDecimalDisplay(subtotal))
+    setAmountDraft(formatAmountDisplay(subtotal))
     setLookupMode(null)
     // Intentionally omit `subtotal` so edits are not wiped if totals recompute while open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -259,7 +259,7 @@ export function POSCheckoutDialog({
           <div className="rounded-xl bg-softBg p-4">
             <div className="flex justify-between text-sm">
               <span className="text-bodyText">Total due</span>
-              <span className="font-semibold text-mainTextColor">{formatDecimalDisplay(subtotal)}</span>
+              <span className="font-semibold text-mainTextColor">{formatAmountDisplay(subtotal)}</span>
             </div>
             {requiresTender && (
               <>
@@ -285,7 +285,7 @@ export function POSCheckoutDialog({
                 </div>
                 <div className="mt-2 flex justify-between text-sm">
                   <span className="text-bodyText">Change</span>
-                  <span className="font-semibold text-green-700">{formatDecimalDisplay(change)}</span>
+                  <span className="font-semibold text-green-700">{formatAmountDisplay(change)}</span>
                 </div>
               </>
             )}

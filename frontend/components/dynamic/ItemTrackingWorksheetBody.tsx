@@ -62,7 +62,7 @@ export default function ItemTrackingWorksheetBody({
     [linesControl?.Fields, page.ContextFilterField],
   )
 
-  const lineFilters = useMemo(() => {
+  const lineFilters = useMemo((): Record<string, string> => {
     if (context.itemJournalId) {
       return { item_journal: String(context.itemJournalId) }
     }

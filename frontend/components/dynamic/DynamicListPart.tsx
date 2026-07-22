@@ -1121,6 +1121,7 @@ export function DynamicListPart({
         itemName={salesLotItemName}
         options={salesLotOptions}
         loading={salesLotLoading}
+        mode="lot"
         selectedLotNo={salesLotSelected}
         onClose={() => {
           setSalesLotOpen(false)
@@ -1128,7 +1129,8 @@ export function DynamicListPart({
           setSalesLotOptions([])
           setSalesLotSelected(undefined)
         }}
-        onSelect={selectSalesLot}
+        onSelectLot={selectSalesLot}
+        onConfirmSerials={() => {}}
       />
 
       {!recordReady ? (
