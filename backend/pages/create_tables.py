@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS page_engine_action (
     image_url VARCHAR(500),
     action_relative_url VARCHAR(500),
     ribbon_tab VARCHAR(100),
+    ribbon_group VARCHAR(100),
     visible_when_field VARCHAR(200),
     visible_when_values TEXT
 );

@@ -155,7 +155,7 @@ export const salesService = {
     }
   },
 
-  async listDrafts(limit = 3): Promise<POSDraftSale[]> {
+  async listDrafts(limit = 5): Promise<POSDraftSale[]> {
     const res = await api.get<{ results?: SalesInvoiceApiRow[] } | SalesInvoiceApiRow[]>('/api/sales/', {
       params: { status: 'Draft', limit },
     })
@@ -178,7 +178,14 @@ export const salesService = {
   },
 
   async deleteSale(id: number) {
-    await api.delete(`/api/sales/${id}/`)
+    try {
+      await api.delete(`/api/sales/${id}/`)
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      // Already gone (e.g. resumed draft) — treat as success
+      if (status === 404) return
+      throw new Error(extractError(err))
+    }
   },
 
   async getFavorites() {

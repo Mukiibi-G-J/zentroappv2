@@ -48,6 +48,8 @@ export interface PageAction {
   ImageUrl?: string | null
   ActionRelativeUrl?: string | null
   RibbonTab?: string
+  /** When set, actions with the same RibbonGroup on a tab render as one dropdown. */
+  RibbonGroup?: string | null
   VisibleWhenField?: string | null
   VisibleWhenValues?: string | null
 }
@@ -62,7 +64,7 @@ export interface TableRelationValue {
 
 export interface PageActionResponse {
   Successful: boolean
-  Command: 'MESSAGE' | 'REFRESH' | 'NONE' | 'PREVIEW' | 'DOWNLOAD' | 'NAVIGATE'
+  Command: 'MESSAGE' | 'REFRESH' | 'NONE' | 'PREVIEW' | 'DOWNLOAD' | 'NAVIGATE' | 'OPEN_UNAPPLY'
   Content?: unknown
   Message?: string
 }

@@ -312,6 +312,15 @@ class PageAction(models.Model):
     image_url = models.CharField(max_length=500, blank=True, null=True)
     action_relative_url = models.CharField(max_length=500, blank=True, null=True)
     ribbon_tab = models.CharField(max_length=100, blank=True, null=True)
+    ribbon_group = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text=(
+            'When set, actions sharing the same ribbon_group on a tab render as one '
+            'dropdown menu. The group value is the menu caption (e.g. "Apply Entries").'
+        ),
+    )
     visible_when_field = models.CharField(max_length=200, blank=True, null=True)
     visible_when_values = models.TextField(blank=True, null=True)
 

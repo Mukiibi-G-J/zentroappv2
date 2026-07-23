@@ -193,7 +193,8 @@ def _build_menu_display_group_branch(
         return base
     items = (
         models.MenuItem.objects.filter(
-            menu_id=menu_pk, display_group=group, is_available=True
+            menu_id=menu_pk, display_group=group, is_available=True,
+            item__blocked=False,
         )
         .select_related("item")
         .order_by("display_order", "item__item_name")
@@ -776,7 +777,7 @@ class MenuItemViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"])
     def by_category(self, request):
         """Get menu items grouped by category"""
-        items = self.get_queryset().filter(is_available=True)
+        items = self.get_queryset().filter(is_available=True, item__blocked=False)
         categories = {}
         for item in items:
             category_name = item.category.name if item.category else "Uncategorized"
@@ -2442,14 +2443,16 @@ class MenuViewSet(viewsets.ModelViewSet):
             menu=menu, is_active=True
         ).exists()
         ungrouped_qs = models.MenuItem.objects.filter(
-            menu=menu, is_available=True
+            menu=menu, is_available=True, item__blocked=False
         ).select_related("item")
         if has_active_display_groups:
             ungrouped_qs = ungrouped_qs.filter(display_group__isnull=True)
         ungrouped = list(ungrouped_qs.order_by("display_order", "item__item_name"))
         if not root_groups and not ungrouped:
             ungrouped = list(
-                models.MenuItem.objects.filter(menu=menu, is_available=True)
+                models.MenuItem.objects.filter(
+                    menu=menu, is_available=True, item__blocked=False
+                )
                 .select_related("item")
                 .order_by("display_order", "item__item_name")
             )

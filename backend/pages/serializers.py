@@ -71,6 +71,7 @@ class PageActionSerializer(serializers.ModelSerializer):
     ImageUrl = serializers.CharField(source='image_url', allow_null=True)
     ActionRelativeUrl = serializers.CharField(source='action_relative_url', allow_null=True)
     RibbonTab = serializers.CharField(source='ribbon_tab', allow_null=True)
+    RibbonGroup = serializers.CharField(source='ribbon_group', allow_null=True)
     VisibleWhenField = serializers.CharField(source='visible_when_field', allow_null=True)
     VisibleWhenValues = serializers.CharField(source='visible_when_values', allow_null=True)
     ActionType = serializers.CharField(source='action_type')
@@ -80,7 +81,8 @@ class PageActionSerializer(serializers.ModelSerializer):
         fields = [
             'ActionId', 'PageId', 'Name', 'Caption', 'RequiresConfirmation',
             'ConfirmationMessage', 'Tooltip', 'Visible', 'ImageUrl',
-            'ActionRelativeUrl', 'RibbonTab', 'VisibleWhenField', 'VisibleWhenValues',
+            'ActionRelativeUrl', 'RibbonTab', 'RibbonGroup',
+            'VisibleWhenField', 'VisibleWhenValues',
             'ActionType',
         ]
 

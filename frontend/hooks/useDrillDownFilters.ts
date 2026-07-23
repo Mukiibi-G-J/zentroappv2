@@ -23,6 +23,8 @@ export function useDrillDownFilters(page: Page | undefined) {
   const appliedToEntryId = searchParams.get('applied_to_entry_id')
   const vendorLedgerEntryId = searchParams.get('vendor_ledger_entry_id')
   const customerLedgerEntryId = searchParams.get('customer_ledger_entry_id')
+  const documentNo = searchParams.get('document_no')
+  const documentNoKey = searchParams.get('no')
 
   const filters: Record<string, string> = useMemo(() => {
     const result: Record<string, string> = {}
@@ -56,6 +58,12 @@ export function useDrillDownFilters(page: Page | undefined) {
     if (customerLedgerEntryId) {
       result.customer_ledger_entry_id = customerLedgerEntryId
     }
+    if (documentNo) {
+      result.document_no = documentNo
+    }
+    if (documentNoKey) {
+      result.no = documentNoKey
+    }
     return result
   }, [
     page?.ContextFilterField,
@@ -70,6 +78,8 @@ export function useDrillDownFilters(page: Page | undefined) {
     appliedToEntryId,
     vendorLedgerEntryId,
     customerLedgerEntryId,
+    documentNo,
+    documentNoKey,
   ])
 
   const isDrillDown = Object.keys(filters).length > 0

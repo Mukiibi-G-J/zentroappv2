@@ -12,7 +12,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.authentication import SessionAuthentication
 from authentication.authentication import JWTAuthenticationWithRevocationChecks as JWTAuthentication
 from rest_framework.permissions import IsAuthenticated
-from django.http import HttpRequest
+from django.http import Http404, HttpRequest
 from django.db.models import (
     Sum,
     Count,
@@ -636,6 +636,11 @@ def create_corrective_sales_credit_memo(sales_invoice_or_posted, request):
             f"Invoice {posted.no} has already been reversed"
             + (f" on {posted.reversed_date}." if posted.reversed_date else ".")
         )
+
+    from sales.unapply_customer_entries import assert_posted_sales_invoice_not_applied
+
+    assert_posted_sales_invoice_not_applied(posted)
+
     if posted.credit_memos.filter(status="Posted").exists():
         raise ValueError(
             f"Invoice {posted.no} already has credit memos posted against it."
@@ -746,6 +751,11 @@ def execute_sales_invoice_reversal(sales_invoice, request, reason=None):
                     else "."
                 )
             )
+
+        from sales.unapply_customer_entries import assert_posted_sales_invoice_not_applied
+
+        assert_posted_sales_invoice_not_applied(posted_sales_invoice)
+
         if posted_sales_invoice.credit_memos.filter(status="Posted").exists():
             raise ValueError(
                 f"Sales invoice {sales_invoice.invoice_no} already has credit memos "
@@ -1112,8 +1122,11 @@ class SalesViewSet(viewsets.ModelViewSet):
             return queryset.get(id=pk)
         except (SalesInvoice.DoesNotExist, ValueError):
             if "-" in str(pk):
-                return queryset.get(system_id=pk)
-            raise
+                try:
+                    return queryset.get(system_id=pk)
+                except SalesInvoice.DoesNotExist:
+                    raise Http404
+            raise Http404
 
     def list(self, request, *args, **kwargs):
         """List invoices - requires READ permission"""
@@ -2113,8 +2126,11 @@ class SalesOrderViewSet(viewsets.ModelViewSet):
             return queryset.get(id=pk)
         except (SalesOrder.DoesNotExist, ValueError):
             if "-" in str(pk):
-                return queryset.get(system_id=pk)
-            raise
+                try:
+                    return queryset.get(system_id=pk)
+                except SalesOrder.DoesNotExist:
+                    raise Http404
+            raise Http404
 
     def list(self, request, *args, **kwargs):
         """List orders - requires READ permission"""

@@ -84,7 +84,31 @@ export function resolveListPageForDocument(
   return pages.find((p) => p.PageType === 'List' && p.CardPageId === documentPage.PageId)
 }
 
-/** Preserve list sort / column filters when drilling down and returning. */
+/**
+ * Query keys that identify how the current list was opened (BC drill-down /
+ * Find Entries). Preserving them on `return` lets Back restore the prior view.
+ */
+const LIST_DRILL_DOWN_RETURN_KEYS = [
+  'return',
+  'ctx',
+  'ctxLabel',
+  'filterLabel',
+  'ctx2',
+  'ctx2Field',
+  'document_no',
+  'no',
+  'customer_ledger_entry_id',
+  'vendor_ledger_entry_id',
+  'applied_to_entry_id',
+  'posting_date',
+  'posting_date_from',
+  'posting_date_to',
+  'ledger_user_id',
+  'payment_method',
+  'picker',
+] as const
+
+/** Preserve list sort / column filters / drill-down context when returning. */
 export function buildListReturnPath(
   page: PageRouteTarget,
   searchParams: URLSearchParams,
@@ -98,6 +122,11 @@ export function buildListReturnPath(
 
   const order = searchParams.get(LIST_ORDER_PARAM)
   if (order) params.set(LIST_ORDER_PARAM, order)
+
+  for (const key of LIST_DRILL_DOWN_RETURN_KEYS) {
+    const value = searchParams.get(key)
+    if (value) params.set(key, value)
+  }
 
   searchParams.forEach((value, key) => {
     if (key.startsWith(COLUMN_FILTER_PREFIX) && value) {

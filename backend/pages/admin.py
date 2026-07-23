@@ -30,6 +30,7 @@ class PageActionInline(admin.TabularInline):
         "requires_confirmation",
         "action_relative_url",
         "ribbon_tab",
+        "ribbon_group",
     )
     show_change_link = True
 
@@ -350,9 +351,10 @@ class PageActionAdmin(admin.ModelAdmin):
         "requires_confirmation",
         "action_relative_url",
         "ribbon_tab",
+        "ribbon_group",
     )
     list_filter = ("visible", "requires_confirmation", "ribbon_tab")
-    search_fields = ("name", "caption", "page__name", "action_relative_url")
+    search_fields = ("name", "caption", "page__name", "action_relative_url", "ribbon_group")
     autocomplete_fields = ("page",)
 
     fieldsets = (
@@ -375,6 +377,7 @@ class PageActionAdmin(admin.ModelAdmin):
                 "fields": (
                     "action_relative_url",
                     "ribbon_tab",
+                    "ribbon_group",
                     "requires_confirmation",
                     "confirmation_message",
                 )

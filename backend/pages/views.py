@@ -415,6 +415,7 @@ class TableRelationsView(APIView):
                 field_name=field.name,
                 record_values=record_values,
             )
+            qs = _filter_blocked_item_relation_qs(qs, model)
             qs = _filter_sales_item_relation_qs(
                 qs,
                 source_table=source_table,
@@ -499,6 +500,7 @@ MODEL_REGISTRY: dict[str, tuple[str, str]] = {
     'CompanyBillingHistory': ('setup', 'CompanyBillingHistory'),
     'CompanyPaymentMethod': ('setup', 'CompanyPaymentMethod'),
     'GeneralLedgerSetup': ('financials', 'GeneralLedgerSetup'),
+    'SalesReceivable': ('sales', 'SalesReceivable'),
     'FinancialReport': ('financials', 'FinancialReport'),
     'FinancialReportRowGroup': ('financials', 'FinancialReportRowGroup'),
     'FinancialReportColumnGroup': ('financials', 'FinancialReportColumnGroup'),
@@ -540,6 +542,7 @@ SETUP_SOURCE_TABLES = frozenset({
     'ManufacturingSetup',
     'CompanyInformation',
     'CompanySubscription',
+    'SalesReceivable',
 })
 
 USER_PERSONALIZATION_SOURCE_TABLE = 'UserPersonalization'
@@ -1147,6 +1150,8 @@ def _assign_purchase_line_no(obj, value, record_values=None) -> list[str]:
         return list(dict.fromkeys(extra))
 
     fk_attr, related = _lookup_purchase_line_no_target(line_type, value)
+    if fk_attr == 'item':
+        _validate_item_not_blocked(related)
     for attr in ('item', 'resource', 'gl_account'):
         if attr == fk_attr:
             setattr(obj, attr, related)
@@ -1176,6 +1181,8 @@ def _purchase_line_no_create_defaults(value, record_values: dict) -> dict:
     fk_attr, related = _lookup_purchase_line_no_target(line_type, value)
     if not fk_attr:
         return defaults
+    if fk_attr == 'item':
+        _validate_item_not_blocked(related)
     defaults[fk_attr] = related
     for attr in ('item', 'resource', 'gl_account'):
         if attr != fk_attr:
@@ -1328,6 +1335,15 @@ def _resolve_field_value(obj, attr: str):
             value = getattr(obj, f'{attr}_id', None)
         elif hasattr(value, 'code') and not isinstance(value, (str, int, float, bool)):
             return value.code
+        elif (
+            hasattr(value, 'no_series')
+            and not isinstance(value, (str, int, float, bool))
+        ):
+            # SalesReceivable / PurchasePayable store NoSeriesLines; UI shows NoSeries.code
+            ns = getattr(value, 'no_series', None)
+            code = getattr(ns, 'code', None) if ns is not None else None
+            if code:
+                return code
         return value
 
     return getattr(obj, f'{attr}_id', None)
@@ -1582,6 +1598,28 @@ def _coerce_filter_value(model, lookup_key: str, value: str):
     if isinstance(field, django_models.BooleanField):
         return _parse_cue_filter_value(value.strip())
     return value
+
+
+def _expand_orm_list_filters(orm_filters: dict) -> dict:
+    """
+    Expand comma-separated Code filters (e.g. document_no=A,B) to __in lookups.
+
+    Used by Find Entries → list page navigation for multiple document numbers.
+    """
+    expanded: dict = {}
+    for key, value in orm_filters.items():
+        if (
+            isinstance(value, str)
+            and ',' in value
+            and '__' not in key
+            and key in ('document_no', 'no', 'external_document_no')
+        ):
+            parts = [p.strip() for p in value.split(',') if p.strip()]
+            if len(parts) > 1:
+                expanded[f'{key}__in'] = parts
+                continue
+        expanded[key] = value
+    return expanded
 
 
 # Computed list columns that sort via ORM annotation (not stored model fields).
@@ -2023,9 +2061,38 @@ def _resolve_fk_write(
     if related_obj is None:
         related_obj = qs.filter(**{related_field: value}).first()
     if related_obj is not None:
-        return field_name, _fk_write_target_value(
+        target = _fk_write_target_value(
             model, field_name, related_obj, related_field, value,
         )
+        # Setup cards pick NoSeries by code; SalesReceivable/PurchasePayable FKs are NoSeriesLines.
+        if (
+            model is not None
+            and related_model.__name__ == 'NoSeries'
+            and isinstance(target, related_model)
+        ):
+            try:
+                model_field = model._meta.get_field(field_name)
+            except FieldDoesNotExist:
+                model_field = None
+            if (
+                model_field is not None
+                and model_field.is_relation
+                and not model_field.many_to_many
+                and model_field.related_model is not None
+                and model_field.related_model.__name__ == 'NoSeriesLines'
+            ):
+                line = (
+                    model_field.related_model.objects.filter(no_series=target)
+                    .order_by('id')
+                    .first()
+                )
+                if line is None:
+                    raise ValueError(
+                        f'No number series line found for "{value}". '
+                        f'Configure a line on No. Series {getattr(target, "code", value)} first.',
+                    )
+                return field_name, line
+        return field_name, target
     raise ValueError(
         f'No matching {related_table} record found for "{value}".',
     )
@@ -2326,18 +2393,35 @@ def _item_on_hand_for_sales(item, request) -> Decimal | None:
     return ile.aggregate(total=Sum('remaining_quantity'))['total'] or 0
 
 
+def _validate_item_not_blocked(item) -> None:
+    """Reject selecting a blocked item on document / journal lines."""
+    if item is None:
+        return
+    if getattr(item, 'blocked', False):
+        name = getattr(item, 'item_name', None) or getattr(item, 'no', 'Item')
+        raise ValueError(f'{name} is blocked and cannot be selected.')
+
+
 def _validate_sales_line_item_in_stock(item, request, *, previous_item=None) -> None:
     """Block assigning blocked or out-of-stock inventory items on sales lines."""
     if item is None:
         return
     if previous_item is not None and getattr(previous_item, 'pk', None) == getattr(item, 'pk', None):
         return
+    _validate_item_not_blocked(item)
     name = getattr(item, 'item_name', None) or getattr(item, 'no', 'Item')
-    if getattr(item, 'blocked', False):
-        raise ValueError(f'{name} is blocked and cannot be sold.')
     on_hand = _item_on_hand_for_sales(item, request)
     if on_hand is not None and on_hand <= 0:
         raise ValueError(f'{name} is out of stock and cannot be selected.')
+
+
+def _filter_blocked_item_relation_qs(qs, model):
+    """Hide blocked items from every Item No. / item picker relation lookup."""
+    if model.__name__ != 'Item':
+        return qs
+    if not hasattr(model, 'blocked'):
+        return qs
+    return qs.filter(blocked=False)
 
 
 def _filter_sales_item_relation_qs(qs, *, source_table: str | None, model, request):
@@ -3232,6 +3316,79 @@ def create_corrective_sales_credit_memo_action(record, request):
     }
 
 
+def _unapply_request_params(request) -> tuple[str | None, object]:
+    data = getattr(request, 'data', {}) or {}
+    document_no = data.get('DocumentNo') or data.get('document_no')
+    posting_date = data.get('PostingDate') or data.get('posting_date')
+    return document_no, posting_date
+
+
+def load_unapply_customer_entries(record, request):
+    """Open BC Unapply Customer Entries dialog payload for a CLE."""
+    from sales.unapply_customer_entries import build_unapply_dialog_content
+
+    document_no, posting_date = _unapply_request_params(request)
+    content = build_unapply_dialog_content(
+        record,
+        document_no=document_no,
+        posting_date=posting_date,
+    )
+    return {'command': 'OPEN_UNAPPLY', 'content': content}
+
+
+def check_apply_customer_ledger_entries(record, request):
+    """
+    BC Apply Entries from Customer Ledger Entries.
+
+    Closed entries raise the standard BC message; open entries return OPEN_APPLY.
+    """
+    from sales.unapply_customer_entries import build_apply_customer_ledger_dialog_content
+
+    content = build_apply_customer_ledger_dialog_content(record)
+    return {'command': 'OPEN_APPLY', 'content': content}
+
+
+def preview_unapply_customer_entries(record, request):
+    """BC Preview Unapply — Detailed Cust. Ledg. Entry reversing applications."""
+    from payments.posting_preview import build_posting_preview_content
+    from sales.unapply_customer_entries import build_unapply_preview_entries
+
+    document_no, posting_date = _unapply_request_params(request)
+    entries = build_unapply_preview_entries(
+        record,
+        document_no=document_no,
+        posting_date=posting_date,
+    )
+    content = build_posting_preview_content(
+        entries,
+        message='Preview of entries that will be created when you unapply.',
+    )
+    # BC: Step A is Posting Preview; drill-in uses Detailed Customer Ledger Entries Preview.
+    content['DialogTitle'] = 'Posting Preview'
+    content['DetailDialogTitle'] = 'Detailed Customer Ledger Entries Preview'
+    return {'command': 'PREVIEW', 'content': content}
+
+
+def unapply_customer_entries_action(record, request):
+    """BC Unapply — post reversing Application detailed entries."""
+    from sales.unapply_customer_entries import post_unapply_customer_entries
+
+    document_no, posting_date = _unapply_request_params(request)
+    result = post_unapply_customer_entries(
+        record,
+        document_no=document_no,
+        posting_date=posting_date,
+        user=getattr(request, 'user', None),
+    )
+    return {
+        'command': 'REFRESH',
+        'content': {
+            'Message': result['Message'],
+            **result,
+        },
+    }
+
+
 def create_corrective_purchase_credit_memo_action(record, request):
     """BC Create Corrective Credit Memo — opens Open CM for manual edit/post."""
     from purchases.views import create_corrective_purchase_credit_memo
@@ -3578,6 +3735,10 @@ ACTION_HANDLERS = {
     ('PostedSalesInvoice', 'create_corrective_credit_memo'): create_corrective_sales_credit_memo_action,
     ('PostedSalesInvoice', 'reverse_transactions'): create_corrective_sales_credit_memo_action,
     ('PostedSalesInvoice', 'find_entries'): find_entries_posted_sales_invoice,
+    ('CustomerLedgerEntry', 'load_unapply_customer_entries'): load_unapply_customer_entries,
+    ('CustomerLedgerEntry', 'preview_unapply_customer_entries'): preview_unapply_customer_entries,
+    ('CustomerLedgerEntry', 'unapply_customer_entries'): unapply_customer_entries_action,
+    ('CustomerLedgerEntry', 'check_apply_customer_ledger_entries'): check_apply_customer_ledger_entries,
     ('SalesCreditMemo', 'preview_credit_memo'): preview_sales_credit_memo,
     ('SalesCreditMemo', 'post_credit_memo'): post_sales_credit_memo,
     ('PurchaseCreditMemo', 'post_credit_memo'): post_purchase_credit_memo,
@@ -3964,7 +4125,7 @@ class PageDataView(APIView):
                             qs, dict(orm_filters),
                         )
                     else:
-                        qs = qs.filter(**orm_filters)
+                        qs = qs.filter(**_expand_orm_list_filters(orm_filters))
                 if virtual_filters:
                     if source_table == 'SalesInvoice':
                         qs = _apply_sales_invoice_virtual_filters(qs, virtual_filters)
@@ -3990,6 +4151,17 @@ class PageDataView(APIView):
                         )
 
             qs = _apply_page_list_scope(page, qs)
+
+            # Blocked items must not appear in item pickers / search contexts.
+            # ItemList / ItemCard keep them for master-data management unless
+            # the client passes blocked=false (e.g. Sales POS product search).
+            if (
+                source_table == 'Item'
+                and hasattr(model, 'blocked')
+                and 'blocked' not in list_filters
+                and page.name not in ('ItemList', 'ItemCard')
+            ):
+                qs = qs.filter(blocked=False)
 
             if parent_system_id:
                 link_field = ''
@@ -4381,6 +4553,7 @@ class PageDataRecordView(APIView):
                         defaults = _apply_item_line_defaults_to_payload(defaults, model=model)
                         if model.__name__ in ('SalesInvoiceLine', 'SalesOrderLine'):
                             defaults = _apply_sales_line_item_price_defaults(defaults)
+                        _validate_item_not_blocked(defaults.get('item', value))
                         if model.__name__ in _SALES_LINE_ITEM_SOURCE_TABLES:
                             _validate_sales_line_item_in_stock(
                                 defaults.get('item', value), request,
@@ -4515,6 +4688,8 @@ class PageDataRecordView(APIView):
                                 _validate_purchase_invoice_payment_method(
                                     getattr(obj, 'vendor', None), value,
                                 )
+                            if field_name == 'item':
+                                _validate_item_not_blocked(value)
                             if (
                                 field_name == 'item'
                                 and model.__name__ in _SALES_LINE_ITEM_SOURCE_TABLES
@@ -4672,23 +4847,25 @@ class PageActionView(APIView):
                 try:
                     action = PageAction.objects.get(page=page, action_id=int(action_id))
                 except (PageAction.DoesNotExist, ValueError, TypeError):
-                    return Response({'error': 'Action not found'}, status=status.HTTP_404_NOT_FOUND)
+                    action = None
 
+            # Allow internal handler names (e.g. load_unapply_*) without a ribbon PageAction.
             handler_key = (page.source_table, str(action_id).lower())
             handler = ACTION_HANDLERS.get(handler_key)
-            if handler is None:
-                handler_key = (page.source_table, action.name.lower())
-                handler = ACTION_HANDLERS.get(handler_key)
+            if handler is None and action is not None:
+                handler = ACTION_HANDLERS.get((page.source_table, action.name.lower()))
             if handler is None:
                 return Response(
                     {'error': f'No handler for action {action_id} on {page.source_table}'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+            action_name = action.name if action is not None else str(action_id)
+
             is_worksheet_batch = (
                 page.page_type == 'Worksheet'
                 and batch_name
-                and action.name in WORKSHEET_BATCH_ACTIONS
+                and action_name in WORKSHEET_BATCH_ACTIONS
             )
 
             if is_worksheet_batch:
@@ -4738,6 +4915,20 @@ class PageActionView(APIView):
                 return Response({
                     'Successful': True,
                     'Command': 'PREVIEW',
+                    'Content': result.get('content'),
+                })
+
+            if isinstance(result, dict) and result.get('command') == 'OPEN_UNAPPLY':
+                return Response({
+                    'Successful': True,
+                    'Command': 'OPEN_UNAPPLY',
+                    'Content': result.get('content'),
+                })
+
+            if isinstance(result, dict) and result.get('command') == 'OPEN_APPLY':
+                return Response({
+                    'Successful': True,
+                    'Command': 'OPEN_APPLY',
                     'Content': result.get('content'),
                 })
 

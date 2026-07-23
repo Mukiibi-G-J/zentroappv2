@@ -51,7 +51,17 @@ export function useDocumentLines(options: UseDocumentLinesOptions): UseDocumentL
     isError,
     error,
     refetch,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
   } = usePageDataInfinite(partPageId, repeaterControlId, undefined, filters, { enabled })
+
+  // Document subforms must load every line — not just the first PAGE_SIZE (50).
+  // Otherwise leave/reopen drops lines after 50 and line totals look wrong.
+  useEffect(() => {
+    if (!enabled || !hasNextPage || isFetchingNextPage) return
+    void fetchNextPage()
+  }, [enabled, hasNextPage, isFetchingNextPage, fetchNextPage])
 
   const [lines, setLines] = useState<DataRecord[]>([])
   const [pendingLineIds, setPendingLineIds] = useState<Set<string>>(() => new Set())
@@ -281,7 +291,7 @@ export function useDocumentLines(options: UseDocumentLinesOptions): UseDocumentL
 
   return {
     lines,
-    isLoading: enabled && isLoading,
+    isLoading: enabled && (isLoading || Boolean(hasNextPage) || isFetchingNextPage),
     isError: enabled && isError,
     errorMessage,
     total,

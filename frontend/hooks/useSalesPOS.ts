@@ -5,6 +5,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { formatDecimalDisplay } from '@/lib/formatNumber'
+import {
+  computeInvoiceDiscountValue,
+  invoiceDiscountsEnabled,
+  lineDiscountsEnabled,
+} from '@/lib/salesDiscountFields'
 
 import { usePageDataInfinite } from '@/hooks/usePageData'
 
@@ -58,7 +63,7 @@ import type { DataRecord } from '@/types/pagedata'
 
 
 
-const MAX_DRAFTS = 3
+const MAX_DRAFTS = 5
 
 
 
@@ -177,11 +182,17 @@ function recordToProduct(row: DataRecord): POSProduct | null {
 
 function normalizeSetup(raw: POSSalesSetup): POSSalesSetup {
 
+  const enableLine = raw.enable_line_discounts ?? raw.line_discounts_enabled ?? false
+
   return {
 
     ...raw,
 
-    enable_line_discounts: raw.enable_line_discounts ?? raw.line_discounts_enabled ?? false,
+    enable_line_discounts: enableLine,
+
+    line_discounts_enabled: enableLine,
+
+    enable_invoice_discounts: raw.enable_invoice_discounts ?? false,
 
     allow_price_editing:
 
@@ -209,13 +220,31 @@ function buildSalePayload(
 
   amountReceived: number,
 
-  subtotal: number,
+  total: number,
 
   saleDate: string,
+
+  invoiceDiscountType: 'amount' | 'percentage',
+
+  invoiceDiscountAmount: number,
+
+  invoiceDiscountPercentage: number,
 
 ) {
 
   const requiresTender = paymentMethod?.requires_amount_received !== false
+
+  const invoiceOk = invoiceDiscountsEnabled(salesSetup)
+
+  const lineOk = lineDiscountsEnabled(salesSetup)
+
+  const hasInvoiceDiscount =
+
+    invoiceOk &&
+
+    ((invoiceDiscountType === 'amount' && invoiceDiscountAmount > 0) ||
+
+      (invoiceDiscountType === 'percentage' && invoiceDiscountPercentage > 0))
 
   return {
 
@@ -233,15 +262,23 @@ function buildSalePayload(
 
     change_amount:
 
-      status === 'Open' && requiresTender ? Math.max(0, amountReceived - subtotal) : 0,
+      status === 'Open' && requiresTender ? Math.max(0, amountReceived - total) : 0,
 
     payment_method: paymentMethod?.id,
 
-    invoice_discount_type: null,
+    invoice_discount_type: hasInvoiceDiscount ? invoiceDiscountType : null,
 
-    invoice_discount_amount: '0',
+    invoice_discount_amount: String(
 
-    invoice_discount_percentage: '0',
+      hasInvoiceDiscount && invoiceDiscountType === 'amount' ? invoiceDiscountAmount : 0,
+
+    ),
+
+    invoice_discount_percentage: String(
+
+      hasInvoiceDiscount && invoiceDiscountType === 'percentage' ? invoiceDiscountPercentage : 0,
+
+    ),
 
     lines: cart.map((line, index) => ({
 
@@ -257,13 +294,9 @@ function buildSalePayload(
 
       unit_price: String(line.unitPrice),
 
-      total_amount: String(line.quantity * line.unitPrice - line.lineDiscountAmount),
+      total_amount: String(line.quantity * line.unitPrice - (lineOk ? line.lineDiscountAmount : 0)),
 
-      line_discount_amount: String(
-
-        salesSetup.enable_line_discounts ? line.lineDiscountAmount : 0,
-
-      ),
+      line_discount_amount: String(lineOk ? line.lineDiscountAmount : 0),
 
       unit_of_measure: line.unitOfMeasure,
 
@@ -314,6 +347,12 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<POSPaymentMethod | null>(null)
 
   const [salesSetup, setSalesSetup] = useState<POSSalesSetup>({})
+
+  const [invoiceDiscountType, setInvoiceDiscountType] = useState<'amount' | 'percentage'>('amount')
+
+  const [invoiceDiscountAmount, setInvoiceDiscountAmount] = useState(0)
+
+  const [invoiceDiscountPercentage, setInvoiceDiscountPercentage] = useState(0)
 
   const [companyInfo, setCompanyInfo] = useState<POSCompanyInfo | null>(null)
 
@@ -373,7 +412,7 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
     search || undefined,
 
-    undefined,
+    { blocked: 'false' },
 
     { enabled: !!resolvedItemPage && !!resolvedControlId },
 
@@ -409,11 +448,55 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
         const gross = line.quantity * line.unitPrice
 
-        return sum + gross - (line.lineDiscountAmount || 0)
+        const disc = lineDiscountsEnabled(salesSetup) ? line.lineDiscountAmount || 0 : 0
+
+        return sum + gross - disc
 
       }, 0),
 
-    [cart],
+    [cart, salesSetup],
+
+  )
+
+
+
+  const invoiceDiscountValue = useMemo(() => {
+
+    if (!invoiceDiscountsEnabled(salesSetup)) return 0
+
+    return computeInvoiceDiscountValue(
+
+      subtotal,
+
+      invoiceDiscountType,
+
+      invoiceDiscountAmount,
+
+      invoiceDiscountPercentage,
+
+    )
+
+  }, [
+
+    salesSetup,
+
+    subtotal,
+
+    invoiceDiscountType,
+
+    invoiceDiscountAmount,
+
+    invoiceDiscountPercentage,
+
+  ])
+
+
+
+  const total = useMemo(
+
+    () => Math.max(0, subtotal - invoiceDiscountValue),
+
+    [subtotal, invoiceDiscountValue],
 
   )
 
@@ -482,6 +565,17 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
       setPaymentMethods(methods)
 
       setSalesSetup(normalizeSetup(setup))
+      if (!lineDiscountsEnabled(normalizeSetup(setup))) {
+        setCart((prev) =>
+          prev.map((l) =>
+            l.lineDiscountAmount ? { ...l, lineDiscountAmount: 0 } : l,
+          ),
+        )
+      }
+      if (!invoiceDiscountsEnabled(normalizeSetup(setup))) {
+        setInvoiceDiscountAmount(0)
+        setInvoiceDiscountPercentage(0)
+      }
 
       setCompanyInfo(company)
 
@@ -770,6 +864,30 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
 
 
+  const updateLineDiscount = useCallback((clientId: string, discount: number) => {
+
+    if (!lineDiscountsEnabled(salesSetup)) return
+
+    setCart((prev) =>
+
+      prev.map((l) => {
+
+        if (l.clientId !== clientId) return l
+
+        const gross = l.quantity * l.unitPrice
+
+        const clamped = Math.min(Math.max(0, discount), Math.max(0, gross))
+
+        return { ...l, lineDiscountAmount: clamped }
+
+      }),
+
+    )
+
+  }, [salesSetup])
+
+
+
   const removeLine = useCallback((clientId: string) => {
 
     setCart((prev) => prev.filter((l) => l.clientId !== clientId))
@@ -783,6 +901,12 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
     setCart([])
 
     setAmountReceived(0)
+
+    setInvoiceDiscountAmount(0)
+
+    setInvoiceDiscountPercentage(0)
+
+    setInvoiceDiscountType('amount')
 
     setError(null)
 
@@ -929,11 +1053,11 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
     setSaleDate(todayIsoDate())
 
-    setAmountReceived(subtotal)
+    setAmountReceived(total)
 
     setCheckoutOpen(true)
 
-  }, [cart, subtotal])
+  }, [cart, total])
 
 
 
@@ -1130,9 +1254,15 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
           amountReceived,
 
-          subtotal,
+          total,
 
           saleDate,
+
+          invoiceDiscountType,
+
+          invoiceDiscountAmount,
+
+          invoiceDiscountPercentage,
 
         ),
 
@@ -1166,7 +1296,13 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
     selectedPaymentMethod,
 
-    subtotal,
+    total,
+
+    invoiceDiscountType,
+
+    invoiceDiscountAmount,
+
+    invoiceDiscountPercentage,
 
   ])
 
@@ -1194,7 +1330,7 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
     const requiresTender = selectedPaymentMethod.requires_amount_received !== false
 
-    if (requiresTender && amountReceived < subtotal) {
+    if (requiresTender && amountReceived < total) {
 
       setError('Amount received must cover the total')
 
@@ -1224,9 +1360,15 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
         amountReceived,
 
-        subtotal,
+        total,
 
         saleDate,
+
+        invoiceDiscountType,
+
+        invoiceDiscountAmount,
+
+        invoiceDiscountPercentage,
 
       )
 
@@ -1242,11 +1384,11 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
         invoice_no: postResult.invoice_no ?? created.invoice_no,
 
-        total_amount: subtotal,
+        total_amount: total,
 
         amount_received: requiresTender ? amountReceived : 0,
 
-        change_amount: requiresTender ? Math.max(0, amountReceived - subtotal) : 0,
+        change_amount: requiresTender ? Math.max(0, amountReceived - total) : 0,
 
         customer_name: selectedCustomer.name,
 
@@ -1278,7 +1420,7 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
           salesSetup.vat_enabled && Number(postResult.invoice?.total_vat_amount ?? 0) > 0
 
-            ? subtotal - Number(postResult.invoice?.total_vat_amount ?? 0)
+            ? total - Number(postResult.invoice?.total_vat_amount ?? 0)
 
             : undefined,
 
@@ -1338,7 +1480,13 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
     selectedPaymentMethod,
 
-    subtotal,
+    total,
+
+    invoiceDiscountType,
+
+    invoiceDiscountAmount,
+
+    invoiceDiscountPercentage,
 
     refreshTodayMySales,
 
@@ -1367,6 +1515,26 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
     cart,
 
     subtotal,
+
+    total,
+
+    enableLineDiscounts: lineDiscountsEnabled(salesSetup),
+
+    enableInvoiceDiscounts: invoiceDiscountsEnabled(salesSetup),
+
+    invoiceDiscountType,
+
+    setInvoiceDiscountType,
+
+    invoiceDiscountAmount,
+
+    setInvoiceDiscountAmount,
+
+    invoiceDiscountPercentage,
+
+    setInvoiceDiscountPercentage,
+
+    invoiceDiscountValue,
 
     customers,
 
@@ -1435,6 +1603,8 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
     updateLineQuantity,
 
     updateLinePrice,
+
+    updateLineDiscount,
 
     removeLine,
 

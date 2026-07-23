@@ -45,8 +45,45 @@ def _dimension_code(value) -> str | None:
     return str(value)
 
 
-def _nonzero_entries(entries) -> list:
-    return [e for e in (entries or []) if float(e.get('amount') or 0) != 0]
+def _nonzero_entries(entries, *, source_key: str | None = None) -> list:
+    """Keep rows that affect posting; item/value ledgers use quantity/cost, not amount."""
+    result = []
+    for entry in entries or []:
+        if source_key in ('item_ledger_entries', 'item_entries'):
+            qty = float(entry.get('quantity') or 0)
+            total = float(entry.get('total') or entry.get('amount') or 0)
+            if qty != 0 or total != 0:
+                result.append(entry)
+        elif source_key == 'value_entries':
+            if any(
+                float(entry.get(key) or 0) != 0
+                for key in (
+                    'cost_amount',
+                    'sales_amount',
+                    'valued_quantity',
+                    'item_ledger_entry_quantity',
+                    'amount',
+                )
+            ):
+                result.append(entry)
+        elif float(entry.get('amount') or 0) != 0:
+            result.append(entry)
+    return result
+
+
+def normalize_processor_entries(entries: dict | None) -> dict:
+    """Map processor keys (item_entries, bank_entries, …) to preview/find-entries keys."""
+    if not entries:
+        return {}
+    out = dict(entries)
+    for src, dest in (
+        ('item_entries', 'item_ledger_entries'),
+        ('bank_entries', 'bank_account_entries'),
+        ('reversal_vat_entries', 'vat_entries'),
+    ):
+        if out.get(src) and not out.get(dest):
+            out[dest] = out[src]
+    return out
 
 
 def _gl_balance_cache(account_nos: set[str]) -> dict[str, float]:
@@ -243,8 +280,12 @@ def _serialize_detailed_customer_entry(entry: dict, *, customer_balances: dict[s
             category='Customer',
         ),
         'Amount': float(entry.get('amount') or 0),
+        'AmountLCY': float(entry.get('amount') or 0),
         'DebitAmount': float(entry.get('debit_amount') or 0),
         'CreditAmount': float(entry.get('credit_amount') or 0),
+        'InitialDocumentType': entry.get('initial_document_type'),
+        'InitialEntryDueDate': _preview_date(entry.get('initial_entry_due_date')),
+        'CurrencyCode': entry.get('currency_code') or '',
         'GlobalDimension1': _dimension_code(entry.get('global_dimension_1')),
     }
 
@@ -288,6 +329,16 @@ def _serialize_vat_entry(entry: dict) -> dict:
     }
 
 
+def _item_display_name(item) -> str | None:
+    if item is None:
+        return None
+    return (
+        getattr(item, 'item_name', None)
+        or getattr(item, 'name', None)
+        or getattr(item, 'description', None)
+    )
+
+
 def _serialize_item_ledger_entry(entry: dict) -> dict:
     item = entry.get('item')
     location = entry.get('location')
@@ -297,32 +348,34 @@ def _serialize_item_ledger_entry(entry: dict) -> dict:
         'DocumentType': entry.get('document_type'),
         'DocumentNo': entry.get('document_no'),
         'ItemNo': _account_no(item),
-        'ItemName': getattr(item, 'name', None) if item else None,
+        'ItemName': _item_display_name(item),
         'Description': entry.get('description'),
         'Quantity': float(entry.get('quantity') or 0),
         'LocationCode': _account_no(location) if location else None,
         'LotNo': entry.get('lot_no'),
         'SerialNo': entry.get('serial_no'),
-        'Amount': float(entry.get('amount') or 0),
+        'Amount': float(entry.get('amount') or entry.get('total') or 0),
     }
 
 
 def _serialize_value_entry(entry: dict) -> dict:
     item = entry.get('item')
     location = entry.get('location')
+    cost_amount = float(entry.get('cost_amount') or 0)
+    sales_amount = float(entry.get('sales_amount') or 0)
     return {
         'PostingDate': _preview_date(entry.get('posting_date')),
         'EntryType': entry.get('entry_type'),
         'DocumentType': entry.get('document_type'),
         'DocumentNo': entry.get('document_no'),
         'ItemNo': _account_no(item),
-        'ItemName': getattr(item, 'name', None) if item else None,
+        'ItemName': _item_display_name(item),
         'Description': entry.get('description'),
         'ValuedQuantity': float(entry.get('valued_quantity') or 0),
-        'CostAmount': float(entry.get('cost_amount') or 0),
-        'SalesAmount': float(entry.get('sales_amount') or 0),
+        'CostAmount': cost_amount,
+        'SalesAmount': sales_amount,
         'LocationCode': _account_no(location) if location else None,
-        'Amount': float(entry.get('amount') or 0),
+        'Amount': float(entry.get('amount') or cost_amount or sales_amount or 0),
     }
 
 
@@ -344,13 +397,20 @@ PREVIEW_TABLE_SPECS: tuple[tuple[str, str, str, callable], ...] = (
     ('customer_entries', 'Customer Ledger Entry', 'customer_ledger_entry', _serialize_customer_entry),
     (
         'detailed_customer_entries',
-        'Detailed Customer Ledg. Entry',
+        'Detailed Cust. Ledg. Entry',
         'detailed_customer_ledger_entry',
         _serialize_detailed_customer_entry,
     ),
+    (
+        'item_ledger_entries',
+        'Item Ledger Entry',
+        'item_ledger_entry',
+        _serialize_item_ledger_entry,
+    ),
+    ('value_entries', 'Value Entry', 'value_entry', _serialize_value_entry),
 )
 
-# Find Entries (BC Navigate) includes VAT / item / value ledgers; keep preview specs lean.
+# Find Entries (BC Navigate) — same ledgers plus VAT.
 FIND_ENTRIES_TABLE_SPECS: tuple[tuple[str, str, str, callable], ...] = (
     ('gl_entries', 'G/L Entry', 'gl_entry', _serialize_gl_entry),
     ('vat_entries', 'VAT Entry', 'vat_entry', _serialize_vat_entry),
@@ -364,7 +424,7 @@ FIND_ENTRIES_TABLE_SPECS: tuple[tuple[str, str, str, callable], ...] = (
     ('customer_entries', 'Customer Ledger Entry', 'customer_ledger_entry', _serialize_customer_entry),
     (
         'detailed_customer_entries',
-        'Detailed Customer Ledg. Entry',
+        'Detailed Cust. Ledg. Entry',
         'detailed_customer_ledger_entry',
         _serialize_detailed_customer_entry,
     ),
@@ -382,6 +442,19 @@ FIND_ENTRIES_TABLE_SPECS: tuple[tuple[str, str, str, callable], ...] = (
     ),
     ('value_entries', 'Value Entry', 'value_entry', _serialize_value_entry),
 )
+
+# BC Navigate Show — open the matching list page filtered by document no(s).
+FIND_ENTRIES_NAVIGATE_PAGES: dict[str, str] = {
+    'gl_entry': 'GeneralLedgerEntryList',
+    'vendor_ledger_entry': 'VendorLedgerEntryList',
+    'detailed_vendor_ledger_entry': 'DetailedVendorLedgerEntryList',
+    'customer_ledger_entry': 'CustomerLedgerEntryList',
+    'detailed_customer_ledger_entry': 'DetailedCustomerLedgerEntryList',
+    'bank_account_ledger_entry': 'BankAccountLedgerEntryList',
+    'item_ledger_entry': 'ItemLedgerEntryList',
+    'source_document_posted_sales_invoice': 'PostedSalesInvoiceList',
+    'source_document_posted_purchase_invoice': 'PostedPurchaseInvoiceList',
+}
 
 
 def append_preview_ledger_rows(rows, entries, ledger_type, account_key, line_no):
@@ -461,9 +534,10 @@ def build_bc_preview_sets(entries: dict) -> tuple[list[dict], dict[str, list[dic
     """BC-style related entry summary + per-table detail rows."""
     related: list[dict] = []
     entry_sets: dict[str, list[dict]] = {}
+    entries = normalize_processor_entries(entries)
 
     for source_key, table_name, table_key, serializer in PREVIEW_TABLE_SPECS:
-        raw = _nonzero_entries(entries.get(source_key))
+        raw = _nonzero_entries(entries.get(source_key), source_key=source_key)
         if not raw:
             continue
         rows = _serialize_preview_rows(source_key, raw, serializer)
@@ -481,16 +555,38 @@ def build_find_entries_sets(
     entries: dict,
     *,
     source_table_name: str | None = None,
+    document_nos: list[str] | None = None,
+    posting_date: str | None = None,  # noqa: ARG001 — kept for API / future date scope
 ) -> tuple[list[dict], dict[str, list[dict]]]:
     """BC Navigate / Find Entries summary — include zero-amount and item/VAT ledgers."""
     related: list[dict] = []
     entry_sets: dict[str, list[dict]] = {}
+    entries = normalize_processor_entries(entries)
+    _ = posting_date
+
+    def _nav_filters(page_name: str | None) -> dict | None:
+        if not page_name or not document_nos:
+            return None
+        if page_name in ('PostedSalesInvoiceList', 'PostedPurchaseInvoiceList'):
+            return {'no': ','.join(document_nos)}
+        # Document No. alone matches BC Navigate Show for ledger lists.
+        return {'document_no': ','.join(document_nos)}
 
     if source_table_name:
+        source_key = (
+            'source_document_posted_sales_invoice'
+            if 'Sales' in source_table_name
+            else 'source_document_posted_purchase_invoice'
+            if 'Purchase' in source_table_name
+            else 'source_document'
+        )
+        source_page = FIND_ENTRIES_NAVIGATE_PAGES.get(source_key)
         related.append({
             'TableKey': 'source_document',
             'TableName': source_table_name,
             'NoOfEntries': 1,
+            'NavigatePageName': source_page,
+            'NavigateFilters': _nav_filters(source_page),
         })
 
     for source_key, table_name, table_key, serializer in FIND_ENTRIES_TABLE_SPECS:
@@ -498,10 +594,13 @@ def build_find_entries_sets(
         if not raw:
             continue
         rows = _serialize_preview_rows(source_key, raw, serializer)
+        page_name = FIND_ENTRIES_NAVIGATE_PAGES.get(table_key)
         related.append({
             'TableKey': table_key,
             'TableName': table_name,
             'NoOfEntries': len(rows),
+            'NavigatePageName': page_name,
+            'NavigateFilters': _nav_filters(page_name),
         })
         entry_sets[table_key] = rows
 
@@ -514,11 +613,15 @@ def build_find_entries_preview_content(
     message: str = '',
     batch_name: str | None = None,
     source_table_name: str | None = None,
+    document_nos: list[str] | None = None,
+    posting_date: str | None = None,
 ) -> dict:
     """Map posted-document ledger lookup to BC Find Entries preview payload."""
     related, entry_sets = build_find_entries_sets(
         entries,
         source_table_name=source_table_name,
+        document_nos=document_nos,
+        posting_date=posting_date,
     )
     content: dict = {
         'Entries': [],
@@ -526,9 +629,12 @@ def build_find_entries_preview_content(
         'EntrySets': entry_sets,
         'Message': message or 'Find entries',
         'DialogTitle': 'Find Entries',
+        'DocumentNos': list(document_nos or []),
     }
     if batch_name:
         content['BatchName'] = batch_name
+    if posting_date:
+        content['PostingDate'] = posting_date
     return content
 
 
@@ -557,6 +663,7 @@ def build_posting_preview_content(
     batch_name: str | None = None,
 ) -> dict:
     """Map PaymentJournalProcessor output to BC-style preview payload."""
+    entries = normalize_processor_entries(entries)
     preview_rows: list[dict] = []
     merge_processor_preview_entries(preview_rows, entries)
     related, entry_sets = build_bc_preview_sets(entries)

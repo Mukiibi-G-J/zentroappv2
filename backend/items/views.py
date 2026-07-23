@@ -56,7 +56,11 @@ from rest_framework.pagination import PageNumberPagination
 
 from items.enums import EntryType, InventoryType
 from financials.enums import GeneralPostingType
-from dimension.branch_filter import filter_queryset_by_branch, get_branch_for_request
+from dimension.branch_filter import (
+    branch_scope_is_all,
+    filter_queryset_by_branch,
+    get_branch_for_request,
+)
 
 
 from items.models import (
@@ -636,6 +640,17 @@ class ItemsModalViewSet(viewsets.ModelViewSet):
         )
 
         if getattr(self, "action", None) == "list":
+            # Hide blocked items from search/list unless explicitly requested
+            # (blocked=true|false filter or include_blocked=1).
+            params = self.request.query_params
+            include_blocked = str(params.get("include_blocked", "")).lower() in (
+                "1",
+                "true",
+                "yes",
+            )
+            if params.get("blocked") is None and not include_blocked:
+                queryset = queryset.filter(blocked=False)
+
             queryset = queryset.select_related(
                 "item_category",
                 "unit_of_measure",
@@ -702,6 +717,15 @@ class ItemsModalViewSet(viewsets.ModelViewSet):
         # Get current schema name
         schema_name = connection.schema_name
 
+        # Capture current branch (X-Branch-Id / user.global_dimension_1) so export
+        # inventory/cost match the items list for that branch. When scope is all,
+        # export company-wide totals (same as combined list view).
+        branch = None
+        if not branch_scope_is_all(request):
+            branch = get_branch_for_request(request)
+            if not branch:
+                branch = getattr(request.user, "global_dimension_1", None)
+
         # Get user permissions for export
         from authentication.models import UserSetup
 
@@ -728,6 +752,7 @@ class ItemsModalViewSet(viewsets.ModelViewSet):
             filters_data=filters_data,
             schema_name=schema_name,
             user_permissions=user_permissions,
+            branch_id=getattr(branch, "id", None),
         )
 
         return Response(
@@ -1929,7 +1954,7 @@ class ItemListApiView(ListAPIView):
     page_size = 10  # You can adjust this number
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().filter(blocked=False)
         search_query = self.request.query_params.get("q", None)
 
         if search_query:
@@ -1958,7 +1983,7 @@ class ItemsFilter(ListAPIView):
     authentication_classes = [SessionAuthentication]
 
     def get_queryset(self):
-        queryset = Item.objects.all()
+        queryset = Item.objects.filter(blocked=False)
         search_query = self.request.query_params.get("q", None)
 
         if search_query:

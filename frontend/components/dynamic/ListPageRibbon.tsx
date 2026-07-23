@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Plus, Search, Trash2, PencilLine } from 'lucide-react'
+import { ChevronDown, Plus, Search, Trash2, PencilLine } from 'lucide-react'
 import { usePages } from '@/hooks/usePage'
 import { buildCardActionUrl } from '@/lib/cardAction'
 import { buildListReturnPath, getCardRecordPath, getPageRouteId, listDashboardPath } from '@/lib/pageRoutes'
@@ -11,10 +12,15 @@ import { isRibbonImageUrl, resolveRibbonIcon } from '@/lib/ribbonIcon'
 import {
   actionsForRibbonTab,
   defaultRibbonTab,
+  groupRibbonActions,
   ribbonTabsFromActions,
   shouldShowRibbonTabBar,
 } from '@/lib/ribbonTabs'
 import { cn } from '@/lib/utils'
+import {
+  APPLY_CUSTOMER_LEDGER_ENTRIES_ACTION,
+  UNAPPLY_CUSTOMER_ENTRIES_ACTION,
+} from '@/components/dynamic/UnapplyCustomerEntriesDialog'
 import type { Page, PageAction, PageControlField } from '@/types/page'
 import type { DataRecord } from '@/types/pagedata'
 
@@ -38,12 +44,119 @@ type Props = {
   onToggleEditList?: () => void
 }
 
+function RibbonActionMenu({
+  caption,
+  actions,
+  disabled,
+  actionDisabled,
+  onAction,
+}: {
+  caption: string
+  actions: PageAction[]
+  disabled: boolean
+  actionDisabled: (action: PageAction) => boolean
+  onAction: (action: PageAction) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
+  const lead = actions[0]
+  const LeadIcon = resolveRibbonIcon(lead?.ImageUrl)
+  const allDisabled = disabled || actions.every((a) => actionDisabled(a))
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (!open) {
+      setPos(null)
+      return
+    }
+    const button = buttonRef.current
+    if (!button) return
+    const rect = button.getBoundingClientRect()
+    setPos({ left: rect.left, top: rect.bottom + 4 })
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const close = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (buttonRef.current?.contains(target) || menuRef.current?.contains(target)) return
+      setOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [open])
+
+  const menu =
+    open && mounted && pos ? (
+      <div
+        ref={menuRef}
+        role="menu"
+        style={{ position: 'fixed', left: pos.left, top: pos.top, zIndex: 9999 }}
+        className="min-w-50 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+      >
+        {actions.map((action) => {
+          const ItemIcon = resolveRibbonIcon(action.ImageUrl)
+          const itemDisabled = allDisabled || actionDisabled(action)
+          return (
+            <button
+              key={action.ActionId}
+              type="button"
+              role="menuitem"
+              disabled={itemDisabled}
+              title={
+                itemDisabled
+                  ? 'Select a row first'
+                  : (action.Tooltip ?? action.Caption)
+              }
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-mainTextColor hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+              onClick={() => {
+                setOpen(false)
+                onAction(action)
+              }}
+            >
+              <ItemIcon size={16} className="text-s1 shrink-0" strokeWidth={1.75} />
+              {action.Caption}
+            </button>
+          )
+        })}
+      </div>
+    ) : null
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        disabled={allDisabled}
+        title={allDisabled ? 'Select a row first' : lead?.Tooltip ?? caption}
+        onClick={() => setOpen((value) => !value)}
+        className={cn(
+          'inline-flex items-center gap-1.5 rounded px-2 py-1.5 text-sm text-bodyText transition',
+          'hover:bg-[#eef6f7] hover:text-s1 disabled:cursor-not-allowed disabled:opacity-45',
+          open && 'bg-[#eef6f7] text-s1',
+        )}
+      >
+        <LeadIcon className="h-4.5 w-4.5 shrink-0 text-s1" strokeWidth={1.75} />
+        <span>{caption}</span>
+        <ChevronDown size={14} className="shrink-0 text-bodyText" />
+      </button>
+      {menu ? createPortal(menu, document.body) : null}
+    </>
+  )
+}
+
 export default function ListPageRibbon({
   page,
   actions,
   selectedRecord,
   sourceFields,
-  listPageId,
+  listPageId: _listPageId,
   search,
   onSearchChange,
   onNew,
@@ -82,6 +195,7 @@ export default function ListPageRibbon({
   }, [tabs])
 
   const tabActions = actionsForRibbonTab(actions, activeTab)
+  const ribbonItems = useMemo(() => groupRibbonActions(tabActions), [tabActions])
   const listReturnPath = useMemo(
     () => buildListReturnPath(page, searchParams, pathname),
     [page, searchParams, pathname],
@@ -97,6 +211,8 @@ export default function ListPageRibbon({
     if (!target) return true
     if (target === '#delete') return false
     if (target === '#select-more') return false
+    if (target === UNAPPLY_CUSTOMER_ENTRIES_ACTION) return true
+    if (target === APPLY_CUSTOMER_LEDGER_ENTRIES_ACTION) return true
     if (target.startsWith('#')) return false
     if (target.includes('{') || target.includes('applied_to_entry_id=')) return true
     if (
@@ -182,10 +298,17 @@ export default function ListPageRibbon({
     }
   }
 
+  const isActionDisabled = (action: PageAction) => {
+    const target = (action.ActionRelativeUrl || '').trim()
+    if (target === '#delete') return !deleteAllowed
+    if (target === '#stub') return true
+    return needsSelection(action) && !selectedRecord
+  }
+
   const renderSearchControl = () => {
     if (searchOpen || search.trim()) {
       return (
-        <div className="relative min-w-[200px] max-w-sm flex-1">
+        <div className="relative min-w-50 max-w-sm flex-1">
           <Search
             size={15}
             className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-s1"
@@ -223,10 +346,7 @@ export default function ListPageRibbon({
     const Icon = assetUrl ? null : resolveRibbonIcon(imageUrl)
     const target = (action.ActionRelativeUrl || '').trim()
     const selectionRequired = needsSelection(action)
-    const actionDisabled =
-      disabled
-      || (target === '#delete' ? !deleteAllowed : selectionRequired && !selectedRecord)
-      || action.ActionRelativeUrl === '#stub'
+    const actionDisabled = Boolean(disabled) || isActionDisabled(action)
 
     return (
       <button
@@ -244,9 +364,9 @@ export default function ListPageRibbon({
         className="inline-flex items-center gap-2 rounded px-2 py-1.5 text-sm text-bodyText transition hover:bg-[#eef6f7] hover:text-s1 disabled:cursor-not-allowed disabled:opacity-45"
       >
         {assetUrl ? (
-          <img src={assetUrl} alt="" className="h-[18px] w-[18px] shrink-0 object-contain" />
+          <img src={assetUrl} alt="" className="h-4.5 w-4.5 shrink-0 object-contain" />
         ) : Icon ? (
-          <Icon className="h-[18px] w-[18px] shrink-0 text-s1" strokeWidth={1.75} />
+          <Icon className="h-4.5 w-4.5 shrink-0 text-s1" strokeWidth={1.75} />
         ) : null}
         <span>{action.Caption}</span>
       </button>
@@ -308,7 +428,21 @@ export default function ListPageRibbon({
           </button>
         ) : null}
 
-        {tabActions.map(renderActionButton)}
+        {ribbonItems.map((item) => {
+          if (item.kind === 'menu') {
+            return (
+              <RibbonActionMenu
+                key={`menu-${item.group}`}
+                caption={item.group}
+                actions={item.actions}
+                disabled={Boolean(disabled)}
+                actionDisabled={isActionDisabled}
+                onAction={handleAction}
+              />
+            )
+          }
+          return renderActionButton(item.action)
+        })}
 
         {showBuiltinDelete ? (
           <button

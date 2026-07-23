@@ -1581,6 +1581,182 @@ def process_journal_import(
         }
 
 
+def _resolve_export_branch(branch_id):
+    """Resolve branch DimensionValue for item export when multi-branch is enabled."""
+    try:
+        from financials.models import GeneralLedgerSetup
+        from dimension.models import DimensionValue
+
+        gl_setup = GeneralLedgerSetup.objects.first()
+        if not gl_setup or not getattr(gl_setup, "enable_multiple_branches", False):
+            return None
+        if not branch_id:
+            return None
+        return DimensionValue.objects.filter(pk=int(branch_id)).first()
+    except Exception:
+        return None
+
+
+def _prepare_items_export_queryset(queryset, filters_data=None, branch=None):
+    """
+    Apply list-like filters and annotate branch-scoped inventory/cost for export.
+    Mirrors ItemsModalViewSet.get_queryset list behaviour for inventory/cost.
+    """
+    from decimal import Decimal
+    from django.db.models import (
+        Case,
+        DecimalField,
+        F,
+        IntegerField,
+        OuterRef,
+        Q,
+        Subquery,
+        Sum,
+        Value,
+        When,
+    )
+    from django.db.models.functions import Coalesce
+
+    filters_data = filters_data or {}
+
+    # Match list default: hide blocked unless explicitly requested
+    include_blocked = str(filters_data.get("include_blocked", "")).lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    if filters_data.get("blocked") is None and not include_blocked:
+        queryset = queryset.filter(blocked=False)
+    elif filters_data.get("blocked") is not None:
+        blocked_val = str(filters_data.get("blocked")).lower() in ("1", "true", "yes")
+        queryset = queryset.filter(blocked=blocked_val)
+
+    search = (filters_data.get("search") or filters_data.get("q") or "").strip()
+    if search:
+        queryset = queryset.filter(
+            Q(item_name__icontains=search)
+            | Q(bar_code_no__icontains=search)
+            | Q(no__icontains=search)
+            | Q(description__icontains=search)
+            | Q(shelf_no__icontains=search)
+        )
+    if filters_data.get("item_name"):
+        queryset = queryset.filter(item_name__icontains=filters_data["item_name"])
+    if filters_data.get("item_category"):
+        queryset = queryset.filter(item_category__code=filters_data["item_category"])
+    if filters_data.get("type"):
+        queryset = queryset.filter(type=filters_data["type"])
+
+    # Branch-scoped inventory (same expression as list page)
+    if branch:
+        inventory_expr = Coalesce(
+            Sum(
+                Case(
+                    When(
+                        itemledgerentries__global_dimension_1_id=branch.id,
+                        then=F("itemledgerentries__remaining_quantity"),
+                    ),
+                    default=Value(0),
+                )
+            ),
+            0,
+            output_field=IntegerField(),
+        )
+        ve_qs = ValueEntry.objects.filter(
+            item=OuterRef("pk"),
+            global_dimension_1_id=branch.id,
+        ).order_by("-created_at")
+    else:
+        inventory_expr = Coalesce(
+            Sum("itemledgerentries__remaining_quantity"),
+            0,
+            output_field=IntegerField(),
+        )
+        ve_qs = ValueEntry.objects.filter(item=OuterRef("pk")).order_by("-created_at")
+
+    cost_from_ve = Coalesce(
+        Subquery(
+            ve_qs.values("cost_per_unit")[:1],
+            output_field=DecimalField(max_digits=15, decimal_places=2),
+        ),
+        Value(Decimal("0.00")),
+        output_field=DecimalField(max_digits=15, decimal_places=2),
+    )
+
+    queryset = queryset.select_related("item_category", "unit_of_measure").annotate(
+        _export_inventory=inventory_expr,
+        _export_unit_cost=Case(
+            When(
+                type__in=["Service", "Non-Inventory"],
+                then=Coalesce(
+                    F("manual_unit_cost"),
+                    Value(Decimal("0.00")),
+                    output_field=DecimalField(max_digits=15, decimal_places=2),
+                ),
+            ),
+            default=cost_from_ve,
+            output_field=DecimalField(max_digits=15, decimal_places=2),
+        ),
+    )
+
+    # Optional inventory filters (branch-aware via annotation above)
+    inventory_status = filters_data.get("inventory_status")
+    low_stock_param = filters_data.get("low_stock")
+    low_stock = str(low_stock_param).lower() in ("true", "1")
+    inventory_min = filters_data.get("inventory_min")
+    inventory_max = filters_data.get("inventory_max")
+
+    if inventory_status == "IN_STOCK":
+        queryset = queryset.filter(_export_inventory__gt=0)
+    elif inventory_status == "OUT_OF_STOCK":
+        queryset = queryset.filter(_export_inventory__lte=0)
+    if low_stock:
+        queryset = queryset.filter(
+            type=InventoryType.Inventory.value,
+            minimum_stock__isnull=False,
+            minimum_stock__gt=0,
+            _export_inventory__gt=0,
+            _export_inventory__lte=F("minimum_stock"),
+        )
+    if inventory_min is not None and inventory_min != "":
+        try:
+            queryset = queryset.filter(_export_inventory__gte=int(inventory_min))
+        except (ValueError, TypeError):
+            pass
+    if inventory_max is not None and inventory_max != "":
+        try:
+            queryset = queryset.filter(_export_inventory__lte=int(inventory_max))
+        except (ValueError, TypeError):
+            pass
+
+    return queryset.order_by("item_name")
+
+
+def _export_item_inventory(item):
+    annotated = getattr(item, "_export_inventory", None)
+    if annotated is not None:
+        return float(annotated or 0)
+    return float(item.inventory) if item.inventory else 0
+
+
+def _export_item_unit_cost(item):
+    annotated = getattr(item, "_export_unit_cost", None)
+    if annotated is not None:
+        return float(annotated or 0)
+    return float(item.unit_cost) if item.unit_cost else 0
+
+
+def _export_item_profit_pct(item):
+    """Profit % from unit price and export (branch-aware) unit cost."""
+    from decimal import Decimal
+
+    unit_price = Decimal(str(item.unit_price or 0))
+    if unit_price <= 0:
+        return 0
+    unit_cost = Decimal(str(_export_item_unit_cost(item)))
+    return float(round(((unit_price - unit_cost) / unit_price) * 100, 0))
+
+
 @shared_task(bind=True)
 def export_items_task(
     self,
@@ -1589,6 +1765,7 @@ def export_items_task(
     filters_data=None,
     schema_name=None,
     user_permissions=None,
+    branch_id=None,
 ):
     """
     Background task to export items to Excel or PDF format
@@ -1599,6 +1776,7 @@ def export_items_task(
         filters_data: Optional filter dictionary
         schema_name: Schema name for tenant
         user_permissions: Dict with user permission flags
+        branch_id: Optional DimensionValue id for branch-scoped inventory/cost
     """
     logger = get_task_logger(__name__)
 
@@ -1625,18 +1803,10 @@ def export_items_task(
             else:
                 queryset = Item.objects.all()
 
-            # Apply filters if provided
-            if filters_data:
-                if filters_data.get("item_name"):
-                    queryset = queryset.filter(
-                        item_name__icontains=filters_data["item_name"]
-                    )
-                if filters_data.get("item_category"):
-                    queryset = queryset.filter(
-                        item_category__code=filters_data["item_category"]
-                    )
-                if filters_data.get("type"):
-                    queryset = queryset.filter(type=filters_data["type"])
+            branch = _resolve_export_branch(branch_id)
+            queryset = _prepare_items_export_queryset(
+                queryset, filters_data=filters_data, branch=branch
+            )
 
             # Evaluate queryset and limit to 10000 items
             items = list(queryset[:10000])
@@ -1833,24 +2003,23 @@ def _export_to_excel(items, user_permissions=None):
         )
         col += 1
 
-        # Write Unit Cost only if user has permission
+        # Write Unit Cost only if user has permission (branch-scoped when annotated)
         if can_see_buying_price:
             worksheet.write(
                 row_idx,
                 col,
-                float(item.unit_cost) if item.unit_cost else 0,
+                _export_item_unit_cost(item),
                 number_format,
             )
             col += 1
 
-        # Write Profit Margin only if user has permission
+        # Write Profit Margin only if user has permission (branch-scoped when annotated)
         if can_see_profit:
-            profit = item.profit_percentage or 0
-            worksheet.write(row_idx, col, float(profit), number_format)
+            worksheet.write(row_idx, col, _export_item_profit_pct(item), number_format)
             col += 1
 
         worksheet.write(
-            row_idx, col, float(item.inventory) if item.inventory else 0, number_format
+            row_idx, col, _export_item_inventory(item), number_format
         )
         col += 1
         worksheet.write(row_idx, col, item.bar_code_no or "", data_format)
@@ -1948,18 +2117,21 @@ def _export_to_pdf(items, user_permissions=None):
             f"{format_currency(item.unit_price)}" if item.unit_price else format_currency(0),
         ]
 
-        # Add Unit Cost only if user has permission
+        # Add Unit Cost only if user has permission (branch-scoped when annotated)
         if can_see_buying_price:
-            row.append(f"{format_currency(item.unit_cost)}" if item.unit_cost else format_currency(0))
+            unit_cost = _export_item_unit_cost(item)
+            row.append(
+                f"{format_currency(unit_cost)}" if unit_cost else format_currency(0)
+            )
 
-        # Add Profit Margin only if user has permission
+        # Add Profit Margin only if user has permission (branch-scoped when annotated)
         if can_see_profit:
-            profit = item.profit_percentage or 0
+            profit = _export_item_profit_pct(item)
             row.append(f"{profit:.2f}%")
 
         row.extend(
             [
-                str(item.inventory) if item.inventory else "0",
+                str(_export_item_inventory(item)),
                 "Active" if not item.blocked else "Blocked",
             ]
         )

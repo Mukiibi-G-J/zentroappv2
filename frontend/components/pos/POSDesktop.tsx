@@ -23,11 +23,13 @@ export function POSDesktop({ pos, pageActions }: POSDesktopProps) {
   return (
     <>
       <POSTodaySalesBar pos={pos} />
-      <POSActionBar pageActions={pageActions} pos={pos} />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
-        <div className="flex min-h-0 flex-1 flex-col gap-3 lg:w-[62%]">
-          <header>
+      {/* Cart column shares full height with actions + products (no dead space above cart). */}
+      <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row lg:gap-4">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 lg:w-[58%]">
+          <POSActionBar pageActions={pageActions} pos={pos} />
+
+          <header className="shrink-0">
             <input
               type="search"
               placeholder="Search items by name or number…"
@@ -37,7 +39,7 @@ export function POSDesktop({ pos, pageActions }: POSDesktopProps) {
             />
           </header>
           {pos.error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+            <div className="shrink-0 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
               {pos.error}
             </div>
           )}
@@ -50,13 +52,25 @@ export function POSDesktop({ pos, pageActions }: POSDesktopProps) {
             hasMore={pos.hasMoreProducts}
           />
         </div>
-        <div className="flex min-h-0 flex-1 flex-col lg:w-[38%] lg:max-w-md">
+
+        <div className="flex min-h-0 w-full flex-col lg:w-[42%] lg:min-w-88 lg:max-w-xl">
           <POSCartPanel
             cart={pos.cart}
             subtotal={pos.subtotal}
+            total={pos.total}
             canEditPrice={pos.canEditPrice}
+            enableLineDiscounts={pos.enableLineDiscounts}
+            enableInvoiceDiscounts={pos.enableInvoiceDiscounts}
+            invoiceDiscountType={pos.invoiceDiscountType}
+            invoiceDiscountAmount={pos.invoiceDiscountAmount}
+            invoiceDiscountPercentage={pos.invoiceDiscountPercentage}
+            invoiceDiscountValue={pos.invoiceDiscountValue}
             onUpdateQuantity={pos.updateLineQuantity}
             onUpdatePrice={pos.updateLinePrice}
+            onUpdateLineDiscount={pos.updateLineDiscount}
+            onInvoiceDiscountTypeChange={pos.setInvoiceDiscountType}
+            onInvoiceDiscountAmountChange={pos.setInvoiceDiscountAmount}
+            onInvoiceDiscountPercentageChange={pos.setInvoiceDiscountPercentage}
             onRemove={pos.removeLine}
             onClear={pos.clearCart}
             onCheckout={pos.openCheckout}
@@ -68,7 +82,7 @@ export function POSDesktop({ pos, pageActions }: POSDesktopProps) {
 
       <POSCheckoutDialog
         open={pos.checkoutOpen}
-        subtotal={pos.subtotal}
+        subtotal={pos.total}
         amountReceived={pos.amountReceived}
         onAmountReceivedChange={pos.setAmountReceived}
         customers={pos.customers}

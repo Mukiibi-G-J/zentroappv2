@@ -6,6 +6,8 @@ interface ConfirmDialogProps {
   message: string
   confirmLabel?: string
   cancelLabel?: string
+  /** When true, only the primary OK button is shown (BC-style info/error alerts). */
+  alertOnly?: boolean
   variant?: 'default' | 'danger'
   onConfirm: () => void
   onCancel: () => void
@@ -17,6 +19,7 @@ export function ConfirmDialog({
   message,
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
+  alertOnly = false,
   variant = 'default',
   onConfirm,
   onCancel,
@@ -42,15 +45,17 @@ export function ConfirmDialog({
             {title}
           </h3>
         ) : null}
-        <p className={`text-sm text-bodyText ${title ? 'mt-2' : ''}`}>{message}</p>
+        <p className={`text-sm text-bodyText whitespace-pre-line ${title ? 'mt-2' : ''}`}>{message}</p>
         <div className="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-xl border border-strokeColor px-4 py-2.5 text-sm font-medium text-bodyText transition hover:bg-softBg"
-          >
-            {cancelLabel}
-          </button>
+          {!alertOnly ? (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-xl border border-strokeColor px-4 py-2.5 text-sm font-medium text-bodyText transition hover:bg-softBg"
+            >
+              {cancelLabel}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onConfirm}
@@ -60,7 +65,7 @@ export function ConfirmDialog({
                 : 'rounded-xl bg-s1 px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90'
             }
           >
-            {confirmLabel}
+            {alertOnly ? (confirmLabel === 'Confirm' ? 'OK' : confirmLabel) : confirmLabel}
           </button>
         </div>
       </div>

@@ -45,8 +45,10 @@ ZENTRO_PAGE_REGISTRY: dict[str, tuple[int, str]] = {
     'PostedSalesCreditMemoList': (10019, 'sales'),
     'CustomerAppliedEntriesList': (10010, 'sales'),
     'ApplyCustomerEntries': (10011, 'sales'),
+    'UnapplyCustomerEntries': (10021, 'sales'),
     'SalesManagerRC': (10012, 'sales'),
     'CashierRC': (10013, 'sales'),
+    'SalesReceivableSetupCard': (10020, 'sales'),
     # ── Customers (10100) ──────────────────────────────────────────────────────
     'CustomerList': (10101, 'customers'),
     'CustomerCard': (10102, 'customers'),

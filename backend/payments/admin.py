@@ -674,9 +674,20 @@ class PaymentJournalPostingProcessor:
                     ):
                         continue
 
+                    # Prefer explicit CLE from the generator (BC: invoice app is
+                    # negative; do not route by amount sign).
+                    explicit_cle = detailed_customer_entry.get("customer_ledger_entry")
                     if (
                         detailed_customer_entry["entry_type"] == "Application"
-                        and detailed_customer_entry["amount"] > 0
+                        and explicit_cle is not None
+                        and hasattr(explicit_cle, "pk")
+                    ):
+                        customer_ledger_entry = explicit_cle
+                        applied_customer_ledger_entry_no = applies_to_customer_ledger.id
+                    elif (
+                        detailed_customer_entry["entry_type"] == "Application"
+                        and applies_to_customer_ledger
+                        and int(detailed_customer_entry.get("amount") or 0) < 0
                     ):
                         customer_ledger_entry = applies_to_customer_ledger
                         applied_customer_ledger_entry_no = applies_to_customer_ledger.id
@@ -1180,9 +1191,10 @@ class PaymentJournalProcessor:
                 "customer": self.payment_journal.account_no,
                 "description": f"Payment {self.payment_journal.document_no}",
                 "payment_method": self.payment_journal.payment_method,
-                "original_amount": amount,
-                "amount": amount,
-                "remaining_amount": 0 if is_applied else amount,
+                # BC customer payment CLE amount is negative.
+                "original_amount": -amount,
+                "amount": -amount,
+                "remaining_amount": 0 if is_applied else -amount,
                 "open": not is_applied,
                 "due_date": posting_date,
                 "global_dimension_1": self.global_dimension_1_value,
@@ -1199,9 +1211,9 @@ class PaymentJournalProcessor:
                 "document_type": DocumentType.Payment.value,
                 "document_no": self.payment_journal.document_no,
                 "customer": self.payment_journal.account_no,
-                "amount": amount,
-                "debit_amount": amount,
-                "credit_amount": 0,
+                "amount": -amount,
+                "debit_amount": 0,
+                "credit_amount": amount,
                 "initial_entry_due_date": due_date,
                 "initial_document_type": DocumentType.Payment.value,
                 "customer_ledger_entry": None,
@@ -1222,6 +1234,7 @@ class PaymentJournalProcessor:
         invoice_due_date = applies_to_ledger.due_date or posting_date
         apply_amount = amount
 
+        # Application on the invoice CLE (reduces positive invoice remaining).
         self.detailed_customer_entries.append(
             {
                 "posting_date": posting_date,
@@ -1229,9 +1242,9 @@ class PaymentJournalProcessor:
                 "document_type": DocumentType.Payment.value,
                 "document_no": self.payment_journal.document_no,
                 "customer": self.payment_journal.account_no,
-                "amount": apply_amount,
-                "debit_amount": apply_amount,
-                "credit_amount": 0,
+                "amount": -apply_amount,
+                "debit_amount": 0,
+                "credit_amount": apply_amount,
                 "initial_entry_due_date": invoice_due_date,
                 "initial_document_type": applies_to_ledger.document_type,
                 "customer_ledger_entry": applies_to_ledger,
@@ -1244,6 +1257,7 @@ class PaymentJournalProcessor:
             }
         )
 
+        # Application on the payment CLE (closes negative payment remaining).
         self.detailed_customer_entries.append(
             {
                 "posting_date": posting_date,
@@ -1251,9 +1265,9 @@ class PaymentJournalProcessor:
                 "document_type": DocumentType.Payment.value,
                 "document_no": self.payment_journal.document_no,
                 "customer": self.payment_journal.account_no,
-                "amount": -apply_amount,
-                "debit_amount": 0,
-                "credit_amount": apply_amount,
+                "amount": apply_amount,
+                "debit_amount": apply_amount,
+                "credit_amount": 0,
                 "initial_entry_due_date": due_date,
                 "initial_document_type": DocumentType.Payment.value,
                 "customer_ledger_entry": None,

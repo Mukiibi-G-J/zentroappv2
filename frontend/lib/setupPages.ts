@@ -5,6 +5,7 @@ export const SETUP_CARD_PAGE_NAMES = new Set([
   'InventorySetupCard',
   'ManufacturingSetupCard',
   'GeneralLedgerSetupCard',
+  'SalesReceivableSetupCard',
   'CompanyCard',
   'CompanySubscriptionCard',
 ])

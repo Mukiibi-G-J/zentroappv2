@@ -1,4 +1,4 @@
-const DEV_FRONTEND_PORT = process.env.NEXT_PUBLIC_DEV_FRONT_PORT ?? '3000'
+const DEV_FRONTEND_PORT = process.env.NEXT_PUBLIC_DEV_FRONT_PORT ?? '3001'
 
 /** Known Next.js marketing / tenant apices (never the API host). */
 const KNOWN_APP_APICES = ['zentroapp.app', 'zentroapp.uncodedsolutions.com'] as const

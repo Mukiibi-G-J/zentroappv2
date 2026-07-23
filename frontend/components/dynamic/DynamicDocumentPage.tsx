@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { usePage, usePages } from '@/hooks/usePage'
+import { useSalesSetup, normalizeSalesSetup } from '@/hooks/useSalesSetup'
+import { filterDiscountFieldsBySetup } from '@/lib/salesDiscountFields'
 import { usePageDataRecord, useUpdateField } from '@/hooks/usePageData'
 import { useDocumentLines } from '@/hooks/useDocumentLines'
 import { useSyncHeaderTotalFromLines } from '@/hooks/useSyncHeaderTotalFromLines'
@@ -592,7 +594,15 @@ function HeaderGroupSection({
   systemId: string
   onFieldBlur: (field: PageControlField, value: unknown) => void
 }) {
-  const visible = control.Fields.filter((f) => f.Visible)
+  const { data: salesSetupRaw } = useSalesSetup()
+  const salesSetup = useMemo(() => normalizeSalesSetup(salesSetupRaw), [salesSetupRaw])
+  const visible = useMemo(
+    () => filterDiscountFieldsBySetup(
+      control.Fields.filter((f) => f.Visible),
+      salesSetup,
+    ),
+    [control.Fields, salesSetup],
+  )
   const relationOptions = useRelationOptions(pageId, visible, isNew ? null : systemId)
 
   return (

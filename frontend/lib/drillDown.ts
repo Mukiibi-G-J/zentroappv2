@@ -64,12 +64,28 @@ export function buildDrillDownUrl(
   const routePageId = targetPage ? getPageRouteId(targetPage) : field.DrillDownPageId
   params.set('page', String(routePageId))
 
+  const targetName = targetPage?.Name ?? ''
+  const isDetailedCustomerLedger = targetName === 'DetailedCustomerLedgerEntryList'
+  const isDetailedVendorLedger = targetName === 'DetailedVendorLedgerEntryList'
+
   if (isSalesPersonDrillDown) {
     params.set('ctx2Field', 'ledger_user_id')
     params.set('ctx2', String(record.id))
     const label = record.full_name ?? record.username ?? record.email
     if (label) params.set('ctxLabel', String(label))
     params.set('filterLabel', `Sales by ${label ?? 'user'}`)
+  } else if (isDetailedCustomerLedger || isDetailedVendorLedger) {
+    // Match CLE ribbon: filter detailed rows by parent ledger entry id.
+    // Generic ctx + ContextFilterField does not work (detailed lists have no context field).
+    const entryId = record.id ?? keyValue
+    if (entryId == null || entryId === '') return null
+    params.set(
+      isDetailedCustomerLedger ? 'customer_ledger_entry_id' : 'vendor_ledger_entry_id',
+      String(entryId),
+    )
+    const docNo = record.document_no
+    if (docNo) params.set('ctxLabel', String(docNo))
+    params.set('filterLabel', 'Detailed ledger entries')
   } else {
     params.set('ctx', keyValue!)
     const label = record.name ?? record.item_name ?? record.full_name ?? record.description

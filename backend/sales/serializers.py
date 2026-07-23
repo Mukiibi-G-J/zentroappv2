@@ -592,301 +592,13 @@ class SalesInvoiceSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
+        from django.db import transaction
+
         try:
-            # Use raw lines data if available (from to_internal_value), otherwise use validated data
-            # This ensures we get the original discount values before nested serializer validation
-            lines_data = getattr(self, "_raw_lines_data", None)
-            if lines_data is None:
-                lines_data = validated_data.pop("lines", [])
-            else:
-                # Clear the stored raw data after using it
-                delattr(self, "_raw_lines_data")
-
-            # Stamp header dimensions if not provided
-            if validated_data.get("global_dimension_1") is None:
-                request = self.context.get("request")
-                from dimension.branch_filter import get_branch_for_request
-                from dimension.utils import get_first_branch_dimension_value
-                branch = get_branch_for_request(request) if request else None
-                if not branch and request and request.user:
-                    branch = getattr(request.user, "global_dimension_1", None)
-                if not branch:
-                    branch = get_first_branch_dimension_value()
-                if branch:
-                    validated_data["global_dimension_1"] = branch
-
-            # Ensure header has a dimension_set consistent with global dimensions.
-            # This keeps posting processors and downstream ledgers consistent even if the client omits it.
-            if validated_data.get("dimension_set") is None and validated_data.get(
-                "global_dimension_1"
-            ) is not None:
-                try:
-                    from financials.models import GeneralLedgerSetup
-                    from dimension.models import get_or_create_dimension_set
-
-                    gl_setup = GeneralLedgerSetup.objects.first()
-                    if gl_setup and getattr(gl_setup, "global_dimension_1_id", None):
-                        validated_data["dimension_set"] = get_or_create_dimension_set(
-                            {gl_setup.global_dimension_1: validated_data["global_dimension_1"]}
-                        )
-                except Exception:
-                    # Safe fallback: dimension_set stays null; posting payload resolver will still
-                    # use global_dimension_1 for entries that support it.
-                    pass
-
-            print("DEBUG: Creating sales invoice with data:", validated_data)
-            print("DEBUG: Status in validated_data:", validated_data.get("status"))
-            print("DEBUG: Lines data:", lines_data)
-
-            # Handle invoice discount fields - convert to Decimal if needed
-            from decimal import Decimal
-
-            # Handle invoice_discount_amount
-            if "invoice_discount_amount" in validated_data:
-                discount_amount = validated_data.get("invoice_discount_amount")
-                if isinstance(discount_amount, str):
-                    validated_data["invoice_discount_amount"] = Decimal(discount_amount)
-                elif isinstance(discount_amount, (int, float)):
-                    validated_data["invoice_discount_amount"] = Decimal(
-                        str(discount_amount)
-                    )
-                elif discount_amount is None:
-                    validated_data["invoice_discount_amount"] = Decimal("0")
-
-            # Handle invoice_discount_percentage
-            if "invoice_discount_percentage" in validated_data:
-                discount_percentage = validated_data.get("invoice_discount_percentage")
-                if isinstance(discount_percentage, str):
-                    validated_data["invoice_discount_percentage"] = Decimal(
-                        discount_percentage
-                    )
-                elif isinstance(discount_percentage, (int, float)):
-                    validated_data["invoice_discount_percentage"] = Decimal(
-                        str(discount_percentage)
-                    )
-                elif discount_percentage is None:
-                    validated_data["invoice_discount_percentage"] = Decimal("0")
-
-            # Create the sales invoice
-            sales_invoice = super().create(validated_data)
-
-            # Create the sales invoice lines
-            from items.models import (
-                Item,
-                Location,
-                UnitOfMeasure,
-                ItemUnitOfMeasure,
-            )
-            from resources.models import Resource
-
-            for i, line_data in enumerate(lines_data):
-                line_type = line_data.get("type", "item")
-                line_data["type"] = line_type
-
-                if line_type == "resource":
-                    # Resource line: resolve resource, clear item-only fields
-                    resource_val = line_data.get("resource")
-                    if not resource_val:
-                        raise serializers.ValidationError(
-                            {"lines": f"Line {i+1}: Resource is required when type is Resource."}
-                        )
-                    if isinstance(resource_val, int):
-                        try:
-                            resource = Resource.objects.get(pk=resource_val)
-                        except Resource.DoesNotExist:
-                            raise serializers.ValidationError(
-                                {"lines": f"Line {i+1}: Resource with id {resource_val} not found."}
-                            )
-                    elif isinstance(resource_val, str):
-                        try:
-                            resource = Resource.objects.get(code=resource_val)
-                        except Resource.DoesNotExist:
-                            raise serializers.ValidationError(
-                                {"lines": f"Line {i+1}: Resource with code {resource_val} not found."}
-                            )
-                    else:
-                        resource = resource_val
-                    line_data["resource"] = resource
-                    line_data["item"] = None
-                    line_data["location_code"] = None
-                    line_data["item_unit_of_measure"] = None
-                    # Resolve unit_of_measure for resource line (UOM code from frontend)
-                    uom_code = line_data.get("unit_of_measure")
-                    if uom_code and isinstance(uom_code, str):
-                        uom, _ = UnitOfMeasure.objects.get_or_create(
-                            code=uom_code, defaults={"description": uom_code}
-                        )
-                        line_data["unit_of_measure"] = uom
-                    else:
-                        line_data["unit_of_measure"] = getattr(resource, "base_unit", None)
-                    line_data["tracking_code"] = None
-                else:
-                    # Item line: resolve item and location, handle UOM
-                    if not line_data.get("item"):
-                        raise serializers.ValidationError(
-                            {"lines": f"Line {i+1}: Item is required when type is Item."}
-                        )
-                    if isinstance(line_data["item"], str):
-                        try:
-                            item = Item.objects.get(no=line_data["item"])
-                            line_data["item"] = item
-                        except Item.DoesNotExist:
-                            try:
-                                item = Item.objects.get(item_name=line_data["item"])
-                                line_data["item"] = item
-                            except Item.DoesNotExist:
-                                raise serializers.ValidationError(
-                                    {"lines": f"Line {i+1}: Item {line_data['item']} not found."}
-                                )
-                    elif isinstance(line_data["item"], int):
-                        try:
-                            item = Item.objects.get(pk=line_data["item"])
-                            line_data["item"] = item
-                        except Item.DoesNotExist:
-                            raise serializers.ValidationError(
-                                {"lines": f"Line {i+1}: Item with id {line_data['item']} not found."}
-                            )
-                    else:
-                        item = line_data["item"]
-
-                    if "location_code" not in line_data or line_data["location_code"] is None:
-                        # Prefer a location that matches the effective branch (X-Branch-Id / user branch)
-                        # so POS sales always post stock movements to the correct branch location.
-                        from dimension.branch_filter import get_branch_for_request
-
-                        request = self.context.get("request")
-                        branch = get_branch_for_request(request) if request else None
-                        if not branch and request and getattr(request, "user", None):
-                            branch = getattr(request.user, "global_dimension_1", None)
-
-                        default_location = None
-                        if branch and getattr(branch, "code", None):
-                            default_location = Location.objects.filter(code=branch.code).first()
-                        if not default_location:
-                            default_location = Location.objects.first()
-                        if not default_location:
-                            raise serializers.ValidationError(
-                                "No location found. Please create a location first."
-                            )
-                        line_data["location_code"] = default_location
-
-                    if "unit_of_measure" in line_data and line_data["unit_of_measure"]:
-                        try:
-                            uom, _ = UnitOfMeasure.objects.get_or_create(
-                                code=line_data["unit_of_measure"],
-                                defaults={"description": line_data["unit_of_measure"]},
-                            )
-                            line_data["unit_of_measure"] = uom
-                            item_uom, _ = ItemUnitOfMeasure.objects.get_or_create(
-                                item=item,
-                                unit_of_measure=uom,
-                                defaults={"quantity_per_unit": 1},
-                            )
-                            line_data["item_unit_of_measure"] = item_uom
-                        except Exception:
-                            line_data.pop("unit_of_measure", None)
-                            line_data.pop("item_unit_of_measure", None)
-
-                # Convert quantity and unit_price
-                if "quantity" in line_data:
-                    line_data["quantity"] = int(float(line_data["quantity"]))
-                if "unit_price" in line_data:
-                    unit_price_val = line_data["unit_price"]
-                    if isinstance(unit_price_val, str):
-                        line_data["unit_price"] = Decimal(unit_price_val)
-                    elif isinstance(unit_price_val, (int, float)):
-                        line_data["unit_price"] = Decimal(str(unit_price_val))
-
-                    # Strict: reject values that need more than 2 decimals.
-                    unit_price = line_data["unit_price"]
-                    if unit_price is not None:
-                        quant = Decimal("0.01")
-                        if unit_price != unit_price.quantize(quant):
-                            raise serializers.ValidationError(
-                                {
-                                    "unit_price": "Only up to 2 decimal places are allowed for unit_price."
-                                }
-                            )
-
-                    from sales.price_permissions import validate_sales_line_unit_price
-
-                    request = self.context.get("request")
-                    try:
-                        line_data["unit_price"] = validate_sales_line_unit_price(
-                            getattr(request, "user", None) if request else None,
-                            unit_price=line_data["unit_price"],
-                            item=line_data.get("item"),
-                            resource=line_data.get("resource"),
-                            line_label=f"line {i + 1}",
-                        )
-                    except Exception as exc:
-                        # Django ValidationError → DRF ValidationError
-                        from django.core.exceptions import ValidationError as DjangoValidationError
-
-                        if isinstance(exc, DjangoValidationError):
-                            raise serializers.ValidationError(exc.message_dict if hasattr(exc, "message_dict") else exc.messages)
-                        raise
-
-                discount_input = line_data.pop("line_discount_amount", None) or line_data.pop("lineDiscountAmount", None)
-                try:
-                    if discount_input is None or discount_input == "":
-                        line_data["line_discount_amount"] = Decimal("0")
-                    elif isinstance(discount_input, str):
-                        line_data["line_discount_amount"] = Decimal(discount_input.strip()) if discount_input.strip() else Decimal("0")
-                    elif isinstance(discount_input, (int, float)):
-                        line_data["line_discount_amount"] = Decimal(str(discount_input))
-                    else:
-                        line_data["line_discount_amount"] = discount_input if isinstance(discount_input, Decimal) else Decimal("0")
-                except (TypeError, ValueError):
-                    line_data["line_discount_amount"] = Decimal("0")
-
-                line_data.pop("id", None)
-                line_data.pop("item_name", None)
-                line_data.pop("item_no", None)
-                line_data.pop("total_amount", None)
-                line_data.pop("resource_name", None)
-                line_data.pop("resource_code", None)
-                line_data.pop("base_unit", None)
-                line_data.pop("uom_options", None)
-                line_data.pop("line_amount", None)
-
-                # Merge default dimensions (Customer, Item/Resource) with user and explicit
-                from dimension.models import get_merged_line_dimensions
-                from dimension.branch_filter import get_branch_for_request
-
-                request = self.context.get("request")
-                request_user = request.user if request else None
-
-                # Prefer X-Branch-Id (selected branch) over user.global_dimension_1
-                branch = get_branch_for_request(request) if request else None
-                if not branch and request_user:
-                    branch = getattr(request_user, "global_dimension_1", None)
-                line_data_for_dims = dict(line_data)
-                if branch:
-                    line_data_for_dims["global_dimension_1"] = branch
-
-                customer_no = (
-                    getattr(sales_invoice.customer, "no", None)
-                    if sales_invoice.customer
-                    else None
-                )
-                item = line_data.get("item")
-                resource = line_data.get("resource")
-                dims = get_merged_line_dimensions(
-                    customer_no=customer_no,
-                    item=item,
-                    resource=resource,
-                    request_user=request_user,
-                    line_data=line_data_for_dims,
-                    header_dimensions=sales_invoice,
-                )
-                line_data["dimension_set"] = dims.get("dimension_set")
-                line_data["global_dimension_1"] = dims.get("global_dimension_1")
-
-                SalesInvoiceLine.objects.create(sales_invoice=sales_invoice, **line_data)
-
-            return sales_invoice
-
+            with transaction.atomic():
+                return self._create_invoice_with_lines(validated_data)
+        except serializers.ValidationError:
+            raise
         except Exception as e:
             # Convert ConfigurationError to a user-friendly error
             raise serializers.ValidationError(
@@ -897,6 +609,350 @@ class SalesInvoiceSerializer(serializers.ModelSerializer):
                     ]
                 }
             )
+
+    def _create_invoice_with_lines(self, validated_data):
+        # Use raw lines data if available (from to_internal_value), otherwise use validated data
+        # This ensures we get the original discount values before nested serializer validation
+        lines_data = getattr(self, "_raw_lines_data", None)
+        if lines_data is None:
+            lines_data = validated_data.pop("lines", [])
+        else:
+            # Clear the stored raw data after using it
+            delattr(self, "_raw_lines_data")
+
+        # Stamp header dimensions if not provided
+        if validated_data.get("global_dimension_1") is None:
+            request = self.context.get("request")
+            from dimension.branch_filter import get_branch_for_request
+            from dimension.utils import get_first_branch_dimension_value
+            branch = get_branch_for_request(request) if request else None
+            if not branch and request and request.user:
+                branch = getattr(request.user, "global_dimension_1", None)
+            if not branch:
+                branch = get_first_branch_dimension_value()
+            if branch:
+                validated_data["global_dimension_1"] = branch
+
+        # Ensure header has a dimension_set consistent with global dimensions.
+        # This keeps posting processors and downstream ledgers consistent even if the client omits it.
+        if validated_data.get("dimension_set") is None and validated_data.get(
+            "global_dimension_1"
+        ) is not None:
+            try:
+                from financials.models import GeneralLedgerSetup
+                from dimension.models import get_or_create_dimension_set
+
+                gl_setup = GeneralLedgerSetup.objects.first()
+                if gl_setup and getattr(gl_setup, "global_dimension_1_id", None):
+                    validated_data["dimension_set"] = get_or_create_dimension_set(
+                        {gl_setup.global_dimension_1: validated_data["global_dimension_1"]}
+                    )
+            except Exception:
+                # Safe fallback: dimension_set stays null; posting payload resolver will still
+                # use global_dimension_1 for entries that support it.
+                pass
+
+        print("DEBUG: Creating sales invoice with data:", validated_data)
+        print("DEBUG: Status in validated_data:", validated_data.get("status"))
+        print("DEBUG: Lines data:", lines_data)
+
+        # Handle invoice discount fields - convert to Decimal if needed
+        from decimal import Decimal
+
+        # Handle invoice_discount_amount
+        if "invoice_discount_amount" in validated_data:
+            discount_amount = validated_data.get("invoice_discount_amount")
+            if isinstance(discount_amount, str):
+                validated_data["invoice_discount_amount"] = Decimal(discount_amount)
+            elif isinstance(discount_amount, (int, float)):
+                validated_data["invoice_discount_amount"] = Decimal(
+                    str(discount_amount)
+                )
+            elif discount_amount is None:
+                validated_data["invoice_discount_amount"] = Decimal("0")
+
+        # Handle invoice_discount_percentage
+        if "invoice_discount_percentage" in validated_data:
+            discount_percentage = validated_data.get("invoice_discount_percentage")
+            if isinstance(discount_percentage, str):
+                validated_data["invoice_discount_percentage"] = Decimal(
+                    discount_percentage
+                )
+            elif isinstance(discount_percentage, (int, float)):
+                validated_data["invoice_discount_percentage"] = Decimal(
+                    str(discount_percentage)
+                )
+            elif discount_percentage is None:
+                validated_data["invoice_discount_percentage"] = Decimal("0")
+
+        # Create the sales invoice
+        sales_invoice = super().create(validated_data)
+
+        # Create the sales invoice lines
+        from items.models import (
+            Item,
+            Location,
+            UnitOfMeasure,
+            ItemUnitOfMeasure,
+        )
+        from resources.models import Resource
+
+        for i, line_data in enumerate(lines_data):
+            line_type = line_data.get("type", "item")
+            line_data["type"] = line_type
+
+            if line_type == "resource":
+                # Resource line: resolve resource, clear item-only fields
+                resource_val = line_data.get("resource")
+                if not resource_val:
+                    raise serializers.ValidationError(
+                        {"lines": f"Line {i+1}: Resource is required when type is Resource."}
+                    )
+                if isinstance(resource_val, int):
+                    try:
+                        resource = Resource.objects.get(pk=resource_val)
+                    except Resource.DoesNotExist:
+                        raise serializers.ValidationError(
+                            {"lines": f"Line {i+1}: Resource with id {resource_val} not found."}
+                        )
+                elif isinstance(resource_val, str):
+                    try:
+                        resource = Resource.objects.get(code=resource_val)
+                    except Resource.DoesNotExist:
+                        raise serializers.ValidationError(
+                            {"lines": f"Line {i+1}: Resource with code {resource_val} not found."}
+                        )
+                else:
+                    resource = resource_val
+                line_data["resource"] = resource
+                line_data["item"] = None
+                line_data["location_code"] = None
+                line_data["item_unit_of_measure"] = None
+                # Resolve unit_of_measure for resource line (UOM code from frontend)
+                uom_code = line_data.get("unit_of_measure")
+                if uom_code and isinstance(uom_code, str):
+                    uom, _ = UnitOfMeasure.objects.get_or_create(
+                        code=uom_code, defaults={"description": uom_code}
+                    )
+                    line_data["unit_of_measure"] = uom
+                else:
+                    line_data["unit_of_measure"] = getattr(resource, "base_unit", None)
+                line_data["tracking_code"] = None
+            else:
+                # Item line: resolve item and location, handle UOM
+                if not line_data.get("item"):
+                    raise serializers.ValidationError(
+                        {"lines": f"Line {i+1}: Item is required when type is Item."}
+                    )
+                if isinstance(line_data["item"], str):
+                    try:
+                        item = Item.objects.get(no=line_data["item"])
+                        line_data["item"] = item
+                    except Item.DoesNotExist:
+                        try:
+                            item = Item.objects.get(item_name=line_data["item"])
+                            line_data["item"] = item
+                        except Item.DoesNotExist:
+                            raise serializers.ValidationError(
+                                {"lines": f"Line {i+1}: Item {line_data['item']} not found."}
+                            )
+                elif isinstance(line_data["item"], int):
+                    try:
+                        item = Item.objects.get(pk=line_data["item"])
+                        line_data["item"] = item
+                    except Item.DoesNotExist:
+                        raise serializers.ValidationError(
+                            {"lines": f"Line {i+1}: Item with id {line_data['item']} not found."}
+                        )
+                else:
+                    item = line_data["item"]
+
+                if "location_code" not in line_data or line_data["location_code"] is None:
+                    # Prefer a location that matches the effective branch (X-Branch-Id / user branch)
+                    # so POS sales always post stock movements to the correct branch location.
+                    from dimension.branch_filter import get_branch_for_request
+
+                    request = self.context.get("request")
+                    branch = get_branch_for_request(request) if request else None
+                    if not branch and request and getattr(request, "user", None):
+                        branch = getattr(request.user, "global_dimension_1", None)
+
+                    default_location = None
+                    if branch and getattr(branch, "code", None):
+                        default_location = Location.objects.filter(code=branch.code).first()
+                    if not default_location:
+                        default_location = Location.objects.first()
+                    if not default_location:
+                        raise serializers.ValidationError(
+                            "No location found. Please create a location first."
+                        )
+                    line_data["location_code"] = default_location
+
+                if "unit_of_measure" in line_data and line_data["unit_of_measure"]:
+                    try:
+                        uom, _ = UnitOfMeasure.objects.get_or_create(
+                            code=line_data["unit_of_measure"],
+                            defaults={"description": line_data["unit_of_measure"]},
+                        )
+                        line_data["unit_of_measure"] = uom
+                        item_uom, _ = ItemUnitOfMeasure.objects.get_or_create(
+                            item=item,
+                            unit_of_measure=uom,
+                            defaults={"quantity_per_unit": 1},
+                        )
+                        line_data["item_unit_of_measure"] = item_uom
+                    except Exception:
+                        line_data.pop("unit_of_measure", None)
+                        line_data.pop("item_unit_of_measure", None)
+
+            # Convert quantity and unit_price
+            if "quantity" in line_data:
+                line_data["quantity"] = int(float(line_data["quantity"]))
+            if "unit_price" in line_data:
+                unit_price_val = line_data["unit_price"]
+                if isinstance(unit_price_val, str):
+                    line_data["unit_price"] = Decimal(unit_price_val)
+                elif isinstance(unit_price_val, (int, float)):
+                    line_data["unit_price"] = Decimal(str(unit_price_val))
+
+                # Strict: reject values that need more than 2 decimals.
+                unit_price = line_data["unit_price"]
+                if unit_price is not None:
+                    quant = Decimal("0.01")
+                    if unit_price != unit_price.quantize(quant):
+                        raise serializers.ValidationError(
+                            {
+                                "unit_price": "Only up to 2 decimal places are allowed for unit_price."
+                            }
+                        )
+
+                from sales.price_permissions import validate_sales_line_unit_price
+
+                request = self.context.get("request")
+                try:
+                    line_data["unit_price"] = validate_sales_line_unit_price(
+                        getattr(request, "user", None) if request else None,
+                        unit_price=line_data["unit_price"],
+                        item=line_data.get("item"),
+                        resource=line_data.get("resource"),
+                        line_label=f"line {i + 1}",
+                    )
+                except Exception as exc:
+                    # Django ValidationError → DRF ValidationError
+                    from django.core.exceptions import ValidationError as DjangoValidationError
+
+                    if isinstance(exc, DjangoValidationError):
+                        raise serializers.ValidationError(exc.message_dict if hasattr(exc, "message_dict") else exc.messages)
+                    raise
+
+            discount_input = line_data.pop("line_discount_amount", None) or line_data.pop("lineDiscountAmount", None)
+            try:
+                if discount_input is None or discount_input == "":
+                    line_data["line_discount_amount"] = Decimal("0")
+                elif isinstance(discount_input, str):
+                    line_data["line_discount_amount"] = Decimal(discount_input.strip()) if discount_input.strip() else Decimal("0")
+                elif isinstance(discount_input, (int, float)):
+                    line_data["line_discount_amount"] = Decimal(str(discount_input))
+                else:
+                    line_data["line_discount_amount"] = discount_input if isinstance(discount_input, Decimal) else Decimal("0")
+            except (TypeError, ValueError):
+                line_data["line_discount_amount"] = Decimal("0")
+
+            # POS payload fields that are not SalesInvoiceLine columns
+            serial_nos = line_data.pop("serial_nos", None) or line_data.pop(
+                "serial_numbers", None
+            )
+            line_data.pop("id", None)
+            line_data.pop("item_name", None)
+            line_data.pop("item_no", None)
+            line_data.pop("total_amount", None)
+            line_data.pop("resource_name", None)
+            line_data.pop("resource_code", None)
+            line_data.pop("base_unit", None)
+            line_data.pop("uom_options", None)
+            line_data.pop("line_amount", None)
+            line_data.pop("client_id", None)
+            line_data.pop("clientId", None)
+
+            tracking_raw = line_data.get("tracking_code")
+            if tracking_raw is not None and str(tracking_raw).strip() == "":
+                line_data["tracking_code"] = None
+
+            # Merge default dimensions (Customer, Item/Resource) with user and explicit
+            from dimension.models import get_merged_line_dimensions
+            from dimension.branch_filter import get_branch_for_request
+
+            request = self.context.get("request")
+            request_user = request.user if request else None
+
+            # Prefer X-Branch-Id (selected branch) over user.global_dimension_1
+            branch = get_branch_for_request(request) if request else None
+            if not branch and request_user:
+                branch = getattr(request_user, "global_dimension_1", None)
+            line_data_for_dims = dict(line_data)
+            if branch:
+                line_data_for_dims["global_dimension_1"] = branch
+
+            customer_no = (
+                getattr(sales_invoice.customer, "no", None)
+                if sales_invoice.customer
+                else None
+            )
+            item = line_data.get("item")
+            resource = line_data.get("resource")
+            dims = get_merged_line_dimensions(
+                customer_no=customer_no,
+                item=item,
+                resource=resource,
+                request_user=request_user,
+                line_data=line_data_for_dims,
+                header_dimensions=sales_invoice,
+            )
+            line_data["dimension_set"] = dims.get("dimension_set")
+            line_data["global_dimension_1"] = dims.get("global_dimension_1")
+
+            # POS often sends description=''; use item/resource name for sales history lines
+            if not str(line_data.get("description") or "").strip():
+                if item is not None:
+                    line_data["description"] = getattr(item, "item_name", "") or ""
+                elif resource is not None:
+                    line_data["description"] = getattr(resource, "name", "") or ""
+
+            line = SalesInvoiceLine.objects.create(
+                sales_invoice=sales_invoice, **line_data
+            )
+
+            # POS: attach serial tracking specs (one SN per unit). Lot uses tracking_code.
+            if serial_nos and line_data.get("type", "item") == "item" and line.item_id:
+                from items.models import TrackingSpecification
+
+                if not isinstance(serial_nos, (list, tuple)):
+                    serial_nos = [serial_nos]
+                cleaned = [str(s).strip() for s in serial_nos if str(s).strip()]
+                if cleaned:
+                    TrackingSpecification.objects.filter(
+                        sales_invoice_line=line
+                    ).delete()
+                    for sn in cleaned:
+                        TrackingSpecification(
+                            sales_invoice=sales_invoice,
+                            sales_invoice_line=line,
+                            item=line.item,
+                            serial_no=sn,
+                            quantity_base=1,
+                            description="",
+                            location_code=line.location_code,
+                            user=(
+                                request_user
+                                if request_user
+                                and getattr(request_user, "is_authenticated", False)
+                                else None
+                            ),
+                        ).save()
+                    line.tracking_code = None
+                    line.save(update_fields=["tracking_code"])
+
+        return sales_invoice
 
     def update(self, instance, validated_data):
         print("Sales Invoice Update - validated_data:", validated_data)

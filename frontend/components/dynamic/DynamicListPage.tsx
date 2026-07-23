@@ -86,6 +86,10 @@ import PostedSalesHistoryPanel from '@/components/sales/PostedSalesHistoryPanel'
 import ImportItemsDialog from '@/components/items/ImportItemsDialog'
 import ExportItemsModal from '@/components/items/ExportItemsModal'
 import JournalPreviewDialog, { type JournalPreviewContent } from '@/components/dynamic/JournalPreviewDialog'
+import UnapplyCustomerEntriesDialog, {
+  APPLY_CUSTOMER_LEDGER_ENTRIES_ACTION,
+  UNAPPLY_CUSTOMER_ENTRIES_ACTION,
+} from '@/components/dynamic/UnapplyCustomerEntriesDialog'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { POSTED_SALES_INVOICE_LIST_PAGE, salesInvoiceSystemIdFromRecord } from '@/lib/postedSalesHistory'
 import {
@@ -201,6 +205,8 @@ export default function DynamicListPage({ pageId }: Props) {
   const [multiSelectMode, setMultiSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const [postingPreview, setPostingPreview] = useState<JournalPreviewContent | null>(null)
+  const [unapplyOpen, setUnapplyOpen] = useState(false)
+  const [applyClosedAlert, setApplyClosedAlert] = useState<string | null>(null)
   const [pendingPostAction, setPendingPostAction] = useState<PageAction | null>(null)
   const defaultReportDates = defaultFinancialReportDateRange()
   const [reportStartDate, setReportStartDate] = useState(defaultReportDates.startDate)
@@ -767,8 +773,55 @@ export default function DynamicListPage({ pageId }: Props) {
         handleToggleSelectMore()
         return
       }
-      if (!isItemList || !isItemListHashAction(action)) return
       const target = (action.ActionRelativeUrl || '').trim()
+      if (target === APPLY_CUSTOMER_LEDGER_ENTRIES_ACTION) {
+        if (!selectedRecord?.SystemId) {
+          toast.error('Select a customer ledger entry first')
+          return
+        }
+        void (async () => {
+          try {
+            const result = await pageService.invokeAction(
+              pageId,
+              'check_apply_customer_ledger_entries',
+              String(selectedRecord.SystemId),
+            )
+            if (
+              typeof result === 'object'
+              && result !== null
+              && 'Command' in result
+              && result.Command === 'OPEN_APPLY'
+            ) {
+              toast.message(
+                'This entry is open. Apply it from Payment Journal or Cash Receipt Journal → Apply Entries.',
+              )
+              return
+            }
+            toast.error('Could not open Apply Entries')
+          } catch (err) {
+            const message = extractApiErrorMessage(err)
+            if (message.toLowerCase().includes('closed')) {
+              setApplyClosedAlert(
+                message.includes('cannot apply')
+                  ? message
+                  : 'One or more of the entries that you selected is closed. You cannot apply closed entries.',
+              )
+              return
+            }
+            toast.error(message)
+          }
+        })()
+        return
+      }
+      if (target === UNAPPLY_CUSTOMER_ENTRIES_ACTION) {
+        if (!selectedRecord?.SystemId) {
+          toast.error('Select a customer ledger entry first')
+          return
+        }
+        setUnapplyOpen(true)
+        return
+      }
+      if (!isItemList || !isItemListHashAction(action)) return
       if (target === ITEM_LIST_DOWNLOAD_TEMPLATE) {
         void (async () => {
           try {
@@ -790,7 +843,7 @@ export default function DynamicListPage({ pageId }: Props) {
         setExportItemsOpen(true)
       }
     },
-    [handleToggleSelectMore, isItemList],
+    [handleToggleSelectMore, isItemList, pageId, selectedRecord?.SystemId],
   )
 
   useEffect(() => {
@@ -1446,6 +1499,10 @@ export default function DynamicListPage({ pageId }: Props) {
   const showScopedTotal = scopedTotal !== null && isDrillDown
   const activeFilterLabel =
     filterLabel ||
+    (drillDownFilters.document_no
+      ? `Document ${drillDownFilters.document_no}`
+      : null) ||
+    (drillDownFilters.no ? `No. ${drillDownFilters.no}` : null) ||
     (drillDownFilters.posting_date === todayIsoDate() ? "Today's sales" : null) ||
     (drillDownFilters.posting_date === yesterdayIsoDate() ? "Yesterday's sales" : null) ||
     (drillDownFilters.posting_date_from && drillDownFilters.posting_date_to ? filterLabel || 'Date range' : null) ||
@@ -2376,6 +2433,29 @@ export default function DynamicListPage({ pageId }: Props) {
         open={postingPreview !== null}
         preview={postingPreview}
         onClose={() => setPostingPreview(null)}
+      />
+
+      <UnapplyCustomerEntriesDialog
+        open={unapplyOpen}
+        pageId={pageId}
+        systemId={selectedRecord?.SystemId != null ? String(selectedRecord.SystemId) : null}
+        onClose={() => setUnapplyOpen(false)}
+        onUnapplied={() => {
+          void refetch()
+        }}
+      />
+
+      <ConfirmDialog
+        open={applyClosedAlert != null}
+        title="Apply Entries"
+        message={
+          applyClosedAlert
+          ?? 'One or more of the entries that you selected is closed. You cannot apply closed entries.'
+        }
+        alertOnly
+        confirmLabel="OK"
+        onConfirm={() => setApplyClosedAlert(null)}
+        onCancel={() => setApplyClosedAlert(null)}
       />
 
       {listActionLoading && financialReportModalAction == null ? (

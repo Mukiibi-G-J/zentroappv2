@@ -524,13 +524,13 @@ def seed():
         dict(name='entry_no', caption='Entry No.', field_type='Integer', tab_index=9, primary_key=True),
     ]
 
-    _create_applied_ledger_list_page(
+    detailed_vendor_ledger_page = _create_applied_ledger_list_page(
         name='DetailedVendorLedgerEntryList',
         caption='Detailed Vendor Ledger Entries',
         source_table='DetailedVendorLedgerEntry',
         fields=_detailed_vendor_fields,
     )
-    _create_applied_ledger_list_page(
+    detailed_customer_ledger_page = _create_applied_ledger_list_page(
         name='DetailedCustomerLedgerEntryList',
         caption='Detailed Customer Ledger Entries',
         source_table='DetailedCustomerLedgerEntry',
@@ -549,6 +549,19 @@ def seed():
         applied_list_name='CustomerAppliedEntriesList',
         detailed_list_name='DetailedCustomerLedgerEntryList',
     )
+
+    # BC: Remaining Amount / Amount on CLE drill into Detailed Ledger Entries.
+    for _field_name in ('remaining_amount', 'amount'):
+        _link_drill_down(
+            page_names=('CustomerLedgerEntryList',),
+            field_name=_field_name,
+            drill_down_page=detailed_customer_ledger_page,
+        )
+        _link_drill_down(
+            page_names=('VendorLedgerEntryList',),
+            field_name=_field_name,
+            drill_down_page=detailed_vendor_ledger_page,
+        )
 
     item_ledger_page = _create_ledger_list_page(
         name='ItemLedgerEntryList',
@@ -730,6 +743,7 @@ def seed():
     _seed_item_tracking_lines_worksheet_page()
     _seed_posted_item_tracking_lines_page()
     _seed_apply_customer_entries_page()
+    _seed_unapply_customer_entries_page()
     crj_worksheet, crj_batch_list = _seed_cash_receipt_journal_pages()
     gj_worksheet, gj_batch_list = _seed_general_journal_pages()
     _ = gj_worksheet, gj_batch_list
@@ -838,6 +852,7 @@ def seed():
     )
     mfg_setup = _seed_manufacturing_setup_page()
     gl_setup = _seed_general_ledger_setup_page()
+    sales_recv_setup = _seed_sales_receivable_setup_page()
     posting_pages = _seed_gl_posting_pages()
     dimension_pages = _seed_dimension_pages()
     financial_report_pages = _seed_financial_report_pages()
@@ -870,7 +885,7 @@ def seed():
         "Seeded: ItemCard, CustomerCard, VendorCard, BankAccountCard, GLAccountCard, UsersCard + linked list pages + "
         "ledger drill-down + User Setup + Sales Order + Sales Invoice + Point of Sale + Purchase Invoice + "
         "Expenses + Item Journals + Payments + Role Centre + Company Card + "
-        "Setup pages (No. Series + Inventory/Manufacturing/G/L Setup cards) + User settings list/card + "
+        "Setup pages (No. Series + Inventory/Manufacturing/G/L/Sales Receivables Setup cards) + User settings list/card + "
         "Restaurant module (orders, tables, menus, role centres) + "
         "Permission Sets + User Groups"
     )
@@ -990,8 +1005,10 @@ def _seed_sales_order_pages():
              editable=True, primary_key=False, tab_index=3),
         dict(name='unit_price', caption='Unit Price', field_type='Decimal', visible=True,
              editable=True, primary_key=False, tab_index=4),
+        dict(name='line_discount_amount', caption='Line Discount', field_type='Decimal',
+             visible=True, editable=True, primary_key=False, tab_index=5),
         dict(name='amount', caption='Amount', field_type='Decimal', visible=True,
-             editable=False, primary_key=False, tab_index=5),
+             editable=False, primary_key=False, tab_index=6),
     ])
 
     doc, _ = Page.objects.update_or_create(
@@ -1141,10 +1158,12 @@ def _seed_sales_invoice_pages():
              editable=True, primary_key=False, tab_index=3),
         dict(name='unit_price', caption='Unit Price', field_type='Decimal', visible=True,
              editable=True, primary_key=False, tab_index=4),
+        dict(name='line_discount_amount', caption='Line Discount', field_type='Decimal',
+             visible=True, editable=True, primary_key=False, tab_index=5),
         dict(name='total_amount', caption='Amount', field_type='Decimal', visible=True,
-             editable=False, primary_key=False, tab_index=5),
+             editable=False, primary_key=False, tab_index=6),
         dict(name='tracking_code', caption='Lot No.', field_type='Code', visible=True,
-             editable=False, primary_key=False, tab_index=6,
+             editable=False, primary_key=False, tab_index=7,
              visible_when_field='type', visible_when_values='item'),
     ])
 
@@ -1209,8 +1228,15 @@ def _seed_sales_invoice_pages():
         dict(name='status', caption='Status', field_type='Option', visible=True, editable=False,
              primary_key=False, tab_index=6,
              enum_values='Draft,Open,Posted,Cancelled'),
+        dict(name='invoice_discount_type', caption='Payment Discount Type', field_type='Option',
+             visible=True, editable=True, primary_key=False, tab_index=7,
+             enum_values='amount,percentage'),
+        dict(name='invoice_discount_amount', caption='Payment Discount Amount', field_type='Decimal',
+             visible=True, editable=True, primary_key=False, tab_index=8),
+        dict(name='invoice_discount_percentage', caption='Payment Discount %', field_type='Decimal',
+             visible=True, editable=True, primary_key=False, tab_index=9),
         dict(name='total_amount', caption='Amount', field_type='Decimal', visible=True, editable=False,
-             primary_key=False, tab_index=7),
+             primary_key=False, tab_index=10),
     ])
     PageControlField.objects.filter(
         page_control=general_ctrl,
@@ -1656,7 +1682,7 @@ def _seed_pos_page_actions(pos_page: Page) -> None:
             image_url='Save',
             ribbon_tab='Home',
             requires_confirmation=True,
-            confirmation_message='Save this cart as a draft? You can resume it later (max 3 drafts).',
+            confirmation_message='Save this cart as a draft? You can resume it later (max 5 drafts).',
             tooltip='Save cart without posting',
         ),
         dict(
@@ -3577,13 +3603,14 @@ def _seed_ledger_entry_ribbon_actions(
     BC Vendor/Customer Ledger Entries promoted actions (Process / Entry / Report).
 
     Entry group mirrors page 29 Category_Category5: Applied Entries + Detailed Ledger Entries.
+    Home/Apply Entries: Unapply Entries (customer only) — BC CustEntry-Apply Posted Entries.
     """
     if party == 'vendor':
         detail_param = 'vendor_ledger_entry_id'
     else:
         detail_param = 'customer_ledger_entry_id'
 
-    specs = (
+    specs = [
         {
             'name': 'OpenAppliedEntries',
             'caption': 'Applied Entries',
@@ -3609,7 +3636,39 @@ def _seed_ledger_entry_ribbon_actions(
                 '(BC Detailed Vendor Ledg. Entries).'
             ),
         },
-    )
+    ]
+    if party == 'customer':
+        # BC Home / Apply Entries group: Apply Entries + Unapply Entries...
+        specs.insert(
+            0,
+            {
+                'name': 'ApplyEntries',
+                'caption': 'Apply Entries',
+                'action_relative_url': '#apply-customer-ledger-entries',
+                'ribbon_tab': 'Home',
+                'ribbon_group': 'Apply Entries',
+                'image_url': 'Link2',
+                'tooltip': (
+                    'Apply open customer ledger entries (BC Apply Customer Entries). '
+                    'Closed entries cannot be applied.'
+                ),
+            },
+        )
+        specs.insert(
+            1,
+            {
+                'name': 'UnapplyEntries',
+                'caption': 'Unapply Entries...',
+                'action_relative_url': '#unapply-customer-entries',
+                'ribbon_tab': 'Home',
+                'ribbon_group': 'Apply Entries',
+                'image_url': 'Unlink',
+                'tooltip': (
+                    'Unapply payment applications on this customer ledger entry '
+                    '(BC Unapply Customer Entries). Preview, then post the unapply.'
+                ),
+            },
+        )
     for spec in specs:
         PageAction.objects.update_or_create(
             page=ledger_page,
@@ -3623,9 +3682,114 @@ def _seed_ledger_entry_ribbon_actions(
                 'action_relative_url': spec['action_relative_url'],
                 'visible': True,
                 'ribbon_tab': spec['ribbon_tab'],
+                'ribbon_group': spec.get('ribbon_group') or '',
                 'image_url': spec['image_url'],
             },
         )
+
+
+def _seed_unapply_customer_entries_page() -> Page:
+    """BC Unapply Customer Entries worksheet (dialog) — Application detailed lines."""
+
+    header_card, _ = Page.objects.update_or_create(
+        name='UnapplyCustomerEntriesHeader',
+        defaults={
+            'caption': 'General',
+            'source_table': 'CustomerLedgerEntry',
+            'page_type': 'Card',
+            'editable': True,
+            'insert_allowed': False,
+            'delete_allowed': False,
+            'modify_allowed': True,
+        },
+    )
+    header_ctrl, _ = PageControl.objects.get_or_create(
+        page=header_card,
+        name='UnapplyCustomerEntriesGeneral',
+        defaults={
+            'control_type': 'Group',
+            'caption': 'General',
+            'source_table': 'CustomerLedgerEntry',
+            'show_caption': True,
+            'editable': True,
+            'visible': True,
+        },
+    )
+    PageControlField.objects.filter(page=header_card, page_control=header_ctrl).delete()
+    _seed_fields(header_ctrl, header_card, [
+        dict(name='document_no', caption='Document No.', field_type='Code', visible=True, editable=True, tab_index=0),
+        dict(name='posting_date', caption='Posting Date', field_type='Date', visible=True, editable=True, tab_index=1),
+    ])
+
+    worksheet, _ = Page.objects.update_or_create(
+        name='UnapplyCustomerEntries',
+        defaults={
+            'caption': 'Unapply Customer Entries',
+            'source_table': 'DetailedCustomerLedgerEntry',
+            'page_type': 'Worksheet',
+            'editable': False,
+            'insert_allowed': False,
+            'delete_allowed': False,
+            'modify_allowed': False,
+            'header_page': header_card,
+        },
+    )
+    worksheet.header_page = header_card
+    worksheet.save(update_fields=['header_page'])
+
+    lines_ctrl, _ = PageControl.objects.get_or_create(
+        page=worksheet,
+        name='UnapplyCustomerEntriesLines',
+        defaults={
+            'control_type': 'Repeater',
+            'caption': 'Lines',
+            'source_table': 'DetailedCustomerLedgerEntry',
+            'show_caption': False,
+            'editable': False,
+            'visible': True,
+        },
+    )
+    PageControlField.objects.filter(page=worksheet, page_control=lines_ctrl).delete()
+    _seed_fields(lines_ctrl, worksheet, [
+        dict(name='posting_date', caption='Posting Date', field_type='Date', visible=True, editable=False, tab_index=0),
+        dict(name='entry_type', caption='Entry Type', field_type='Text', visible=True, editable=False, tab_index=1),
+        dict(name='document_type', caption='Document Type', field_type='Text', visible=True, editable=False, tab_index=2),
+        dict(name='document_no', caption='Document No.', field_type='Code', visible=True, editable=False, tab_index=3),
+        dict(name='customer__no', caption='Customer No.', field_type='Code', visible=True, editable=False, tab_index=4),
+        dict(name='initial_document_type', caption='Initial Document Type', field_type='Text', visible=True, editable=False, tab_index=5),
+        dict(name='amount', caption='Amount', field_type='Decimal', visible=True, editable=False, tab_index=6),
+        dict(name='entry_no', caption='Entry No.', field_type='Integer', visible=False, editable=False, tab_index=7, primary_key=True),
+    ])
+
+    PageAction.objects.update_or_create(
+        page=worksheet,
+        name='PreviewUnapply',
+        defaults={
+            'caption': 'Preview Unapply',
+            'action_relative_url': '#preview-unapply',
+            'ribbon_tab': 'Home',
+            'tooltip': 'Preview the detailed customer ledger entries that will be posted',
+            'visible': True,
+            'image_url': 'Eye',
+        },
+    )
+    PageAction.objects.update_or_create(
+        page=worksheet,
+        name='Unapply',
+        defaults={
+            'caption': 'Unapply',
+            'action_relative_url': '#unapply',
+            'ribbon_tab': 'Home',
+            'tooltip': 'Post the unapply and reopen the applied customer ledger entries',
+            'visible': True,
+            'image_url': 'Unlink',
+            'requires_confirmation': True,
+            'confirmation_message': (
+                'Do you want to unapply the selected application entries?'
+            ),
+        },
+    )
+    return worksheet
 
 
 def _ensure_field(
@@ -5419,7 +5583,7 @@ def _seed_debug_admin_rc(
 ) -> Page:
     """
     Debug Admin Role Centre — full Business Manager nav plus advanced Setup pages
-    (Inventory / Manufacturing / G/L Setup, No. Series).
+    (Inventory / Manufacturing / G/L / Sales & Receivables Setup, No. Series).
     """
     rc = _create_role_centre_shell('DebugAdminRC', 'Debug Admin')
     _seed_rc_nav_actions(rc, [
@@ -5457,6 +5621,7 @@ def _seed_debug_admin_rc(
         ('NavItemCategories', 'Item Categories', 'ItemCategoryList', 'Tags', 'Setup'),
         ('NavManufacturingSetup', 'Manufacturing Setup', 'ManufacturingSetupCard', 'Wrench', 'Setup'),
         ('NavGLSetup', 'G/L Setup', 'GeneralLedgerSetupCard', 'Layers', 'Setup'),
+        ('NavSalesReceivableSetup', 'Sales & Receivables Setup', 'SalesReceivableSetupCard', 'Percent', 'Setup'),
         ('NavNoSeries', 'No. Series', 'NoSeriesList', 'FileText', 'Setup'),
     ])
     _seed_business_manager_headlines(
@@ -7870,6 +8035,137 @@ def _seed_general_ledger_setup_page() -> Page:
     _ensure_table_relation('GeneralLedgerSetup', 'global_dimension_2', 'Dimension')
 
     _seed_gl_setup_posting_actions(page)
+    return page
+
+
+def _seed_sales_receivable_setup_page() -> Page:
+    """Card page for SalesReceivable (Sales & Receivables Setup singleton)."""
+    page, _ = Page.objects.update_or_create(
+        name='SalesReceivableSetupCard',
+        defaults={
+            'caption': 'Sales & Receivables Setup',
+            'source_table': 'SalesReceivable',
+            'page_type': 'Card',
+            'editable': True,
+            'insert_allowed': False,
+            'delete_allowed': False,
+            'modify_allowed': True,
+        },
+    )
+    noseries_ctrl, _ = PageControl.objects.get_or_create(
+        page=page,
+        name='SalesReceivableNoSeries',
+        defaults={
+            'control_type': 'Group',
+            'caption': 'Number Series',
+            'source_table': 'SalesReceivable',
+            'show_caption': True,
+            'editable': True,
+            'visible': True,
+            'tab_index': 0,
+        },
+    )
+    noseries_ctrl.caption = 'Number Series'
+    noseries_ctrl.tab_index = 0
+    noseries_ctrl.save(update_fields=['caption', 'tab_index'])
+
+    discounts_ctrl, _ = PageControl.objects.get_or_create(
+        page=page,
+        name='SalesReceivableDiscounts',
+        defaults={
+            'control_type': 'Group',
+            'caption': 'Discounts & Price Editing',
+            'source_table': 'SalesReceivable',
+            'show_caption': True,
+            'editable': True,
+            'visible': True,
+            'tab_index': 1,
+        },
+    )
+    discounts_ctrl.caption = 'Discounts & Price Editing'
+    discounts_ctrl.tab_index = 1
+    discounts_ctrl.save(update_fields=['caption', 'tab_index'])
+
+    PageControl.objects.filter(page=page, control_type='Group').exclude(
+        name__in=('SalesReceivableNoSeries', 'SalesReceivableDiscounts'),
+    ).delete()
+    PageControlField.objects.filter(page=page).delete()
+
+    # Model FKs point at NoSeriesLines; UI picks NoSeries by code (resolved in page engine).
+    _ns = dict(
+        field_type='Code',
+        visible=True,
+        editable=True,
+        primary_key=False,
+        has_table_relation=True,
+        related_table='NoSeries',
+        related_field='code',
+        related_display_field='description',
+    )
+    _seed_fields(noseries_ctrl, page, [
+        dict(name='customer_no', caption="Customer No's.", tab_index=0, **_ns),
+        dict(name='sales_no', caption="Sales No's.", tab_index=1, **_ns),
+        dict(name='invoice_no', caption="Invoice No's.", tab_index=2, **_ns),
+        dict(name='posted_invoice_no', caption="Posted Invoice No's.", tab_index=3, **_ns),
+        dict(name='credit_memo_no', caption="Credit Memo No's.", tab_index=4, **_ns),
+        dict(name='posted_credit_memo_no', caption="Posted Credit Memo No's.", tab_index=5, **_ns),
+        dict(name='sales_order_no', caption="Sales Order No's.", tab_index=6, **_ns),
+        dict(name='posted_prepayment_invoice_no', caption="Posted Prepmt. Invoice No's.", tab_index=7, **_ns),
+        dict(name='posted_prepayment_credit_memo_no', caption="Posted Prepmt. Credit Memo No's.", tab_index=8, **_ns),
+        dict(name='sales_price_list_no', caption="Sales Price List No's.", tab_index=9, **_ns),
+    ])
+    for field_name in (
+        'customer_no',
+        'sales_no',
+        'invoice_no',
+        'posted_invoice_no',
+        'credit_memo_no',
+        'posted_credit_memo_no',
+        'sales_order_no',
+        'posted_prepayment_invoice_no',
+        'posted_prepayment_credit_memo_no',
+        'sales_price_list_no',
+    ):
+        _ensure_table_relation('SalesReceivable', field_name, 'NoSeries')
+
+    _seed_fields(discounts_ctrl, page, [
+        dict(
+            name='enable_line_discounts',
+            caption='Enable Line Discounts',
+            field_type='Boolean',
+            visible=True,
+            editable=True,
+            primary_key=False,
+            tab_index=0,
+        ),
+        dict(
+            name='enable_invoice_discounts',
+            caption='Enable Invoice / Payment Discounts',
+            field_type='Boolean',
+            visible=True,
+            editable=True,
+            primary_key=False,
+            tab_index=1,
+        ),
+        dict(
+            name='prevent_price_below_original',
+            caption='Prevent Price Below Original',
+            field_type='Boolean',
+            visible=True,
+            editable=True,
+            primary_key=False,
+            tab_index=2,
+        ),
+        dict(
+            name='disable_price_editing',
+            caption='Disable Price Editing',
+            field_type='Boolean',
+            visible=True,
+            editable=True,
+            primary_key=False,
+            tab_index=3,
+        ),
+    ])
     return page
 
 

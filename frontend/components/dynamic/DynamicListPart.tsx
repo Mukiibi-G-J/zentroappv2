@@ -7,6 +7,8 @@ import { Check, ChevronRight, Barcode } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { usePage, usePages } from '@/hooks/usePage'
+import { useSalesSetup, normalizeSalesSetup } from '@/hooks/useSalesSetup'
+import { filterDiscountFieldsBySetup } from '@/lib/salesDiscountFields'
 import type { UseDocumentLinesReturn } from '@/hooks/useDocumentLines'
 import { mapTableRelationValue, type RelationOption } from '@/hooks/useRelationOptions'
 import { formatRelationDisplay, resolveRelationSelectValue } from '@/lib/relationDisplay'
@@ -121,6 +123,8 @@ export function DynamicListPart({
   const searchParams = useSearchParams()
   const queryClient = useQueryClient()
   const { data: allPages = [] } = usePages()
+  const { data: salesSetupRaw } = useSalesSetup()
+  const salesSetup = useMemo(() => normalizeSalesSetup(salesSetupRaw), [salesSetupRaw])
   const trackingWorksheetPageFromCatalog = useMemo(
     () => allPages.find((p) => p.Name === ITEM_TRACKING_LINES_WORKSHEET_PAGE_NAME),
     [allPages],
@@ -190,9 +194,12 @@ export function DynamicListPart({
   )
 
   const visibleFields = useMemo(
-    () => repeaterControl.Fields.filter((f) => f.Visible),
+    () => filterDiscountFieldsBySetup(
+      repeaterControl.Fields.filter((f) => f.Visible),
+      salesSetup,
+    ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [visibleFieldKey],
+    [visibleFieldKey, salesSetup.enable_line_discounts, salesSetup.enable_invoice_discounts],
   )
 
   const contextRelationFields = useMemo(

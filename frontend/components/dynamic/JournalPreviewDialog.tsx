@@ -2,9 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowLeft, X } from 'lucide-react'
+import { usePathname, useRouter } from 'next/navigation'
+import { ArrowLeft, ExternalLink, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatDisplayDate } from '@/lib/dateFormat'
+import { usePages } from '@/hooks/usePage'
+import { getPageRouteId } from '@/lib/pageRoutes'
 
 interface PreviewEntry {
   Line: number
@@ -18,6 +21,9 @@ export interface PreviewRelatedEntry {
   TableKey: string
   TableName: string
   NoOfEntries: number
+  /** BC Navigate Show — open this page-engine list with NavigateFilters. */
+  NavigatePageName?: string | null
+  NavigateFilters?: Record<string, string> | null
 }
 
 export interface AccountHoverInfo {
@@ -37,6 +43,8 @@ export interface JournalPreviewContent {
   Message?: string
   BatchName?: string
   DialogTitle?: string
+  /** BC Step B title when drilling into a related entry set (e.g. Detailed Customer Ledger Entries Preview). */
+  DetailDialogTitle?: string
 }
 
 interface Props {
@@ -201,9 +209,10 @@ const DETAIL_COLUMNS: Record<string, { key: string; label: string; align?: 'righ
     { key: 'DocumentType', label: 'Document Type' },
     { key: 'DocumentNo', label: 'Document No.' },
     { key: 'CustomerNo', label: 'Customer No.' },
+    { key: 'CurrencyCode', label: 'Currency Code' },
     { key: 'Amount', label: 'Amount', align: 'right' },
-    { key: 'DebitAmount', label: 'Debit Amount', align: 'right' },
-    { key: 'CreditAmount', label: 'Credit Amount', align: 'right' },
+    { key: 'AmountLCY', label: 'Amount (LCY)', align: 'right' },
+    { key: 'InitialEntryDueDate', label: 'Initial Entry Due Date' },
   ],
   vat_entry: [
     { key: 'PostingDate', label: 'Posting Date' },
@@ -257,10 +266,17 @@ function formatCellValue(key: string, value: unknown): string {
 }
 
 export default function JournalPreviewDialog({ open, preview, onClose }: Props) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const { data: pages = [] } = usePages()
   const [selectedTableKey, setSelectedTableKey] = useState<string | null>(null)
+  const [focusedRelatedKey, setFocusedRelatedKey] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!open) setSelectedTableKey(null)
+    if (!open) {
+      setSelectedTableKey(null)
+      setFocusedRelatedKey(null)
+    }
   }, [open, preview])
 
   const relatedEntries = useMemo(() => {
@@ -278,15 +294,60 @@ export default function JournalPreviewDialog({ open, preview, onClose }: Props) 
     }))
   }, [preview])
 
+  const navigateToRelatedPage = (row: PreviewRelatedEntry) => {
+    const pageName = row.NavigatePageName?.trim()
+    if (!pageName) return false
+    const target = pages.find((p) => p.Name === pageName)
+    if (!target) return false
+
+    const params = new URLSearchParams()
+    params.set('page', String(getPageRouteId(target)))
+    params.set('return', pathname || '/dashboard')
+    params.set('filterLabel', row.TableName)
+
+    const filters = row.NavigateFilters || {}
+    for (const [key, value] of Object.entries(filters)) {
+      if (value == null || value === '') continue
+      params.set(key, String(value))
+    }
+
+    const docLabel = filters.document_no || filters.no
+    if (docLabel) {
+      params.set('ctxLabel', String(docLabel))
+    }
+
+    onClose()
+    router.push(`/dashboard?${params.toString()}`)
+    return true
+  }
+
   const selectedTable = relatedEntries.find((r) => r.TableKey === selectedTableKey)
   const detailRows = selectedTableKey && preview?.EntrySets?.[selectedTableKey]
     ? preview.EntrySets[selectedTableKey]
     : []
   const detailColumns = selectedTableKey ? DETAIL_COLUMNS[selectedTableKey] : undefined
+  const focusedRelated = relatedEntries.find((r) => r.TableKey === focusedRelatedKey)
+    ?? relatedEntries[0]
+    ?? null
 
   if (!open || !preview) return null
 
   const showDetail = selectedTableKey && detailColumns && detailRows.length > 0
+  const detailTitle =
+    preview.DetailDialogTitle
+    || (selectedTableKey === 'detailed_customer_ledger_entry'
+      ? 'Detailed Customer Ledger Entries Preview'
+      : selectedTable?.TableName)
+      || 'Entry Preview'
+
+  const openFocusedRelated = () => {
+    const row = focusedRelated
+    if (!row) return
+    if (row.NavigatePageName && navigateToRelatedPage(row)) return
+    if (preview.EntrySets?.[row.TableKey]?.length) {
+      setSelectedTableKey(row.TableKey)
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -306,7 +367,7 @@ export default function JournalPreviewDialog({ open, preview, onClose }: Props) 
             )}
             <h2 className="text-base font-semibold text-mainTextColor truncate">
               {showDetail
-                ? selectedTable?.TableName
+                ? detailTitle
                 : (preview.DialogTitle || 'Posting Preview')}
             </h2>
           </div>
@@ -318,6 +379,20 @@ export default function JournalPreviewDialog({ open, preview, onClose }: Props) 
             <X size={16} />
           </button>
         </div>
+
+        {!showDetail && relatedEntries.length > 0 ? (
+          <div className="flex items-center gap-1 px-3 py-1.5 border-b border-gray-100">
+            <button
+              type="button"
+              disabled={!focusedRelated}
+              onClick={openFocusedRelated}
+              className="inline-flex items-center gap-2 rounded px-2 py-1.5 text-sm text-bodyText transition hover:bg-[#eef6f7] hover:text-s1 disabled:opacity-45"
+            >
+              <ExternalLink size={15} className="text-s1 shrink-0" strokeWidth={1.75} />
+              <span>Show Related Entries</span>
+            </button>
+          </div>
+        ) : null}
 
         {preview.BatchName && !showDetail && (
           <div className="px-5 py-2 bg-gray-50 border-b border-gray-200 text-sm text-bodyText">
@@ -340,19 +415,42 @@ export default function JournalPreviewDialog({ open, preview, onClose }: Props) 
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {relatedEntries.map((row) => {
+                  const canNavigate = Boolean(
+                    row.NavigatePageName
+                    && pages.some((p) => p.Name === row.NavigatePageName),
+                  )
                   const hasDetail = Boolean(preview.EntrySets?.[row.TableKey]?.length)
+                  const clickable = canNavigate || hasDetail
+                  const focused = focusedRelated?.TableKey === row.TableKey
                   return (
                     <tr
                       key={row.TableKey}
                       className={cn(
                         'transition',
-                        hasDetail ? 'cursor-pointer hover:bg-s1/5' : 'hover:bg-gray-50',
+                        clickable ? 'cursor-pointer hover:bg-s1/5' : 'hover:bg-gray-50',
+                        focused && 'bg-[#eef6f7]',
                       )}
+                      title={
+                        canNavigate
+                          ? `Open ${row.TableName} filtered to this document`
+                          : hasDetail
+                            ? `Show ${row.TableName} preview`
+                            : undefined
+                      }
                       onClick={() => {
+                        setFocusedRelatedKey(row.TableKey)
+                        if (canNavigate && navigateToRelatedPage(row)) return
                         if (hasDetail) setSelectedTableKey(row.TableKey)
                       }}
                     >
-                      <td className="px-4 py-3 text-mainTextColor font-medium">{row.TableName}</td>
+                      <td className="px-4 py-3 text-mainTextColor font-medium">
+                        <span className="inline-flex items-center gap-2">
+                          {row.TableName}
+                          {canNavigate ? (
+                            <ExternalLink size={13} className="text-s1 shrink-0" />
+                          ) : null}
+                        </span>
+                      </td>
                       <td className="px-4 py-3 text-right tabular-nums text-mainTextColor">
                         {row.NoOfEntries}
                       </td>

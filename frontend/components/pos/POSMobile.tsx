@@ -78,9 +78,20 @@ export function POSMobile({ pos, pageActions }: POSMobileProps) {
             <POSCartPanel
               cart={pos.cart}
               subtotal={pos.subtotal}
+              total={pos.total}
               canEditPrice={pos.canEditPrice}
+              enableLineDiscounts={pos.enableLineDiscounts}
+              enableInvoiceDiscounts={pos.enableInvoiceDiscounts}
+              invoiceDiscountType={pos.invoiceDiscountType}
+              invoiceDiscountAmount={pos.invoiceDiscountAmount}
+              invoiceDiscountPercentage={pos.invoiceDiscountPercentage}
+              invoiceDiscountValue={pos.invoiceDiscountValue}
               onUpdateQuantity={pos.updateLineQuantity}
               onUpdatePrice={pos.updateLinePrice}
+              onUpdateLineDiscount={pos.updateLineDiscount}
+              onInvoiceDiscountTypeChange={pos.setInvoiceDiscountType}
+              onInvoiceDiscountAmountChange={pos.setInvoiceDiscountAmount}
+              onInvoiceDiscountPercentageChange={pos.setInvoiceDiscountPercentage}
               onRemove={pos.removeLine}
               onClear={pos.clearCart}
               onCheckout={() => {
@@ -97,7 +108,7 @@ export function POSMobile({ pos, pageActions }: POSMobileProps) {
 
       <POSCheckoutDialog
         open={pos.checkoutOpen}
-        subtotal={pos.subtotal}
+        subtotal={pos.total}
         amountReceived={pos.amountReceived}
         onAmountReceivedChange={pos.setAmountReceived}
         customers={pos.customers}

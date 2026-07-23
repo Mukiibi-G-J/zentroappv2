@@ -2252,10 +2252,11 @@ class SalesInvoiceProcessor:
                             "document_no": self.invoice.invoice_no,
                             "customer_no": self.customer.no,
                             "customer": self.customer,
-                            "amount": -customer_amount,
+                            # BC: Invoice Initial Entry is positive (receivable).
+                            "amount": customer_amount,
                             "initial_entry_due_date": self.invoice.due_date,
-                            "credit_amount": customer_amount,
-                            "debit_amount": 0,
+                            "credit_amount": 0,
+                            "debit_amount": customer_amount,
                             "transaction_no": transaction_no,
                             "initial_document_type": "Invoice",
                             "customer_ledger_entry": "10001",  # Will be replaced with actual entry ID during posting
@@ -2347,9 +2348,20 @@ class SalesInvoiceProcessor:
                         "payment_method": self.payment_method,
                         "original_amount": customer_amount,
                         "amount": customer_amount,
-                        "remaining_amount": customer_amount,
+                        "remaining_amount": (
+                            0
+                            if (
+                                self.payment_method
+                                and self.payment_method.is_cash_payment()
+                            )
+                            else customer_amount
+                        ),
                         "sales": customer_amount,
-                        "open": True,
+                        # BC: cash invoice is closed by the payment application.
+                        "open": not (
+                            self.payment_method
+                            and self.payment_method.is_cash_payment()
+                        ),
                         "due_date": self.invoice.due_date,
                         "global_dimension_1": self.global_dimension_1_value,
                         "dimension_set": self.dimension_set_value,
@@ -2372,7 +2384,7 @@ class SalesInvoiceProcessor:
                             "payment_method": self.payment_method,
                             "original_amount": -customer_amount,
                             "amount": -customer_amount,
-                            "remaining_amount": -customer_amount,
+                            "remaining_amount": 0,
                             "sales": 0,
                             "open": False,
                             "due_date": self.invoice.due_date,
@@ -4122,13 +4134,19 @@ class SalesInvoicePostingProcessor:
 
             # Create Posted Sales Invoice Lines (copy type and resource for BC-style lines)
             for line in self.invoice.lines.all():
+                description = (line.description or "").strip()
+                if not description:
+                    if line.item_id and line.item:
+                        description = line.item.item_name or ""
+                    elif line.resource_id and line.resource:
+                        description = line.resource.name or ""
                 PostedSalesInvoiceLine.objects.create(
                     posted_sales_invoice=posted_sales_invoice,
                     type=line.type,
                     item=line.item,
                     resource=line.resource,
                     gl_account=line.gl_account,
-                    description=line.description,
+                    description=description,
                     location_code=line.location_code,
                     quantity=line.quantity,
                     unit_of_measure=line.unit_of_measure,

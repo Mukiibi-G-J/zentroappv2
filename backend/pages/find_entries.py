@@ -304,11 +304,19 @@ def build_find_entries_for_posted_purchase(record) -> dict:
         entries = collect_ledger_entries_by_document_nos(doc_nos)
 
     batch = next(iter(doc_nos))
+    posting_date = getattr(record, 'posting_date', None)
+    posting_date_s = (
+        posting_date.isoformat()
+        if hasattr(posting_date, 'isoformat')
+        else (str(posting_date)[:10] if posting_date else None)
+    )
     return build_find_entries_preview_content(
         entries,
         message=f'Find entries for document {", ".join(sorted(doc_nos))}',
         batch_name=batch,
         source_table_name='Posted Purchase Invoice',
+        document_nos=sorted(doc_nos),
+        posting_date=posting_date_s,
     )
 
 
@@ -327,9 +335,17 @@ def build_find_entries_for_posted_sales(record) -> dict:
         entries = collect_ledger_entries_by_document_nos(doc_nos)
 
     batch = next(iter(doc_nos))
+    posting_date = getattr(record, 'posting_date', None)
+    posting_date_s = (
+        posting_date.isoformat()
+        if hasattr(posting_date, 'isoformat')
+        else (str(posting_date)[:10] if posting_date else None)
+    )
     return build_find_entries_preview_content(
         entries,
         message=f'Find entries for document {", ".join(sorted(doc_nos))}',
         batch_name=batch,
         source_table_name='Posted Sales Invoice',
+        document_nos=sorted(doc_nos),
+        posting_date=posting_date_s,
     )

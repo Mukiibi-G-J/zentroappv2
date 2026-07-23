@@ -56,11 +56,16 @@ export default function DrillDownField({
     sourcePage?.SourceTable === 'CustomUser' &&
     record.id != null &&
     record.id !== ''
+  const isDetailedLedgerDrillDown =
+    (targetPage?.Name === 'DetailedCustomerLedgerEntryList' ||
+      targetPage?.Name === 'DetailedVendorLedgerEntryList') &&
+    record.id != null &&
+    record.id !== ''
   const canDrillDown =
     !isNonStockInventory &&
     field.HasDrillDownPage &&
     href &&
-    (drillKey !== null || isSalesPersonDrillDown)
+    (drillKey !== null || isSalesPersonDrillDown || isDetailedLedgerDrillDown)
 
   if (!canDrillDown) {
     return (

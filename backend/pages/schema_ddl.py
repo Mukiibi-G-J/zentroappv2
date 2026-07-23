@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS page_engine_action (
     image_url VARCHAR(500),
     action_relative_url VARCHAR(500),
     ribbon_tab VARCHAR(100),
+    ribbon_group VARCHAR(100),
     visible_when_field VARCHAR(200),
     visible_when_values TEXT
 );
@@ -109,6 +110,7 @@ ALTER TABLE page_engine_field ADD COLUMN IF NOT EXISTS threshold_danger INTEGER;
 ALTER TABLE page_engine_field ADD COLUMN IF NOT EXISTS relation_lookup_footer BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE page_engine_field ADD COLUMN IF NOT EXISTS relation_part_control_name VARCHAR(200) NULL;
 ALTER TABLE page_engine_action ADD COLUMN IF NOT EXISTS action_type VARCHAR(20) NOT NULL DEFAULT 'Ribbon';
+ALTER TABLE page_engine_action ADD COLUMN IF NOT EXISTS ribbon_group VARCHAR(100);
 ALTER TABLE page_engine_page ADD COLUMN IF NOT EXISTS list_filter_field VARCHAR(200) NOT NULL DEFAULT '';
 ALTER TABLE page_engine_page ADD COLUMN IF NOT EXISTS list_filter_value VARCHAR(200) NOT NULL DEFAULT '';
 ALTER TABLE page_engine_page ADD COLUMN IF NOT EXISTS object_id INTEGER UNIQUE;
