@@ -13,6 +13,12 @@ Always run first:
 python manage.py migrate_schemas
 ```
 
+If login fails with `column authentication_customuser.system_id does not exist` (or the server warns about dozens of unapplied migrations), follow:
+
+- [`docs/general/SYSTEM_ID_MIGRATION_PRODUCTION_RUNBOOK.md`](docs/general/SYSTEM_ID_MIGRATION_PRODUCTION_RUNBOOK.md)
+
+Related auth drift: [`docs/general/TOKEN_VALID_AFTER_PRODUCTION_RUNBOOK.md`](docs/general/TOKEN_VALID_AFTER_PRODUCTION_RUNBOOK.md)
+
 ---
 
 ## 2. Page Objects & Permissions

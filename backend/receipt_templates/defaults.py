@@ -264,7 +264,12 @@ DEFAULT_ASSIGNMENTS = [
     ("sale_standard", "mobile", "bluetooth", "pos_sale", 100),
     ("sale_standard", "mobile", "usb", "pos_sale", 100),
     ("sale_compact", "mobile", "any", "sales_history_reprint", 100),
+    # Restaurant settle — web browser print (counter / dine-in checkout)
+    ("sale_standard", "web", "browser", "restaurant_settle", 100),
+    ("sale_standard", "web", "serial", "restaurant_settle", 90),
+    ("sale_standard", "desktop", "desktop_silent", "restaurant_settle", 100),
     ("sale_standard", "mobile", "any", "restaurant_settle", 100),
+    ("sale_standard", "any", "any", "restaurant_settle", 50),
     ("sale_standard", "desktop", "desktop_silent", "pos_sale", 100),
     ("prepayment_standard", "any", "any", "prepayment_post", 100),
     ("kot_compact", "any", "any", "restaurant_kot", 100),

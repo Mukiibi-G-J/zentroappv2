@@ -311,6 +311,14 @@ class Command(BaseCommand):
         clear = options.get("clear", False)
 
         def run():
+            from receipt_templates.seed import seed_receipt_templates
+
+            # Same as seed_pages: menu seed must leave receipt print assignments ready
+            # (web browser restaurant_settle) or checkout shows "receipt did not print".
+            if not dry_run:
+                self.stdout.write("Seeding receipt templates / print assignments…")
+                seed_receipt_templates(self.stdout, self.style)
+
             summary = seed_storms_cafe_menu(clear=clear, dry_run=dry_run)
             prefix = "[DRY RUN] " if dry_run else ""
             self.stdout.write(
