@@ -1,7 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { formatAmountInput, formatDecimalDisplay, parseNumericInput } from '@/lib/formatNumber'
+import {
+  formatAmountDisplay,
+  formatAmountInput,
+  formatDecimalDisplay,
+  parseNumericInput,
+} from '@/lib/formatNumber'
 import { ReceiptReportId } from '@/lib/receiptReportIds'
 import { useReceiptReportPrint } from '@/hooks/useReceiptReportPrint'
 import { salesService } from '@/services/sales.service'
@@ -36,6 +41,15 @@ function pickDefaultCustomerId(
   return walkIn?.id ?? null
 }
 
+function pickDefaultPaymentMethodId(methods: POSPaymentMethod[]): number | null {
+  const cash =
+    methods.find((m) => m.code.toUpperCase() === 'CASH') ??
+    methods.find((m) => /cash/i.test(m.description ?? '')) ??
+    methods.find((m) => m.requires_amount_received) ??
+    methods[0]
+  return cash?.id ?? null
+}
+
 export function RestaurantCounterCheckoutDialog({
   open,
   orderId,
@@ -62,13 +76,13 @@ export function RestaurantCounterCheckoutDialog({
     if (!open) return
     void salesService.getPaymentMethods().then((list) => {
       setMethods(list)
-      setMethodId(list[0]?.id ?? null)
+      setMethodId(pickDefaultPaymentMethodId(list))
     })
     void salesService.getCustomers().then((list) => {
       setCustomers(list)
       setCustomerId(pickDefaultCustomerId(list, initialCustomerId))
     })
-    setAmountTendered(String(total))
+    setAmountTendered(formatAmountDisplay(total))
     setCombineOrders(false)
   }, [open, total, initialCustomerId])
 

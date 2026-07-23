@@ -21,9 +21,11 @@ import {
 import { CoversPickerDialog } from '@/components/restaurant/CoversPickerDialog'
 import { RestaurantCounterCheckoutDialog } from '@/components/restaurant/RestaurantCounterCheckoutDialog'
 import { SeatPickerDialog } from '@/components/restaurant/SeatPickerDialog'
+import { useIsMobilePos } from '@/hooks/useMediaQuery'
 import { useRestaurantPOS } from '@/hooks/useRestaurantPOS'
 import { usePages } from '@/hooks/usePage'
 import { formatDecimalDisplay } from '@/lib/formatNumber'
+import { cn } from '@/lib/utils'
 import {
   filterPosEntries,
   flattenPosTreeItems,
@@ -144,12 +146,14 @@ function QuickSalesHubPanel({
 
 export default function RestaurantPOSPage() {
   const pos = useRestaurantPOS()
+  const isMobile = useIsMobilePos()
   const searchParams = useSearchParams()
   const { data: pages = [] } = usePages()
   const menuBuilderPageId = pages.find((p) => p.Name === 'MenuBuilder')?.PageId
   const urlOrderLoadedRef = useRef<number | null>(null)
   const [showSearch, setShowSearch] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [mobileCheckOpen, setMobileCheckOpen] = useState(false)
 
   const orderIdFromUrl = searchParams.get('orderId')
   useEffect(() => {
@@ -167,6 +171,10 @@ export default function RestaurantPOSPage() {
     }
   }, [pos.tab])
 
+  useEffect(() => {
+    if (!isMobile) setMobileCheckOpen(false)
+  }, [isMobile])
+
   const menuEntries = useMemo(
     () => posGridEntries(pos.posTree, pos.posStack),
     [pos.posTree, pos.posStack],
@@ -178,11 +186,18 @@ export default function RestaurantPOSPage() {
   )
   const orderTotal = pos.displayTotal
   const canPay = pos.canPayCounter || pos.canPayDineIn
+  const checkItemCount = pos.activeLines.length
+  const showMobileCheck = isMobile && mobileCheckOpen
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+    <div className="relative flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
       <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
-        <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-strokeColor bg-white">
+        <section
+          className={cn(
+            'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-strokeColor bg-white',
+            showMobileCheck && 'hidden',
+          )}
+        >
           <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-strokeColor px-3 py-2">
             {pos.sessionLabel ? (
               <button
@@ -498,6 +513,20 @@ export default function RestaurantPOSPage() {
             )}
           </div>
 
+          {isMobile && !mobileCheckOpen ? (
+            <div className="shrink-0 border-t border-strokeColor bg-white p-3">
+              <button
+                type="button"
+                onClick={() => setMobileCheckOpen(true)}
+                className="w-full rounded-xl bg-s1 py-3 text-sm font-semibold text-white"
+              >
+                {checkItemCount > 0
+                  ? `View check (${checkItemCount}) · ${formatDecimalDisplay(orderTotal)}`
+                  : 'View check'}
+              </button>
+            </div>
+          ) : null}
+
           <nav className="flex shrink-0 border-t border-strokeColor">
             <button
               type="button"
@@ -543,10 +572,29 @@ export default function RestaurantPOSPage() {
           </nav>
         </section>
 
-        <aside className="flex w-full max-w-md shrink-0 flex-col overflow-hidden rounded-xl border border-strokeColor bg-white lg:w-96">
+        <aside
+          className={cn(
+            'flex flex-col overflow-hidden rounded-xl border border-strokeColor bg-white',
+            isMobile
+              ? mobileCheckOpen
+                ? 'absolute inset-0 z-30'
+                : 'hidden'
+              : 'w-full max-w-md shrink-0 lg:w-96',
+          )}
+        >
           <header className="border-b border-strokeColor px-4 py-3">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
+                {isMobile ? (
+                  <button
+                    type="button"
+                    onClick={() => setMobileCheckOpen(false)}
+                    className="mb-2 inline-flex items-center gap-1 rounded-lg border border-strokeColor px-2 py-1 text-xs font-medium text-s1 hover:bg-softBg"
+                  >
+                    <ArrowLeft className="h-3.5 w-3.5" />
+                    Back to {pos.tab === 'menu' ? 'menu' : pos.tab === 'quick-sale' ? 'quick sales' : 'tables'}
+                  </button>
+                ) : null}
                 <h2 className="font-semibold text-mainTextColor">Check</h2>
                 {pos.orderDetail ? (
                   <p className="text-xs text-bodyText">

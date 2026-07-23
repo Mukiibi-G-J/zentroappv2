@@ -31,9 +31,10 @@ export function POSFullscreenShell({ title, children }: POSFullscreenShellProps)
           type="button"
           onClick={() => router.push('/dashboard')}
           className="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-bodyText transition hover:bg-softBg hover:text-mainTextColor"
+          title="Leave Point of Sale and return to the dashboard"
         >
           <ArrowLeft className="h-4 w-4" />
-          <span className="hidden sm:inline">Exit POS</span>
+          <span>Exit POS</span>
         </button>
 
         <div className="min-w-0 flex-1 text-center sm:text-left">
