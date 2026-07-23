@@ -294,9 +294,24 @@ function buildSalePayload(
 
       unit_price: String(line.unitPrice),
 
-      total_amount: String(line.quantity * line.unitPrice - (lineOk ? line.lineDiscountAmount : 0)),
+      total_amount: String(
+        (() => {
+          const gross = line.quantity * line.unitPrice
+          const disc = lineOk
+            ? Math.min(line.lineDiscountAmount || 0, Math.max(0, gross))
+            : 0
+          return gross - disc
+        })(),
+      ),
 
-      line_discount_amount: String(lineOk ? line.lineDiscountAmount : 0),
+      line_discount_amount: String(
+        lineOk
+          ? Math.min(
+              line.lineDiscountAmount || 0,
+              Math.max(0, line.quantity * line.unitPrice),
+            )
+          : 0,
+      ),
 
       unit_of_measure: line.unitOfMeasure,
 
@@ -448,7 +463,9 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
         const gross = line.quantity * line.unitPrice
 
-        const disc = lineDiscountsEnabled(salesSetup) ? line.lineDiscountAmount || 0 : 0
+        const disc = lineDiscountsEnabled(salesSetup)
+          ? Math.min(line.lineDiscountAmount || 0, Math.max(0, gross))
+          : 0
 
         return sum + gross - disc
 
@@ -822,7 +839,19 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
       prev
 
-        .map((l) => (l.clientId === clientId ? { ...l, quantity: Math.max(0, quantity) } : l))
+        .map((l) => {
+
+          if (l.clientId !== clientId) return l
+
+          const nextQty = Math.max(0, quantity)
+
+          const gross = nextQty * l.unitPrice
+
+          const disc = Math.min(l.lineDiscountAmount || 0, Math.max(0, gross))
+
+          return { ...l, quantity: nextQty, lineDiscountAmount: disc }
+
+        })
 
         .filter((l) => l.quantity > 0),
 
@@ -842,17 +871,29 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
     const original = target.originalPrice ?? target.unitPrice
 
+    let message: string | null = null
+
     if (salesSetup.prevent_price_below_original && nextPrice < original) {
 
       nextPrice = original
 
-      setError(`Cannot set price below original (${formatDecimalDisplay(original)})`)
-
-    } else {
-
-      setError(null)
+      message = `Cannot set price below original (${formatDecimalDisplay(original)})`
 
     }
+
+    const disc = target.lineDiscountAmount || 0
+
+    const qty = target.quantity
+
+    if (disc > 0 && qty > 0 && nextPrice * qty < disc) {
+
+      nextPrice = Math.round((disc / qty) * 100) / 100
+
+      message = `Price cannot be lower than the line discount (${formatDecimalDisplay(disc)})`
+
+    }
+
+    setError(message)
 
     setCart((prev) =>
 
@@ -961,28 +1002,28 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
 
   const selectTracking = useCallback((lotNo: string) => {
-
     if (!trackingClientId) return
-
+    const line = cart.find((l) => l.clientId === trackingClientId)
+    const option = trackingOptions.find((o) => o.lot_no === lotNo)
+    if (line && option != null && Number(option.remaining_quantity) < Number(line.quantity)) {
+      setError(
+        `Insufficient inventory for ${line.name} (lot ${lotNo}). ` +
+          `Shortage: ${Number(line.quantity) - Number(option.remaining_quantity)} units`,
+      )
+      return
+    }
+    setError(null)
     setCart((prev) =>
-
       prev.map((l) =>
-
         l.clientId === trackingClientId
           ? { ...l, selectedLotNo: lotNo, selectedSerialNos: undefined }
           : l,
-
       ),
-
     )
-
     setTrackingOpen(false)
-
     setTrackingClientId(null)
-
     setTrackingOptions([])
-
-  }, [trackingClientId])
+  }, [cart, trackingClientId, trackingOptions])
 
 
 
@@ -1432,7 +1473,11 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
           unit_price: line.unitPrice,
 
-          total_amount: line.quantity * line.unitPrice - line.lineDiscountAmount,
+          total_amount: (() => {
+            const gross = line.quantity * line.unitPrice
+            const disc = Math.min(line.lineDiscountAmount || 0, Math.max(0, gross))
+            return gross - disc
+          })(),
 
           unit_of_measure: line.unitOfMeasure,
 

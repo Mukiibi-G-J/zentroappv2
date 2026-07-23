@@ -198,7 +198,13 @@ function EditLineSheet({
       setPriceDraft(formatAmountDisplay(line.unitPrice))
       return
     }
-    onUpdatePrice?.(line.clientId, Math.round(parsed * 100) / 100)
+    let next = Math.round(parsed * 100) / 100
+    const disc = line.lineDiscountAmount || 0
+    if (disc > 0 && line.quantity > 0 && next * line.quantity < disc) {
+      next = Math.round((disc / line.quantity) * 100) / 100
+      setPriceDraft(formatAmountDisplay(next))
+    }
+    onUpdatePrice?.(line.clientId, next)
   }
 
   const commitDiscount = () => {
@@ -286,7 +292,7 @@ function EditLineSheet({
         <div className="flex items-center justify-between border-t border-strokeColor pt-3 text-sm">
           <span className="text-bodyText">Line total</span>
           <span className="font-semibold text-mainTextColor">
-            {formatDecimalDisplay(gross - (line.lineDiscountAmount || 0))}
+            {formatDecimalDisplay(Math.max(0, gross - (line.lineDiscountAmount || 0)))}
           </span>
         </div>
 
@@ -488,8 +494,9 @@ export function POSCartPanel({
                   ? `Lot ${line.selectedLotNo}`
                   : 'Select lot *'
               const gross = line.quantity * line.unitPrice
-              const net = gross - (line.lineDiscountAmount || 0)
-              const hasDisc = (line.lineDiscountAmount || 0) > 0
+              const disc = Math.min(line.lineDiscountAmount || 0, Math.max(0, gross))
+              const net = gross - disc
+              const hasDisc = disc > 0
 
               return (
                 <li key={line.clientId} className="flex items-center gap-2.5 px-3 py-2.5">
@@ -507,7 +514,7 @@ export function POSCartPanel({
                         <span>{formatAmountDisplay(line.unitPrice)} ea</span>
                         {hasDisc && (
                           <span className="text-red-600">
-                            −{formatAmountDisplay(line.lineDiscountAmount)}
+                            −{formatAmountDisplay(disc)}
                           </span>
                         )}
                         {canEditLine && (

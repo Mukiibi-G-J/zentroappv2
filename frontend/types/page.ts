@@ -64,7 +64,7 @@ export interface TableRelationValue {
 
 export interface PageActionResponse {
   Successful: boolean
-  Command: 'MESSAGE' | 'REFRESH' | 'NONE' | 'PREVIEW' | 'DOWNLOAD' | 'NAVIGATE' | 'OPEN_UNAPPLY'
+  Command: 'MESSAGE' | 'REFRESH' | 'NONE' | 'PREVIEW' | 'DOWNLOAD' | 'NAVIGATE' | 'OPEN_UNAPPLY' | 'OPEN_APPLY'
   Content?: unknown
   Message?: string
 }

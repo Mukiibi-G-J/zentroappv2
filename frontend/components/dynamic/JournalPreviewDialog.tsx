@@ -279,7 +279,7 @@ export default function JournalPreviewDialog({ open, preview, onClose }: Props) 
     }
   }, [open, preview])
 
-  const relatedEntries = useMemo(() => {
+  const relatedEntries = useMemo((): PreviewRelatedEntry[] => {
     if (!preview) return []
     if (preview.RelatedEntries?.length) return preview.RelatedEntries
     const counts = new Map<string, number>()

@@ -117,7 +117,12 @@ export default function UnapplyCustomerEntriesDialog({
         systemId,
         payload(),
       )
-      if (isPreviewActionResponse(result) && result.Content && 'Entries' in result.Content) {
+      if (
+        isPreviewActionResponse(result)
+        && result.Content
+        && typeof result.Content === 'object'
+        && 'Entries' in result.Content
+      ) {
         setPreview(result.Content as JournalPreviewContent)
         return
       }
