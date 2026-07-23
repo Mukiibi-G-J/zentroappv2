@@ -9104,6 +9104,12 @@ def _seed_general_posting_setup_list() -> Page:
         dict(name='inventory_adjustment_account', caption='Inventory Adj. Account', field_type='Code',
              visible=True, editable=True, primary_key=False, tab_index=5,
              has_table_relation=True, related_table='G_LAccount', related_field='no', related_display_field='name'),
+        dict(name='sales_line_discount_account', caption='Sales Line Disc. Account', field_type='Code',
+             visible=True, editable=True, primary_key=False, tab_index=6,
+             has_table_relation=True, related_table='G_LAccount', related_field='no', related_display_field='name'),
+        dict(name='prepayment_account', caption='Prepayment Account', field_type='Code',
+             visible=True, editable=True, primary_key=False, tab_index=7,
+             has_table_relation=True, related_table='G_LAccount', related_field='no', related_display_field='name'),
     ])
     _ensure_table_relation('GeneralPostingSetup', 'general_business_posting_group', 'GeneralBusinessPostingGroup')
     _ensure_table_relation('GeneralPostingSetup', 'general_product_posting_group', 'GeneralProductPostingGroup')
@@ -9111,6 +9117,8 @@ def _seed_general_posting_setup_list() -> Page:
     _ensure_table_relation('GeneralPostingSetup', 'purchase_account', 'G_LAccount', 'no', 'name')
     _ensure_table_relation('GeneralPostingSetup', 'cogs_account', 'G_LAccount', 'no', 'name')
     _ensure_table_relation('GeneralPostingSetup', 'inventory_adjustment_account', 'G_LAccount', 'no', 'name')
+    _ensure_table_relation('GeneralPostingSetup', 'sales_line_discount_account', 'G_LAccount', 'no', 'name')
+    _ensure_table_relation('GeneralPostingSetup', 'prepayment_account', 'G_LAccount', 'no', 'name')
     return page
 
 

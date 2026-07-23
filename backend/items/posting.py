@@ -48,15 +48,25 @@ class ItemJournalFinalPoster:
 
         # 2. Insert Item Ledger Entries
         ledger_entry_map = {}
+        journal_date = getattr(self.journal_entry, "date", None)
         for i, entry in enumerate(self.preview_data.get("item_entries", [])):
             ile_dim = get_posting_dimension_payload(
                 global_dimension_1=entry.get("global_dimension_1"),
                 dimension_set=entry.get("dimension_set"),
             )
+            resolved_date = (
+                entry.get("posting_date")
+                or entry.get("date")
+                or journal_date
+            )
+            if resolved_date is None:
+                from django.utils import timezone
+
+                resolved_date = timezone.localdate()
             item_ledger_entry = ItemLedgerEntries.objects.create(
                 item=self.journal_entry.item,  # Use FK from journal entry
                 entry_type=entry.get("entry_type"),
-                posting_date=entry.get("posting_date") or entry.get("date"),
+                posting_date=resolved_date,
                 document_no=entry.get("document_no"),
                 description=entry.get("description"),
                 quantity=entry.get("quantity"),
@@ -65,7 +75,7 @@ class ItemJournalFinalPoster:
                 total=entry.get("total"),
                 unit_of_measure=self.journal_entry.item_unit_of_measure.unit_of_measure.code,
                 transaction_no=entry.get("transaction_no"),
-                date=entry.get("date"),
+                date=entry.get("date") or resolved_date,
                 user=self.user,
                 global_dimension_1=ile_dim["global_dimension_1"],
                 dimension_set=ile_dim["dimension_set"],

@@ -750,6 +750,7 @@ def run_tenant_baseline_bootstrap(
         output_buffer.close()
 
         call_command("seed_prepayment_accounts")
+        call_command("seed_sales_line_discount_accounts")
 
         _progress(
             progress,

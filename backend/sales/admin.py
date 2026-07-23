@@ -336,23 +336,33 @@ class SalesInvoiceAdmin(admin.ModelAdmin):
             # Check for insufficient inventory
             insufficient_items = []
             for item_preview in entries.get("inventory_reduction_preview", []):
-                if item_preview["reduction_info"]["insufficient_inventory"]:
-                    shortage = item_preview["reduction_info"][
-                        "remaining_after_reduction"
-                    ]
-                    insufficient_items.append(
-                        {
-                            "item": item_preview["item"].item_name,
-                            "shortage": shortage,
-                            "requested": item_preview["quantity_to_reduce"],
-                        }
-                    )
+                reduction = item_preview.get("reduction_info") or {}
+                if not reduction.get("insufficient_inventory"):
+                    continue
+                shortage = reduction.get("remaining_after_reduction")
+                lot = item_preview.get("lot_no") or reduction.get("lot_no") or ""
+                serial = (
+                    item_preview.get("serial_no") or reduction.get("serial_no") or ""
+                )
+                label = (
+                    f" (serial {serial})"
+                    if serial
+                    else (f" (lot {lot})" if lot else "")
+                )
+                insufficient_items.append(
+                    {
+                        "item": item_preview["item"].item_name,
+                        "shortage": shortage,
+                        "label": label,
+                    }
+                )
 
             if insufficient_items:
                 error_message = "Insufficient inventory:\n"
                 for item in insufficient_items:
                     error_message += (
-                        f"• {item['item']}: Shortage: {item['shortage']:.2f} units\n"
+                        f"• {item['item']}{item['label']}: "
+                        f"Shortage: {item['shortage']:.2f} units\n"
                     )
                 return False, error_message
 
@@ -397,22 +407,36 @@ class SalesInvoiceAdmin(admin.ModelAdmin):
             # Check for insufficient inventory
             insufficient_items = []
             for item_preview in entries.get("inventory_reduction_preview", []):
-                if item_preview["reduction_info"]["insufficient_inventory"]:
-                    shortage = item_preview["reduction_info"][
-                        "remaining_after_reduction"
-                    ]
-                    insufficient_items.append(
-                        {
-                            "item": item_preview["item"].item_name,
-                            "shortage": shortage,
-                            "requested": item_preview["quantity_to_reduce"],
-                        }
-                    )
+                reduction = item_preview.get("reduction_info") or {}
+                if not reduction.get("insufficient_inventory"):
+                    continue
+                shortage = reduction.get("remaining_after_reduction")
+                lot = item_preview.get("lot_no") or reduction.get("lot_no") or ""
+                serial = (
+                    item_preview.get("serial_no") or reduction.get("serial_no") or ""
+                )
+                label = (
+                    f" (serial {serial})"
+                    if serial
+                    else (f" (lot {lot})" if lot else "")
+                )
+                insufficient_items.append(
+                    {
+                        "item": item_preview["item"].item_name,
+                        "shortage": shortage,
+                        "requested": item_preview["quantity_to_reduce"],
+                        "label": label,
+                    }
+                )
 
             if insufficient_items:
                 error_message = "Cannot post invoice due to insufficient inventory:\n"
                 for item in insufficient_items:
-                    error_message += f"• {item['item']}: Requested {item['requested']:.2f} units, Shortage: {item['shortage']:.2f} units\n"
+                    error_message += (
+                        f"• {item['item']}{item['label']}: "
+                        f"Requested {item['requested']:.2f} units, "
+                        f"Shortage: {item['shortage']:.2f} units\n"
+                    )
 
                 self.message_user(
                     request,
@@ -915,68 +939,69 @@ class SalesInvoiceProcessor:
         return result
 
     def _calculate_inventory_reduction_preview(
-        self, item, quantity_to_reduce, location, previous_reductions=None
+        self,
+        item,
+        quantity_to_reduce,
+        location,
+        previous_reductions=None,
+        *,
+        lot_no=None,
+        serial_no=None,
     ):
-        """Calculate what the remaining quantities will be after reduction (for preview only)."""
+        """Calculate remaining quantities after reduction (preview).
+
+        When lot_no/serial_no are set, mirrors ``_reduce_inventory_quantities`` so
+        Preview Posting catches the same shortages as Post (BC parity).
+        """
         from items.models import ItemLedgerEntries
 
-        # Get current inventory entries with remaining quantity > 0 and matching location
-        # For items with tracking (lot numbers), order by expiry date first (FEFO - First Expired, First Out)
-        # For items without tracking, use FIFO (First In, First Out) based on created_at
-        if item.tracking_code:
-            # Items with tracking: order by expiry_date (earliest first), then by created_at
-            entries = ItemLedgerEntries.objects.filter(
-                item=item, remaining_quantity__gt=0, location=location
-            ).order_by(
-                models.F("expiry_date").asc(
-                    nulls_last=True
-                ),  # Items without expiry date go last
+        lot = (lot_no or "").strip() if lot_no else ""
+        serial = (serial_no or "").strip() if serial_no else ""
+        reduction_key = f"{item.no}|{lot}|{serial}"
+
+        entries = ItemLedgerEntries.objects.filter(
+            item=item, remaining_quantity__gt=0, location=location
+        )
+        if serial:
+            entries = entries.filter(serial_no__iexact=serial)
+        if lot:
+            entries = entries.filter(lot_no=lot)
+
+        # Lot / FEFO when tracking and no specific serial; otherwise FIFO by created_at
+        if item.tracking_code and not serial:
+            entries = entries.order_by(
+                models.F("expiry_date").asc(nulls_last=True),
                 "created_at",
             )
         else:
-            # Items without tracking: use FIFO based on created_at
-            entries = ItemLedgerEntries.objects.filter(
-                item=item, remaining_quantity__gt=0, location=location
-            ).order_by("created_at")
+            entries = entries.order_by("created_at")
 
-        # If we have previous reductions for this item, apply them to create a simulation
-        if previous_reductions and item.no in previous_reductions:
-            # Create a copy of entries with simulated remaining quantities
-            simulated_entries = []
-            for entry in entries:
-                simulated_entry = {
+        simulated_entries = []
+        for entry in entries:
+            simulated_entries.append(
+                {
                     "id": entry.id,
                     "document_no": entry.document_no,
                     "posting_date": entry.posting_date,
                     "remaining_quantity": entry.remaining_quantity,
                     "lot_no": entry.lot_no,
+                    "serial_no": entry.serial_no,
                     "expiry_date": entry.expiry_date,
                 }
-                simulated_entries.append(simulated_entry)
+            )
 
-            # Apply previous reductions to the simulation
-            for prev_reduction in previous_reductions[item.no]:
+        # Apply prior preview reductions for the same item+lot+serial bucket
+        if previous_reductions and reduction_key in previous_reductions:
+            for prev_reduction in previous_reductions[reduction_key]:
                 remaining_to_apply = prev_reduction
                 for sim_entry in simulated_entries:
                     if remaining_to_apply <= 0:
                         break
+                    if sim_entry["remaining_quantity"] <= 0:
+                        continue
                     reduction = min(sim_entry["remaining_quantity"], remaining_to_apply)
                     sim_entry["remaining_quantity"] -= reduction
                     remaining_to_apply -= reduction
-        else:
-            # No previous reductions, use actual quantities
-            simulated_entries = []
-            for entry in entries:
-                simulated_entries.append(
-                    {
-                        "id": entry.id,
-                        "document_no": entry.document_no,
-                        "posting_date": entry.posting_date,
-                        "remaining_quantity": entry.remaining_quantity,
-                        "lot_no": entry.lot_no,
-                        "expiry_date": entry.expiry_date,
-                    }
-                )
 
         remaining_to_reduce = quantity_to_reduce
         reduction_details = []
@@ -1001,6 +1026,7 @@ class SalesInvoiceProcessor:
                     "document_no": sim_entry["document_no"],
                     "posting_date": sim_entry["posting_date"],
                     "lot_no": sim_entry["lot_no"],
+                    "serial_no": sim_entry.get("serial_no"),
                     "expiry_date": sim_entry["expiry_date"],
                 }
             )
@@ -1012,6 +1038,8 @@ class SalesInvoiceProcessor:
             "remaining_after_reduction": remaining_to_reduce,
             "reduction_details": reduction_details,
             "insufficient_inventory": remaining_to_reduce > 0,
+            "lot_no": lot or None,
+            "serial_no": serial or None,
         }
 
     def _calculate_cost_of_goods_sold(self, item, quantity_to_reduce, location):
@@ -2580,40 +2608,67 @@ class SalesInvoiceProcessor:
                     }
                 )
 
-            # Calculate inventory reduction preview for each item (Inventory items only)
+            # Calculate inventory reduction preview for each item (Inventory items only).
+            # Must mirror SalesInvoicePostingProcessor lot/serial reduction so Preview
+            # Posting fails for the same shortages as Post (Business Central parity).
             inventory_reduction_preview = []
-            previous_reductions = {}  # Track reductions by item ID
+            previous_reductions = {}  # key: item_no|lot|serial → list of qty
 
-            for item_line in items_lines:
-                # Skip Service / Non-Inventory — no stocked item ledger to reduce on sale
-                if item_line["item"].type in (
+            for line in self.lines:
+                if not line.item:
+                    continue
+                if line.item.type in (
                     InventoryType.Service.value,
                     InventoryType.NonInventory.value,
                 ):
                     continue
 
-                quantity_to_reduce = (
-                    item_line["quantity"] * item_line["quantity_per_iuom"]
+                quantity_per_iuom = (
+                    line.item_unit_of_measure.quantity_per_unit
+                    if line.item_unit_of_measure
+                    else 1
                 )
-                reduction_info = self._calculate_inventory_reduction_preview(
-                    item_line["item"],
-                    quantity_to_reduce,
-                    item_line["location"],
-                    previous_reductions,
-                )
+                quantity_to_reduce = line.quantity * quantity_per_iuom
+                location = line.location_code
+                tracking_specs = list(line.tracking_specifications)
 
-                # Store this reduction for future calculations
-                if item_line["item"].no not in previous_reductions:
-                    previous_reductions[item_line["item"].no] = []
-                previous_reductions[item_line["item"].no].append(quantity_to_reduce)
+                def _append_preview(qty, lot_no=None, serial_no=None):
+                    lot = (lot_no or "").strip() if lot_no else ""
+                    serial = (serial_no or "").strip() if serial_no else ""
+                    reduction_key = f"{line.item.no}|{lot}|{serial}"
+                    reduction_info = self._calculate_inventory_reduction_preview(
+                        line.item,
+                        qty,
+                        location,
+                        previous_reductions,
+                        lot_no=lot or None,
+                        serial_no=serial or None,
+                    )
+                    previous_reductions.setdefault(reduction_key, []).append(qty)
+                    inventory_reduction_preview.append(
+                        {
+                            "item": line.item,
+                            "quantity_to_reduce": qty,
+                            "reduction_info": reduction_info,
+                            "lot_no": lot or None,
+                            "serial_no": serial or None,
+                        }
+                    )
 
-                inventory_reduction_preview.append(
-                    {
-                        "item": item_line["item"],
-                        "quantity_to_reduce": quantity_to_reduce,
-                        "reduction_info": reduction_info,
-                    }
-                )
+                if tracking_specs:
+                    for spec in tracking_specs:
+                        spec_qty = int(spec.quantity_base or 0)
+                        if spec_qty <= 0:
+                            continue
+                        _append_preview(
+                            spec_qty,
+                            lot_no=spec.lot_no,
+                            serial_no=spec.serial_no,
+                        )
+                elif line.tracking_code:
+                    _append_preview(quantity_to_reduce, lot_no=line.tracking_code)
+                else:
+                    _append_preview(quantity_to_reduce)
 
             return {
                 "gl_entries": self._consolidate_gl_entries(),

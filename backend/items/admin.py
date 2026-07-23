@@ -85,6 +85,7 @@ class ItemJournalProccess:
             "unit_of_measure": self.journalentry.unit_of_measure,
             "unit_cost": self.journalentry.unit_cost,
             "date": self.journalentry.date,
+            "posting_date": self.journalentry.date,
             "user": self.journalentry.user,
             "receipt_no": self.receipt_no,
         }
@@ -783,6 +784,7 @@ class ItemJournalProccessRefactor:
             "unit_of_measure": self.journal_entry.item_unit_of_measure,
             "unit_cost": self.journal_entry.unit_cost,
             "date": self.journal_entry.date,
+            "posting_date": self.journal_entry.date,
             "user": self.journal_entry.user,
             "receipt_no": self.receipt_no,
             "global_dimension_1": self.global_dimension_1_value,

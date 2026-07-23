@@ -3161,31 +3161,37 @@ def _validate_sales_invoice_for_posting(invoice):
 
 
 def _sales_invoice_insufficient_inventory_message(entries) -> str | None:
-    insufficient_items = []
+    """Build the same shortage message Preview and Post should surface (BC parity)."""
+    messages = []
     for item_preview in entries.get('inventory_reduction_preview', []):
         reduction = item_preview.get('reduction_info') or {}
         if not reduction.get('insufficient_inventory'):
             continue
         item = item_preview.get('item')
         item_name = getattr(item, 'item_name', None) or str(item)
-        insufficient_items.append(
-            {
-                'item': item_name,
-                'shortage': reduction.get('remaining_after_reduction'),
-                'requested': item_preview.get('quantity_to_reduce'),
-            },
+        shortage = reduction.get('remaining_after_reduction') or 0
+        lot = (
+            item_preview.get('lot_no')
+            or reduction.get('lot_no')
+            or ''
         )
-    if not insufficient_items:
+        serial = (
+            item_preview.get('serial_no')
+            or reduction.get('serial_no')
+            or ''
+        )
+        label = (
+            f' (serial {serial})'
+            if serial
+            else (f' (lot {lot})' if lot else '')
+        )
+        messages.append(
+            f'Insufficient inventory for {item_name}{label}. '
+            f'Shortage: {shortage} units',
+        )
+    if not messages:
         return None
-    lines = [
-        'Cannot post invoice due to insufficient inventory:',
-    ]
-    for item in insufficient_items:
-        lines.append(
-            f"• {item['item']}: Requested {item['requested']:.2f} units, "
-            f"Shortage: {item['shortage']:.2f} units",
-        )
-    return '\n'.join(lines)
+    return '\n'.join(messages)
 
 
 def preview_sales_invoice(record, request):
@@ -3205,6 +3211,10 @@ def preview_sales_invoice(record, request):
 
     if isinstance(entries, dict) and entries.get('success') is False:
         raise ValueError(entries.get('message', 'Preview failed'))
+
+    inventory_error = _sales_invoice_insufficient_inventory_message(entries)
+    if inventory_error:
+        raise ValueError(inventory_error)
 
     if not processor_entries_have_rows(entries):
         raise ValueError('Preview returned no entries')

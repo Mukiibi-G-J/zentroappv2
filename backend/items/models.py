@@ -1807,6 +1807,12 @@ class ItemLedgerEntries(BaseModel):
 
     def save(self, *args, **kwargs):
         skip = kwargs.pop("skip_inventory_entry_dimension_validation", False)
+        # Always keep posting_date populated for list/report UI (legacy paths
+        # historically wrote only ``date``).
+        if self.posting_date is None and self.date is not None:
+            self.posting_date = self.date
+        elif self.date is None and self.posting_date is not None:
+            self.date = self.posting_date
         if not skip and self._state.adding:
             self.full_clean()
         super().save(*args, **kwargs)
