@@ -10,9 +10,30 @@ import type {
 
 function extractError(err: unknown): string {
   if (err && typeof err === 'object' && 'response' in err) {
-    const data = (err as { response?: { data?: { error?: string; detail?: string } } }).response?.data
-    if (data?.detail) return String(data.detail).trim()
-    if (data?.error) return data.error
+    const data = (err as { response?: { data?: unknown } }).response?.data
+    if (typeof data === 'string' && data.trim()) return data.trim()
+    if (data && typeof data === 'object') {
+      const obj = data as Record<string, unknown>
+      if (typeof obj.detail === 'string' && obj.detail.trim()) return obj.detail.trim()
+      if (typeof obj.error === 'string' && obj.error.trim()) return obj.error.trim()
+      const parts: string[] = []
+      for (const [key, value] of Object.entries(obj)) {
+        if (key === 'detail' || key === 'error') continue
+        if (Array.isArray(value)) {
+          const msgs = value.map((v) => String(v)).filter(Boolean)
+          if (msgs.length) parts.push(key === 'non_field_errors' ? msgs.join(' ') : `${key}: ${msgs.join(' ')}`)
+        } else if (typeof value === 'string' && value.trim()) {
+          parts.push(key === 'non_field_errors' ? value : `${key}: ${value}`)
+        } else if (value && typeof value === 'object') {
+          // Nested field errors e.g. { lines: { unit_price: [...] } }
+          for (const [nk, nv] of Object.entries(value as Record<string, unknown>)) {
+            if (Array.isArray(nv)) parts.push(`${nk}: ${nv.map(String).join(' ')}`)
+            else if (typeof nv === 'string') parts.push(`${nk}: ${nv}`)
+          }
+        }
+      }
+      if (parts.length) return parts.join(' ')
+    }
   }
   if (err instanceof Error) return err.message
   return 'Request failed'

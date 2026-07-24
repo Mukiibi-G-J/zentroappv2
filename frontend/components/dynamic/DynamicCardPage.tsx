@@ -530,7 +530,17 @@ export default function DynamicCardPage({ pageId, systemId }: Props) {
         toast.error('Select an item first')
         return
       }
-      const journalId = Number(currentData.id)
+      let journalId = Number(currentData.id) || 0
+      if (!journalId && systemId && systemId !== 'new') {
+        // Older payloads omitted ItemJournal.id — reload once so tracking can open.
+        try {
+          const fresh = await pageDataService.getRecord(pageId, undefined, systemId)
+          journalId = Number(fresh?.id) || 0
+          if (fresh) setLocalRecord(fresh)
+        } catch {
+          /* fall through to toast below */
+        }
+      }
       if (!journalId) {
         toast.error('Save the journal before entering tracking details')
         return

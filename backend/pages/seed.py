@@ -722,6 +722,7 @@ def seed():
     posted_purchase_invoice_list = _seed_posted_purchase_invoice_list(
         _seed_posted_purchase_invoice_pages(),
     )
+    _seed_posted_purchase_invoice_list_scope_actions(posted_purchase_invoice_list)
     _link_drill_down(
         page_names=('UsersList',),
         field_name='full_name',
@@ -2662,10 +2663,12 @@ def _seed_posted_purchase_invoice_pages() -> Page:
              editable=False, primary_key=False, tab_index=4),
         dict(name='vat_date', caption='VAT Date', field_type='Date', visible=False,
              editable=False, primary_key=False, tab_index=5),
-        dict(name='due_date', caption='Due Date', field_type='Date', visible=True,
+        dict(name='due_date', caption='Due Date', field_type='Date', visible=False,
              editable=False, primary_key=False, tab_index=6),
-        dict(name='closed', caption='Closed', field_type='Boolean', visible=True,
+        dict(name='total_amount', caption='Amount', field_type='Decimal', visible=True,
              editable=False, primary_key=False, tab_index=7),
+        dict(name='closed', caption='Closed', field_type='Boolean', visible=True,
+             editable=False, primary_key=False, tab_index=8),
     ])
 
     part_ctrl, _ = PageControl.objects.update_or_create(
@@ -2858,20 +2861,88 @@ def _seed_posted_purchase_invoice_list(doc: Page) -> Page:
              editable=False, primary_key=False, tab_index=2),
         dict(name='posting_date', caption='Posting Date', field_type='Date', visible=True, editable=False,
              primary_key=False, tab_index=3),
-        dict(name='closed', caption='Closed', field_type='Boolean', visible=True, editable=False,
+        dict(name='total_amount', caption='Amount', field_type='Decimal', visible=True, editable=False,
              primary_key=False, tab_index=4),
-        dict(name='document_date', caption='Document Date', field_type='Date', visible=False, editable=False,
+        dict(name='closed', caption='Closed', field_type='Boolean', visible=True, editable=False,
              primary_key=False, tab_index=5),
-        dict(name='due_date', caption='Due Date', field_type='Date', visible=False, editable=False,
+        dict(name='document_date', caption='Document Date', field_type='Date', visible=False, editable=False,
              primary_key=False, tab_index=6),
+        dict(name='due_date', caption='Due Date', field_type='Date', visible=False, editable=False,
+             primary_key=False, tab_index=7),
     ])
     # Remove legacy PurchaseInvoice list fields from older seeds.
     PageControlField.objects.filter(
         page=list_page,
         page_control__name='PostedPurchaseInvoiceListControl',
-        name__in=('invoice_no', 'status', 'total_amount', 'user_name', 'total_vat_amount'),
+        name__in=('invoice_no', 'status', 'user_name', 'total_vat_amount'),
     ).delete()
     return list_page
+
+
+def _seed_posted_purchase_invoice_list_scope_actions(list_page: Page) -> None:
+    """Period scope chips on Purchase History list (page-engine PageActions)."""
+    base = list_page.name
+    actions = [
+        (
+            'list_filter_all',
+            'All posted',
+            f'{base}',
+            'View all posted purchase invoices',
+        ),
+        (
+            'list_filter_today',
+            'Today',
+            f'{base}?posting_date=__today__&filterLabel=Today',
+            'Invoices posted today',
+        ),
+        (
+            'list_filter_yesterday',
+            'Yesterday',
+            f'{base}?posting_date=__yesterday__&filterLabel=Yesterday',
+            'Invoices posted yesterday',
+        ),
+        (
+            'list_filter_quarter',
+            'This quarter',
+            (
+                f'{base}?posting_date_from=__quarter_start__'
+                f'&posting_date_to=__quarter_end__&filterLabel=This quarter'
+            ),
+            'Invoices posted in the current calendar quarter',
+        ),
+        (
+            'list_filter_week',
+            'This week',
+            (
+                f'{base}?posting_date_from=__week_start__'
+                f'&posting_date_to=__week_end__&filterLabel=This week'
+            ),
+            'Invoices posted in the current calendar week',
+        ),
+        (
+            'list_filter_month',
+            'This month',
+            (
+                f'{base}?posting_date_from=__month_start__'
+                f'&posting_date_to=__month_end__&filterLabel=This month'
+            ),
+            'Invoices posted in the current calendar month',
+        ),
+    ]
+    for name, caption, relative_url, tooltip in actions:
+        PageAction.objects.update_or_create(
+            page=list_page,
+            name=name,
+            defaults={
+                'caption': caption,
+                'action_type': 'Ribbon',
+                'requires_confirmation': False,
+                'ribbon_tab': 'Scope',
+                'tooltip': tooltip,
+                'visible': True,
+                'action_relative_url': relative_url,
+            },
+        )
 
 
 def _seed_fields(control: PageControl, page: Page, fields: list[dict]):

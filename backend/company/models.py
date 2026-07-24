@@ -537,6 +537,12 @@ class Company(TenantMixin, BaseModel):
         from company.template_schema import TEMPLATE_SCHEMA_NAME, template_schema_exists
 
         is_new = not self.pk  # Check if this is a new company
+        # Admin full-tenant clone sets this so we do not provision from
+        # _zentro_template; caller clones the source schema itself.
+        skip_schema_provisioning = bool(
+            getattr(self, "_skip_schema_provisioning", False)
+        )
+
         # Set display_name to name if not provided
         if not self.display_name:
             self.display_name = self.name
@@ -545,7 +551,9 @@ class Company(TenantMixin, BaseModel):
         self.ensure_pos_enabled()
 
         if is_new:
-            if self.schema_name == TEMPLATE_SCHEMA_NAME:
+            if skip_schema_provisioning:
+                self.auto_create_schema = False
+            elif self.schema_name == TEMPLATE_SCHEMA_NAME:
                 self.auto_create_schema = True
             elif template_schema_exists():
                 self.auto_create_schema = False
@@ -580,6 +588,10 @@ class Company(TenantMixin, BaseModel):
                     ),
                     is_completed=True,
                 )
+
+            # Skip when admin clones an existing tenant (schema not ready yet).
+            if skip_schema_provisioning:
+                return
 
             # Run after commit so template-schema clone (on_commit) has finished
             # and the tenant exists before we create the debug admin user.

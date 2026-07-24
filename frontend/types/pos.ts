@@ -26,6 +26,8 @@ export interface POSCartLine {
   originalPrice: number
   unitOfMeasure: string
   lineDiscountAmount: number
+  /** Max sellable qty from item inventory (Inventory items). */
+  availableInventory?: number | null
   trackingCode?: ItemTrackingCode | null
   selectedLotNo?: string
   /** One serial per unit when require_serial_no. */

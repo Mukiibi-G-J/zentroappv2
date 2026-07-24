@@ -83,6 +83,7 @@ import { getCardRecordPath, buildListReturnPath, getPageRouteId, listDashboardPa
 import { canPrintSalesInvoiceList } from '@/lib/salesInvoicePrint'
 import { SalesInvoiceReceiptDialog } from '@/components/sales/SalesInvoiceReceiptDialog'
 import PostedSalesHistoryPanel from '@/components/sales/PostedSalesHistoryPanel'
+import PostedPurchaseHistoryPanel from '@/components/purchases/PostedPurchaseHistoryPanel'
 import ImportItemsDialog from '@/components/items/ImportItemsDialog'
 import ExportItemsModal from '@/components/items/ExportItemsModal'
 import JournalPreviewDialog, { type JournalPreviewContent } from '@/components/dynamic/JournalPreviewDialog'
@@ -92,6 +93,7 @@ import UnapplyCustomerEntriesDialog, {
 } from '@/components/dynamic/UnapplyCustomerEntriesDialog'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { POSTED_SALES_INVOICE_LIST_PAGE, salesInvoiceSystemIdFromRecord } from '@/lib/postedSalesHistory'
+import { POSTED_PURCHASE_INVOICE_LIST_PAGE } from '@/lib/postedPurchaseHistory'
 import {
   ITEM_LIST_DOWNLOAD_TEMPLATE,
   ITEM_LIST_EXPORT,
@@ -241,6 +243,8 @@ export default function DynamicListPage({ pageId }: Props) {
   const { data: allPages = [] } = usePages()
   const showPrintAction = canPrintSalesInvoiceList(page)
   const isPostedSalesHistory = page?.Name === POSTED_SALES_INVOICE_LIST_PAGE
+  const isPostedPurchaseHistory = page?.Name === POSTED_PURCHASE_INVOICE_LIST_PAGE
+  const isPostedHistory = isPostedSalesHistory || isPostedPurchaseHistory
   const { data: cardPage } = usePage(page?.CardPageId ?? undefined)
   const { data: listCues, isLoading: listCuesLoading } = useListCues(pageId)
   const { filters: drillDownFilters, isDrillDown, contextValue, contextLabel, filterLabel, picker, returnUrl } =
@@ -286,7 +290,10 @@ export default function DynamicListPage({ pageId }: Props) {
 
   const ribbonActions = useMemo(() => {
     const actions = getRibbonActions(page)
-    if (page?.Name === POSTED_SALES_INVOICE_LIST_PAGE) {
+    if (
+      page?.Name === POSTED_SALES_INVOICE_LIST_PAGE
+      || page?.Name === POSTED_PURCHASE_INVOICE_LIST_PAGE
+    ) {
       return actions.filter((a) => (a.RibbonTab || 'Home') !== 'Scope')
     }
     return actions
@@ -398,7 +405,7 @@ export default function DynamicListPage({ pageId }: Props) {
   ])
 
   const showListRibbon =
-    (showListRibbonBase || displayRibbonActions.length > 0) && !isPostedSalesHistory
+    (showListRibbonBase || displayRibbonActions.length > 0) && !isPostedHistory
 
   const isFinancialReportList = page?.Name === 'FinancialReportList'
   const reportDatesSyncRef = useRef('')
@@ -1623,7 +1630,7 @@ export default function DynamicListPage({ pageId }: Props) {
   )
 
   return (
-    <div className={cn('flex flex-1 min-h-0 flex-col', isPostedSalesHistory ? 'gap-2' : 'gap-4')}>
+    <div className={cn('flex flex-1 min-h-0 flex-col', isPostedHistory ? 'gap-2' : 'gap-4')}>
       {dataError && (
         <ErrorBanner message={dataErrorMessage} onRetry={() => refetch()} />
       )}
@@ -1645,7 +1652,7 @@ export default function DynamicListPage({ pageId }: Props) {
             <h2 className="text-xl font-semibold text-mainTextColor">
               {page?.Caption ?? '—'}
             </h2>
-            {isDrillDown && activeFilterLabel && !isPostedSalesHistory && (
+            {isDrillDown && activeFilterLabel && !isPostedHistory && (
               <p className="text-sm text-bodyText mt-0.5">
                 <span className="font-medium">{activeFilterLabel}</span>
                 {contextLabel && !filterLabel && contextValue && !drillDownFilters.ledger_user_id ? (
@@ -1747,10 +1754,10 @@ export default function DynamicListPage({ pageId }: Props) {
         </section>
       ) : null}
 
-      {scopeActions.length > 0 && !isPostedSalesHistory ? (
+      {scopeActions.length > 0 && !isPostedHistory ? (
         <ListScopeFilterBar page={page!} actions={scopeActions} allPages={allPages} />
       ) : (
-        !isPostedSalesHistory && (
+        !isPostedHistory && (
           <ListCueStrip
             groups={listCues?.CueGroups ?? []}
             isLoading={listCuesLoading && !listCues}
@@ -1768,8 +1775,18 @@ export default function DynamicListPage({ pageId }: Props) {
         />
       )}
 
+      {isPostedPurchaseHistory && page && (
+        <PostedPurchaseHistoryPanel
+          pageId={pageId}
+          filters={drillDownFilters}
+          returnUrl={returnUrl}
+          search={search}
+          onSearchChange={setSearch}
+        />
+      )}
+
       {/* Search (hidden when ribbon or sales history panel provides search) */}
-      {!showListRibbon && !isPostedSalesHistory && (
+      {!showListRibbon && !isPostedHistory && (
         listSearchOpen || search.trim() ? (
           <div className="relative min-w-[200px] max-w-sm w-64">
             <Search

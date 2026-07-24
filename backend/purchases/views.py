@@ -16,7 +16,18 @@ from rest_framework.authentication import SessionAuthentication
 from authentication.authentication import JWTAuthenticationWithRevocationChecks as JWTAuthentication
 from rest_framework.permissions import IsAuthenticated
 from django.http import HttpRequest, Http404
-from django.db.models import Sum, OuterRef, Subquery, Exists, Q, CharField
+from django.db.models import (
+    Sum,
+    OuterRef,
+    Subquery,
+    Exists,
+    Q,
+    CharField,
+    Value,
+    DecimalField,
+)
+from django.db.models.functions import Coalesce
+from decimal import Decimal
 from rest_framework.views import APIView
 from rest_framework.decorators import (
     api_view,
@@ -34,6 +45,7 @@ from .models import (
     VendorLedger,
     DetailedVendorLedgerEntry,
     PostedPurchaseInvoice,
+    PostedPurchaseInvoiceLine,
     PurchaseCreditMemo,
     DocumentAttachment,
 )
@@ -341,6 +353,20 @@ class PurchaseViewSet(viewsets.ModelViewSet):
     ordering = ["-created_at"]
 
     @staticmethod
+    def _with_posted_purchase_invoice_totals(queryset):
+        """Annotate PostedPurchaseInvoice rows with computed_total_amount from lines."""
+        decimal_zero = Value(
+            Decimal("0.00"), output_field=DecimalField(max_digits=18, decimal_places=2)
+        )
+        return queryset.annotate(
+            computed_total_amount=Coalesce(
+                Sum("posted_purchase_invoice_lines__amount"),
+                decimal_zero,
+                output_field=DecimalField(max_digits=18, decimal_places=2),
+            )
+        )
+
+    @staticmethod
     def _annotate_posted_purchase_invoice_closed(queryset):
         """BC Closed FlowField: True when no open Vendor Ledger Entry exists."""
         linked_purchase_invoice_no = (
@@ -365,10 +391,88 @@ class PurchaseViewSet(viewsets.ModelViewSet):
         )
         return queryset.annotate(_ledger_closed=~Exists(open_vle))
 
+    @staticmethod
+    def _posted_purchase_history_queryset(request):
+        """PostedPurchaseInvoice queryset with Purchase History date/branch filters."""
+        queryset = PostedPurchaseInvoice.objects.select_related(
+            "vendor",
+            "global_dimension_1",
+        ).order_by("-posting_date", "-id")
+        queryset = PurchaseViewSet._with_posted_purchase_invoice_totals(queryset)
+        queryset = filter_queryset_by_branch(
+            queryset, request.user, request=request
+        )
+
+        posting_date = request.query_params.get("posting_date")
+        posting_date_gte = request.query_params.get("posting_date__gte")
+        posting_date_lte = request.query_params.get("posting_date__lte")
+        if posting_date:
+            queryset = queryset.filter(posting_date=posting_date)
+        if posting_date_gte:
+            queryset = queryset.filter(posting_date__gte=posting_date_gte)
+        if posting_date_lte:
+            queryset = queryset.filter(posting_date__lte=posting_date_lte)
+
+        return queryset
+
     def get_queryset(self):
         queryset = super().get_queryset()
         return filter_queryset_by_branch(
             queryset, self.request.user, request=self.request
+        )
+
+    @action(detail=False, methods=["get"], url_path="summary")
+    def summary(self, request, *args, **kwargs):
+        """Return aggregated totals for Purchase History (PostedPurchaseInvoice archive)."""
+        from utils.page_access import user_has_any_page_access
+
+        has_permission = user_has_any_page_access(request.user, "PostedPurchaseInvoiceList")
+        if not has_permission:
+            for page_id in (10302,):
+                allowed, _source = request.user.check_object_permission(page_id, "read")
+                if allowed:
+                    has_permission = True
+                    break
+        if not has_permission:
+            return Response(
+                {
+                    "error": "Insufficient permissions",
+                    "detail": "You need purchase history permission to view summaries",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        queryset = self._posted_purchase_history_queryset(request)
+        posted_ids = list(queryset.values_list("id", flat=True))
+
+        if not posted_ids:
+            return Response(
+                {
+                    "total_purchases": 0.0,
+                    "total_products": 0.0,
+                    "total_invoices": 0,
+                }
+            )
+
+        totals = queryset.aggregate(
+            total_purchases=Coalesce(
+                Sum("computed_total_amount"),
+                Value(
+                    Decimal("0.00"),
+                    output_field=DecimalField(max_digits=18, decimal_places=2),
+                ),
+            )
+        )
+        qty_totals = PostedPurchaseInvoiceLine.objects.filter(
+            posted_purchase_invoice_id__in=posted_ids
+        ).aggregate(total_products=Coalesce(Sum("quantity"), 0))
+
+        return Response(
+            {
+                "total_purchases": float(totals.get("total_purchases") or 0),
+                "total_products": float(qty_totals.get("total_products") or 0),
+                "total_invoices": queryset.count(),
+            }
         )
 
     def _may_read_cross_branch_purchase(self):

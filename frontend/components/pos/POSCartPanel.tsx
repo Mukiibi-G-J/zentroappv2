@@ -45,15 +45,18 @@ function parseAmount(raw: string): number {
 function QuantityStepper({
   quantity,
   onChange,
+  max,
   size = 'md',
 }: {
   quantity: number
   onChange: (quantity: number) => void
+  max?: number | null
   size?: 'sm' | 'md'
 }) {
   const [draft, setDraft] = useState(String(quantity))
   const btn = size === 'sm' ? 'h-8 w-8 text-lg' : 'h-9 w-9 text-lg'
   const input = size === 'sm' ? 'h-8 w-10 text-sm' : 'h-9 w-11 text-sm'
+  const atMax = max != null && max >= 0 && quantity >= max
 
   useEffect(() => {
     setDraft(String(quantity))
@@ -65,7 +68,8 @@ function QuantityStepper({
       setDraft(String(quantity))
       return
     }
-    onChange(parsed)
+    const next = max != null && max >= 0 ? Math.min(parsed, max) : parsed
+    onChange(next)
   }
 
   return (
@@ -95,7 +99,9 @@ function QuantityStepper({
       <button
         type="button"
         aria-label="Increase quantity"
-        className={`${btn} rounded-md border border-strokeColor leading-none`}
+        disabled={atMax}
+        title={atMax ? `Only ${max} available` : undefined}
+        className={`${btn} rounded-md border border-strokeColor leading-none disabled:cursor-not-allowed disabled:opacity-40`}
         onClick={() => onChange(quantity + 1)}
       >
         +
@@ -227,6 +233,7 @@ function EditLineSheet({
           <span className="text-sm text-bodyText">Quantity</span>
           <QuantityStepper
             quantity={line.quantity}
+            max={line.availableInventory}
             onChange={(qty) => onUpdateQuantity(line.clientId, qty)}
           />
         </div>
@@ -541,6 +548,7 @@ export function POSCartPanel({
                   <QuantityStepper
                     size="sm"
                     quantity={line.quantity}
+                    max={line.availableInventory}
                     onChange={(qty) => onUpdateQuantity(line.clientId, qty)}
                   />
 

@@ -209,7 +209,7 @@ if ENVIRONMENT == "development":
             # "HOST": "db",
             # "PORT": "5432",
             # "NAME": "zentro-pos",
-            "NAME": os.getenv("DB_NAME", "zentroapp_refactor"),
+            "NAME": os.getenv("DB_NAME", "zentroapp_db_v2"),
             "USER": os.getenv("DB_USER", "postgres"),
             "PASSWORD": os.getenv("DB_PASSWORD", "root"),
             "HOST": os.getenv("DB_HOST", "localhost"),

@@ -593,12 +593,33 @@ class SalesInvoiceSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         from django.db import transaction
+        from django.db.utils import IntegrityError
+        from django.core.exceptions import ValidationError as DjangoValidationError
 
         try:
             with transaction.atomic():
                 return self._create_invoice_with_lines(validated_data)
         except serializers.ValidationError:
             raise
+        except DjangoValidationError as e:
+            if hasattr(e, "message_dict"):
+                raise serializers.ValidationError(e.message_dict)
+            raise serializers.ValidationError(
+                e.messages if hasattr(e, "messages") else {"non_field_errors": [str(e)]}
+            )
+        except IntegrityError as e:
+            msg = str(e)
+            if "serial_no" in msg.lower():
+                raise serializers.ValidationError(
+                    {
+                        "serial_nos": (
+                            "One or more serial numbers cannot be reserved on this sale "
+                            "(already tracked elsewhere). Apply outstanding migrations or "
+                            "pick different serials."
+                        )
+                    }
+                )
+            raise serializers.ValidationError({"non_field_errors": [msg]})
         except Exception as e:
             # Convert ConfigurationError to a user-friendly error
             raise serializers.ValidationError(
@@ -638,19 +659,42 @@ class SalesInvoiceSerializer(serializers.ModelSerializer):
         if validated_data.get("dimension_set") is None and validated_data.get(
             "global_dimension_1"
         ) is not None:
+            branch_val = validated_data["global_dimension_1"]
             try:
-                from financials.models import GeneralLedgerSetup
                 from dimension.models import get_or_create_dimension_set
 
-                gl_setup = GeneralLedgerSetup.objects.first()
-                if gl_setup and getattr(gl_setup, "global_dimension_1_id", None):
+                # Prefer the dimension the branch value actually belongs to
+                # (GL setup dim can differ from the value's dimension → empty set → null).
+                dim = getattr(branch_val, "dimension_code", None)
+                if dim is not None:
                     validated_data["dimension_set"] = get_or_create_dimension_set(
-                        {gl_setup.global_dimension_1: validated_data["global_dimension_1"]}
+                        {dim: branch_val}
                     )
+
+                if validated_data.get("dimension_set") is None:
+                    from financials.models import GeneralLedgerSetup
+
+                    gl_setup = GeneralLedgerSetup.objects.first()
+                    if gl_setup and getattr(gl_setup, "global_dimension_1_id", None):
+                        validated_data["dimension_set"] = get_or_create_dimension_set(
+                            {
+                                gl_setup.global_dimension_1: validated_data[
+                                    "global_dimension_1"
+                                ]
+                            }
+                        )
             except Exception:
-                # Safe fallback: dimension_set stays null; posting payload resolver will still
-                # use global_dimension_1 for entries that support it.
                 pass
+
+            if validated_data.get("dimension_set") is None:
+                raise serializers.ValidationError(
+                    {
+                        "dimension_set": (
+                            "Could not resolve a dimension set for the selected branch. "
+                            "Check Global Dimension 1 setup and branch dimension values."
+                        )
+                    }
+                )
 
         print("DEBUG: Creating sales invoice with data:", validated_data)
         print("DEBUG: Status in validated_data:", validated_data.get("status"))
@@ -924,7 +968,7 @@ class SalesInvoiceSerializer(serializers.ModelSerializer):
 
             # POS: attach serial tracking specs (one SN per unit). Lot uses tracking_code.
             if serial_nos and line_data.get("type", "item") == "item" and line.item_id:
-                from items.models import TrackingSpecification
+                from items.models import TrackingSpecification, ItemLedgerEntries
 
                 if not isinstance(serial_nos, (list, tuple)):
                     serial_nos = [serial_nos]
@@ -934,6 +978,29 @@ class SalesInvoiceSerializer(serializers.ModelSerializer):
                         sales_invoice_line=line
                     ).delete()
                     for sn in cleaned:
+                        # Match stock location for this serial (POS default location
+                        # may differ from where the SN was received).
+                        ledger = (
+                            ItemLedgerEntries.objects.filter(
+                                item=line.item,
+                                serial_no__iexact=sn,
+                                remaining_quantity__gt=0,
+                            )
+                            .select_related("location")
+                            .first()
+                        )
+                        sn_location = (
+                            ledger.location
+                            if ledger and ledger.location_id
+                            else line.location_code
+                        )
+                        if (
+                            sn_location
+                            and line.location_code_id
+                            and sn_location.pk != line.location_code_id
+                        ):
+                            line.location_code = sn_location
+                            line.save(update_fields=["location_code"])
                         TrackingSpecification(
                             sales_invoice=sales_invoice,
                             sales_invoice_line=line,
@@ -941,7 +1008,7 @@ class SalesInvoiceSerializer(serializers.ModelSerializer):
                             serial_no=sn,
                             quantity_base=1,
                             description="",
-                            location_code=line.location_code,
+                            location_code=sn_location,
                             user=(
                                 request_user
                                 if request_user

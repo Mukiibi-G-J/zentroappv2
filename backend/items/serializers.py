@@ -632,6 +632,7 @@ class ItemLedgerEntriesSerializer(serializers.ModelSerializer):
             "remaining_quantity",
             "unit_of_measure_code",
             "lot_no",
+            "serial_no",
             "expiry_date",
             "total",
             "date",

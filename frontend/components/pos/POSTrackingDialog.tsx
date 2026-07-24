@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { formatDecimalDisplay } from '@/lib/formatNumber'
 import type { POSTrackingOption } from '@/types/pos'
 
@@ -31,32 +31,59 @@ export function POSTrackingDialog({
   mode = 'lot',
   requiredCount = 1,
   selectedLotNo,
-  selectedSerialNos = [],
+  selectedSerialNos,
   onClose,
   onSelectLot,
   onConfirmSerials,
 }: POSTrackingDialogProps) {
-  const [picked, setPicked] = useState<string[]>(selectedSerialNos)
+  const [picked, setPicked] = useState<string[]>(() => [...(selectedSerialNos ?? [])])
+  // Stable string key — avoid depending on array identity (default `[]` resets picks).
   const selectedKey = serialKey(selectedSerialNos)
+  const confirmRef = useRef(onConfirmSerials)
+  confirmRef.current = onConfirmSerials
 
   useEffect(() => {
     if (!open) return
-    setPicked((prev) => (serialKey(prev) === selectedKey ? prev : [...(selectedSerialNos ?? [])]))
-  }, [open, selectedKey, selectedSerialNos])
+    setPicked([...(selectedSerialNos ?? [])])
+  }, [open, selectedKey]) // eslint-disable-line react-hooks/exhaustive-deps -- selectedSerialNos via selectedKey
 
   if (!open) return null
 
   const isSerial = mode === 'serial'
+  const availableSerialCount = isSerial ? options.length : 0
+  const effectiveRequired =
+    isSerial && availableSerialCount > 0
+      ? Math.min(requiredCount, availableSerialCount)
+      : requiredCount
   const title = isSerial ? 'Select serial numbers' : 'Select lot'
   const emptyMsg = isSerial
     ? 'No serials with remaining quantity are available for this item.'
     : 'No lots with remaining quantity are available for this item.'
+  const qtyMismatch =
+    isSerial && !loading && availableSerialCount > 0 && requiredCount > availableSerialCount
+  const canConfirm =
+    isSerial && picked.length === effectiveRequired && effectiveRequired >= 1
+
+  const applySerials = (serialNos: string[]) => {
+    confirmRef.current(serialNos)
+  }
 
   const toggleSerial = (serial: string) => {
     setPicked((prev) => {
-      if (prev.includes(serial)) return prev.filter((s) => s !== serial)
-      if (prev.length >= requiredCount) return prev
-      return [...prev, serial]
+      let next: string[]
+      if (prev.includes(serial)) {
+        next = prev.filter((s) => s !== serial)
+      } else if (prev.length >= effectiveRequired) {
+        next = prev
+      } else {
+        next = [...prev, serial]
+      }
+
+      // Apply immediately when the required count is reached (same UX as lot Select).
+      if (next.length === effectiveRequired && effectiveRequired >= 1) {
+        queueMicrotask(() => applySerials(next))
+      }
+      return next
     })
   }
 
@@ -72,13 +99,21 @@ export function POSTrackingDialog({
             <p className="text-sm text-bodyText">{itemName}</p>
             {isSerial ? (
               <p className="mt-1 text-xs text-bodyText">
-                Select {requiredCount} serial{requiredCount === 1 ? '' : 's'} ({picked.length} selected)
+                Select {effectiveRequired} serial{effectiveRequired === 1 ? '' : 's'} ({picked.length}{' '}
+                selected)
+                {effectiveRequired > 1 ? ' — closes when complete' : ''}
               </p>
             ) : (
               <p className="mt-1 text-xs text-bodyText">
                 Need qty {requiredCount}. Choose a lot with enough remaining quantity.
               </p>
             )}
+            {qtyMismatch ? (
+              <p className="mt-1 text-xs font-medium text-red-600">
+                Only {availableSerialCount} serial{availableSerialCount === 1 ? '' : 's'} in stock —
+                quantity will be set to {effectiveRequired} on confirm.
+              </p>
+            ) : null}
           </div>
           <button type="button" onClick={onClose} className="text-sm text-bodyText hover:text-mainTextColor">
             Close
@@ -97,6 +132,7 @@ export function POSTrackingDialog({
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-strokeColor text-xs uppercase text-bodyText">
+                    {isSerial ? <th className="px-2 py-2 w-10" /> : null}
                     <th className="px-2 py-2">{isSerial ? 'Serial no.' : 'Lot no.'}</th>
                     <th className="px-2 py-2">Document</th>
                     <th className="px-2 py-2">Qty left</th>
@@ -115,25 +151,23 @@ export function POSTrackingDialog({
                     return (
                       <tr
                         key={`${code}-${index}`}
-                        role="button"
-                        tabIndex={lotOk ? 0 : -1}
-                        onClick={() => {
-                          if (isSerial) toggleSerial(code)
-                          else if (lotOk) onSelectLot(code)
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault()
-                            if (isSerial) toggleSerial(code)
-                            else if (lotOk) onSelectLot(code)
-                          }
-                        }}
                         className={`border-b border-strokeColor/60 transition-colors ${
-                          lotOk ? 'cursor-pointer hover:bg-s1/5' : 'cursor-not-allowed opacity-55'
+                          lotOk ? 'hover:bg-s1/5' : 'opacity-55'
                         } ${
                           index === 0 && !isSerial && lotOk ? 'bg-blue-50/60' : ''
-                        } ${isSelected ? 'ring-1 ring-inset ring-s1' : ''}`}
+                        } ${isSelected ? 'bg-s1/10 ring-1 ring-inset ring-s1' : ''}`}
                       >
+                        {isSerial ? (
+                          <td className="px-2 py-3">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              aria-label={`Select serial ${code}`}
+                              onChange={() => toggleSerial(code)}
+                              className="h-4 w-4 accent-[var(--s1,#0f766e)]"
+                            />
+                          </td>
+                        ) : null}
                         <td className="px-2 py-3 font-medium text-mainTextColor">
                           {code}
                           {!isSerial && index === 0 && lotOk && (
@@ -163,12 +197,13 @@ export function POSTrackingDialog({
                                 ? `Lot has only ${formatDecimalDisplay(option.remaining_quantity)}; need ${requiredCount}`
                                 : undefined
                             }
-                            onClick={(e) => {
-                              e.stopPropagation()
+                            onClick={() => {
                               if (isSerial) toggleSerial(code)
                               else if (lotOk) onSelectLot(code)
                             }}
-                            className="rounded-lg bg-s1 px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                            className={`rounded-lg px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 ${
+                              isSelected ? 'bg-s1' : 'bg-s1'
+                            }`}
                           >
                             {isSerial ? (isSelected ? 'Selected' : 'Select') : 'Select'}
                           </button>
@@ -183,22 +218,29 @@ export function POSTrackingDialog({
         </div>
 
         {isSerial ? (
-          <div className="flex justify-end gap-2 border-t border-strokeColor px-5 py-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-mainTextColor hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={picked.length !== requiredCount}
-              onClick={() => onConfirmSerials(picked)}
-              className="rounded-lg bg-s1 px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
-            >
-              Confirm
-            </button>
+          <div className="flex items-center justify-between gap-2 border-t border-strokeColor px-5 py-3">
+            <p className="text-xs text-bodyText">
+              {canConfirm
+                ? 'Ready — confirming…'
+                : `Pick ${Math.max(effectiveRequired - picked.length, 0)} more`}
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-mainTextColor hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!canConfirm}
+                onClick={() => applySerials(picked)}
+                className="rounded-lg bg-s1 px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+              >
+                Confirm
+              </button>
+            </div>
           </div>
         ) : null}
       </div>

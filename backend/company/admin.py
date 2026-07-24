@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 
 from django import forms
 from django.contrib import admin, messages
@@ -31,7 +32,10 @@ from django.template.response import TemplateResponse
 from django_tenants.utils import schema_context, get_public_schema_name
 
 from .schema_clone import (
+    CloneSchemaError,
     _sync_sequences_for_table,
+    clone_schema,
+    sync_all_sequences,
     try_set_session_replication_role_replica,
 )
 from setup.admin import EmailSetupAdmin
@@ -95,21 +99,77 @@ def clone_tenant_schema_data(source_schema: str, target_schema: str):
                     _sync_sequences_for_table(cursor, target_schema, table)
 
 
+def _schema_name_from_company_name(name: str) -> str:
+    """Build a PostgreSQL-safe schema slug from a display company name."""
+    schema = re.sub(r"[^a-z0-9]+", "_", (name or "").strip().lower())
+    schema = re.sub(r"_+", "_", schema).strip("_")
+    if not schema:
+        schema = "tenant"
+    if schema[0].isdigit():
+        schema = f"t_{schema}"
+    return schema[:63]
+
+
+def _unique_schema_name(base: str) -> str:
+    candidate = base[:63]
+    counter = 1
+    while models.Company.objects.filter(schema_name__iexact=candidate).exists():
+        suffix = f"_{counter}"
+        candidate = f"{base[: 63 - len(suffix)]}{suffix}"
+        counter += 1
+    return candidate
+
+
+def _domain_suffix_for_company(company) -> str:
+    for value in (
+        getattr(company, "domain_url", None) or "",
+        *(
+            models.Domain.objects.filter(tenant=company)
+            .values_list("domain", flat=True)[:1]
+        ),
+    ):
+        if value and "." in value:
+            return value.split(".", 1)[1].lower()
+    return "zentroapp.app"
+
+
+def _unique_domain(prefix: str, suffix: str) -> str:
+    base_prefix = re.sub(r"[^a-z0-9-]+", "-", (prefix or "tenant").lower()).strip("-")
+    if not base_prefix:
+        base_prefix = "tenant"
+    candidate_prefix = base_prefix
+    counter = 1
+    while True:
+        domain = f"{candidate_prefix}.{suffix}"
+        taken = (
+            models.Company.objects.filter(domain_url__iexact=domain).exists()
+            or models.Domain.objects.filter(domain__iexact=domain).exists()
+        )
+        if not taken:
+            return domain
+        candidate_prefix = f"{base_prefix}-{counter}"
+        counter += 1
+
+
 class CopyCompanyForm(forms.Form):
     new_name = forms.CharField(
         max_length=100,
-        label="New company name",
-        help_text="Provide a unique company name.",
-    )
-    new_domain_url = forms.CharField(
-        max_length=255,
-        label="Domain",
-        help_text="Example: newcompany.zentroapp.app",
+        label="New tenant name",
+        help_text="The name you want for the cloned company (required).",
     )
     new_schema_name = forms.CharField(
         max_length=63,
         label="Schema name",
-        help_text="Lowercase letters, numbers, and underscores only.",
+        required=False,
+        help_text="Optional. Leave blank to auto-generate from the name "
+        "(lowercase letters, numbers, underscores).",
+    )
+    new_domain_url = forms.CharField(
+        max_length=255,
+        label="Domain",
+        required=False,
+        help_text="Optional. Leave blank to auto-generate "
+        "(example: mycompany.zentroapp.app).",
     )
     new_email = forms.EmailField(
         label="Contact email",
@@ -117,14 +177,32 @@ class CopyCompanyForm(forms.Form):
         help_text="Leave empty to reuse the original company's email.",
     )
 
+    def __init__(self, *args, source_company=None, **kwargs):
+        self.source_company = source_company
+        super().__init__(*args, **kwargs)
+
     def clean_new_name(self):
         name = self.cleaned_data["new_name"].strip()
         if models.Company.objects.filter(name__iexact=name).exists():
             raise forms.ValidationError("A company with this name already exists.")
         return name
 
+    def clean_new_schema_name(self):
+        schema = (self.cleaned_data.get("new_schema_name") or "").strip().lower()
+        if not schema:
+            return schema
+        if not schema.replace("_", "").isalnum():
+            raise forms.ValidationError(
+                "Schema name can only contain lowercase letters, numbers, and underscores."
+            )
+        if models.Company.objects.filter(schema_name__iexact=schema).exists():
+            raise forms.ValidationError("This schema name is already in use.")
+        return schema
+
     def clean_new_domain_url(self):
-        domain = self.cleaned_data["new_domain_url"].strip().lower()
+        domain = (self.cleaned_data.get("new_domain_url") or "").strip().lower()
+        if not domain:
+            return domain
         if models.Company.objects.filter(domain_url__iexact=domain).exists():
             raise forms.ValidationError("This domain URL is already in use.")
         if models.Domain.objects.filter(domain__iexact=domain).exists():
@@ -133,15 +211,22 @@ class CopyCompanyForm(forms.Form):
             )
         return domain
 
-    def clean_new_schema_name(self):
-        schema = self.cleaned_data["new_schema_name"].strip().lower()
-        if not schema.replace("_", "").isalnum():
-            raise forms.ValidationError(
-                "Schema name can only contain lowercase letters, numbers, and underscores."
-            )
-        if models.Company.objects.filter(schema_name__iexact=schema).exists():
-            raise forms.ValidationError("This schema name is already in use.")
-        return schema
+    def clean(self):
+        cleaned = super().clean()
+        name = cleaned.get("new_name")
+        if not name:
+            return cleaned
+
+        schema = cleaned.get("new_schema_name") or ""
+        if not schema:
+            schema = _unique_schema_name(_schema_name_from_company_name(name))
+            cleaned["new_schema_name"] = schema
+
+        domain = cleaned.get("new_domain_url") or ""
+        if not domain:
+            suffix = _domain_suffix_for_company(self.source_company) if self.source_company else "zentroapp.app"
+            cleaned["new_domain_url"] = _unique_domain(schema, suffix)
+        return cleaned
 
 
 class AddHistoricalMoMoForm(forms.Form):
@@ -1266,36 +1351,50 @@ class CompanyAdmin(admin.ModelAdmin):
 
         return self._suggest_with_suffix(schema_value, "_copy", exists)
 
-    @admin.action(description="Copy selected company to a new tenant")
+    @admin.action(description="Clone selected tenant (full data copy)")
     def copy_company(self, request, queryset):
         if queryset.count() != 1:
             self.message_user(
                 request,
-                "Please select exactly one company to copy.",
+                "Please select exactly one company to clone.",
                 level=messages.ERROR,
             )
             return None
 
         source_company = queryset.first()
+        if source_company.schema_name in (
+            get_public_schema_name(),
+            "_zentro_template",
+        ):
+            self.message_user(
+                request,
+                "Cannot clone the public or template schema.",
+                level=messages.ERROR,
+            )
+            return None
 
         if "apply" in request.POST:
-            form = CopyCompanyForm(request.POST)
+            form = CopyCompanyForm(request.POST, source_company=source_company)
             if form.is_valid():
+                new_name = form.cleaned_data["new_name"]
+                new_schema = form.cleaned_data["new_schema_name"]
+                new_domain = form.cleaned_data["new_domain_url"]
+                new_email = form.cleaned_data.get("new_email") or source_company.email
+                new_company = None
                 try:
-                    with schema_context("public"):
-                        new_company = models.Company.objects.create(
-                            name=form.cleaned_data["new_name"],
-                            domain_url=form.cleaned_data["new_domain_url"],
-                            schema_name=form.cleaned_data["new_schema_name"],
+                    with schema_context(get_public_schema_name()):
+                        new_company = models.Company(
+                            name=new_name,
+                            display_name=new_name,
+                            domain_url=new_domain,
+                            schema_name=new_schema,
                             address=source_company.address,
                             logo=source_company.logo,
-                            email=form.cleaned_data.get("new_email")
-                            or source_company.email,
+                            email=new_email,
                             phone=source_company.phone,
                             tin=source_company.tin,
                             city=source_company.city,
                             country=source_company.country,
-                            display_name=source_company.display_name,
                             website=source_company.website,
                             onboarding_data=source_company.onboarding_data,
                             enabled_modules=source_company.enabled_modules,
@@ -1304,9 +1403,12 @@ class CompanyAdmin(admin.ModelAdmin):
                             subscription_grace_days=source_company.subscription_grace_days,
                             grace_reminder_offsets=source_company.grace_reminder_offsets,
                         )
+                        # Provision schema from the selected tenant, not the template.
+                        new_company._skip_schema_provisioning = True
+                        new_company.save()
 
                         models.Domain.objects.create(
-                            domain=form.cleaned_data["new_domain_url"],
+                            domain=new_domain,
                             tenant=new_company,
                             is_primary=True,
                         )
@@ -1352,36 +1454,57 @@ class CompanyAdmin(admin.ModelAdmin):
                             )
                             new_subscription.save()
 
-                    clone_tenant_schema_data(
-                        source_company.schema_name, new_company.schema_name
-                    )
+                    # Full PostgreSQL schema clone: all tables, rows, sequences.
+                    clone_schema(source_company.schema_name, new_company.schema_name)
+                    sync_all_sequences(new_company.schema_name)
+
+                    from company.models import ensure_debug_admin_for_schema
+
+                    ensure_debug_admin_for_schema(new_company.schema_name)
 
                     self.message_user(
                         request,
-                        f'Successfully copied "{source_company.name}" to new tenant "{new_company.name}".',
+                        (
+                            f'Successfully cloned "{source_company.name}" to '
+                            f'"{new_company.name}" '
+                            f"(schema={new_company.schema_name}, "
+                            f"domain={new_domain})."
+                        ),
                         level=messages.SUCCESS,
                     )
                     return None
-                except Exception as exc:
+                except (CloneSchemaError, Exception) as exc:
+                    if new_company and new_company.pk:
+                        try:
+                            with schema_context(get_public_schema_name()):
+                                models.Company.objects.filter(
+                                    pk=new_company.pk
+                                ).delete()
+                        except Exception:
+                            logger.exception(
+                                "Failed to roll back company row after clone error"
+                            )
                     form.add_error(None, str(exc))
         else:
+            suggested_name = self._suggest_with_suffix(
+                source_company.name,
+                " Copy",
+                lambda value: models.Company.objects.filter(
+                    name__iexact=value
+                ).exists(),
+            )
             form = CopyCompanyForm(
                 initial={
-                    "new_name": self._suggest_with_suffix(
-                        source_company.name,
-                        " Copy",
-                        lambda value: models.Company.objects.filter(
-                            name__iexact=value
-                        ).exists(),
-                    ),
-                    "new_domain_url": self._suggest_domain(source_company.domain_url),
-                    "new_schema_name": self._suggest_schema(source_company.schema_name),
+                    "new_name": suggested_name,
+                    "new_schema_name": "",
+                    "new_domain_url": "",
                     "new_email": source_company.email,
-                }
+                },
+                source_company=source_company,
             )
 
         context = {
-            "title": "Copy company",
+            "title": "Clone tenant",
             "form": form,
             "opts": self.model._meta,
             "action_checkbox_name": ACTION_CHECKBOX_NAME,

@@ -1920,7 +1920,7 @@ class SalesViewSet(viewsets.ModelViewSet):
                     # POS / API: attach serial tracking specs (one SN per unit).
                     serial_nos = line_data.get("serial_nos") or line_data.get("serial_numbers")
                     if serial_nos and prepared_line_data.get("type") == "item":
-                        from items.models import TrackingSpecification
+                        from items.models import TrackingSpecification, ItemLedgerEntries
 
                         if not isinstance(serial_nos, (list, tuple)):
                             serial_nos = [serial_nos]
@@ -1929,6 +1929,27 @@ class SalesViewSet(viewsets.ModelViewSet):
                             sales_invoice_line=line
                         ).delete()
                         for sn in cleaned:
+                            ledger = (
+                                ItemLedgerEntries.objects.filter(
+                                    item=line.item,
+                                    serial_no__iexact=sn,
+                                    remaining_quantity__gt=0,
+                                )
+                                .select_related("location")
+                                .first()
+                            )
+                            sn_location = (
+                                ledger.location
+                                if ledger and ledger.location_id
+                                else line.location_code
+                            )
+                            if (
+                                sn_location
+                                and line.location_code_id
+                                and sn_location.pk != line.location_code_id
+                            ):
+                                line.location_code = sn_location
+                                line.save(update_fields=["location_code"])
                             TrackingSpecification(
                                 sales_invoice=sale,
                                 sales_invoice_line=line,
@@ -1936,7 +1957,7 @@ class SalesViewSet(viewsets.ModelViewSet):
                                 serial_no=sn,
                                 quantity_base=1,
                                 description="",
-                                location_code=line.location_code,
+                                location_code=sn_location,
                                 user=request.user if request.user.is_authenticated else None,
                             ).save()
                         if cleaned:

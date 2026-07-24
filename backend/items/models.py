@@ -1163,6 +1163,8 @@ class ItemJournal(BaseModel):
                     ).quantize(Decimal("0.01"))
                     if self.unit_amount is None and self.unit_cost is not None:
                         self.unit_amount = money_decimal(self.unit_cost)
+                    if self.unit_amount is not None:
+                        self.unit_cost = money_decimal(self.unit_amount)
 
             print(
                 "Model save values:",
@@ -1238,6 +1240,14 @@ class ItemJournal(BaseModel):
                 self.date = datetime.now().date()
             if not self.description:
                 self.description = f"Adjustment of item {self.item.item_name} with quantity {self.quantity}"
+
+            # Page field updates use save(update_fields=[one field]). Amount is
+            # recalculated above but would not be written unless included here.
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None:
+                extras = ["amount", "unit_cost", "unit_amount", "date", "description"]
+                kwargs["update_fields"] = list(dict.fromkeys([*update_fields, *extras]))
+
             super().save(*args, **kwargs)
 
         except Exception as e:

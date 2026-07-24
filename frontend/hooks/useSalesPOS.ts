@@ -206,6 +206,33 @@ function normalizeSetup(raw: POSSalesSetup): POSSalesSetup {
 
 
 
+async function withCatalogPrices(
+  cart: POSCartLine[],
+  canEditPrice: boolean,
+): Promise<POSCartLine[]> {
+  if (canEditPrice || !cart.length) return cart
+
+  const next: POSCartLine[] = []
+  for (const line of cart) {
+    try {
+      const detail = await getItemByNo(line.no)
+      const catalog = detail?.unit_price
+      if (catalog != null && Number.isFinite(Number(catalog))) {
+        const price = Number(catalog)
+        next.push({ ...line, unitPrice: price, originalPrice: price })
+        continue
+      }
+    } catch {
+      // keep line; fall back to originalPrice below
+    }
+    next.push({
+      ...line,
+      unitPrice: line.originalPrice ?? line.unitPrice,
+    })
+  }
+  return next
+}
+
 function buildSalePayload(
 
   cart: POSCartLine[],
@@ -229,6 +256,9 @@ function buildSalePayload(
   invoiceDiscountAmount: number,
 
   invoiceDiscountPercentage: number,
+
+  /** When false, send catalog/original prices (backend rejects overrides). */
+  canEditPrice = true,
 
 ) {
 
@@ -280,7 +310,16 @@ function buildSalePayload(
 
     ),
 
-    lines: cart.map((line, index) => ({
+    lines: cart.map((line, index) => {
+      const unitPrice = canEditPrice
+        ? line.unitPrice
+        : (line.originalPrice ?? line.unitPrice)
+      const gross = line.quantity * unitPrice
+      const disc = lineOk
+        ? Math.min(line.lineDiscountAmount || 0, Math.max(0, gross))
+        : 0
+
+      return {
 
       id: index + 1,
 
@@ -292,26 +331,11 @@ function buildSalePayload(
 
       quantity: String(line.quantity),
 
-      unit_price: String(line.unitPrice),
+      unit_price: String(unitPrice),
 
-      total_amount: String(
-        (() => {
-          const gross = line.quantity * line.unitPrice
-          const disc = lineOk
-            ? Math.min(line.lineDiscountAmount || 0, Math.max(0, gross))
-            : 0
-          return gross - disc
-        })(),
-      ),
+      total_amount: String(gross - disc),
 
-      line_discount_amount: String(
-        lineOk
-          ? Math.min(
-              line.lineDiscountAmount || 0,
-              Math.max(0, line.quantity * line.unitPrice),
-            )
-          : 0,
-      ),
+      line_discount_amount: String(disc),
 
       unit_of_measure: line.unitOfMeasure,
 
@@ -321,7 +345,8 @@ function buildSalePayload(
 
       description: '',
 
-    })),
+    }
+    }),
 
   }
 
@@ -779,7 +804,17 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
           return prev.map((l) =>
 
-            l.no === product.no ? { ...l, quantity: l.quantity + 1 } : l,
+            l.no === product.no
+              ? {
+                  ...l,
+                  quantity: l.quantity + 1,
+                  availableInventory: inventory ?? l.availableInventory,
+                  // Qty changed — serial selection must match new qty
+                  selectedSerialNos: l.trackingCode?.require_serial_no
+                    ? undefined
+                    : l.selectedSerialNos,
+                }
+              : l,
 
           )
 
@@ -809,6 +844,8 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
             lineDiscountAmount: 0,
 
+            availableInventory: inventory ?? null,
+
             trackingCode,
 
             selectedLotNo: undefined,
@@ -835,29 +872,82 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
   const updateLineQuantity = useCallback((clientId: string, quantity: number) => {
 
-    setCart((prev) =>
+    setCart((prev) => {
 
-      prev
+      const target = prev.find((l) => l.clientId === clientId)
+
+      if (!target) return prev
+
+      let nextQty = Math.max(0, quantity)
+
+      const catalogInv = products.find((p) => p.no === target.no)?.inventory
+
+      const maxQty =
+        target.availableInventory != null && target.availableInventory >= 0
+          ? target.availableInventory
+          : catalogInv != null && catalogInv >= 0
+            ? catalogInv
+            : null
+
+      if (maxQty != null && nextQty > maxQty) {
+
+        setError(`Only ${maxQty} units available for ${target.name}`)
+
+        nextQty = maxQty
+
+      } else if (nextQty > 0) {
+
+        setError(null)
+
+      }
+
+      return prev
 
         .map((l) => {
 
           if (l.clientId !== clientId) return l
 
-          const nextQty = Math.max(0, quantity)
-
           const gross = nextQty * l.unitPrice
 
           const disc = Math.min(l.lineDiscountAmount || 0, Math.max(0, gross))
 
-          return { ...l, quantity: nextQty, lineDiscountAmount: disc }
+          const serials = l.selectedSerialNos
+
+          let nextSerials = serials
+
+          if (l.trackingCode?.require_serial_no) {
+
+            if (!serials || serials.length !== nextQty) {
+
+              nextSerials = serials && serials.length > nextQty ? serials.slice(0, nextQty) : undefined
+
+              if (!nextSerials || nextSerials.length !== nextQty) nextSerials = undefined
+
+            }
+
+          }
+
+          return {
+
+            ...l,
+
+            quantity: nextQty,
+
+            lineDiscountAmount: disc,
+
+            selectedSerialNos: nextSerials,
+
+            availableInventory: maxQty ?? l.availableInventory,
+
+          }
 
         })
 
-        .filter((l) => l.quantity > 0),
+        .filter((l) => l.quantity > 0)
 
-    )
+    })
 
-  }, [])
+  }, [products])
 
 
 
@@ -980,7 +1070,34 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
       const entries = await fetchAllItemLedgerEntries(line.no)
 
       if (line.trackingCode?.require_serial_no) {
-        setTrackingOptions(pickAvailableSerials(entries))
+        const serials = pickAvailableSerials(entries)
+        setTrackingOptions(serials)
+        if (serials.length > 0 && line.quantity > serials.length) {
+          setCart((prev) =>
+            prev.map((l) =>
+              l.clientId === clientId
+                ? {
+                    ...l,
+                    quantity: serials.length,
+                    availableInventory: serials.length,
+                    selectedSerialNos: undefined,
+                  }
+                : l,
+            ),
+          )
+          setError(
+            `Only ${serials.length} serial${serials.length === 1 ? '' : 's'} available for ${line.name}. Quantity adjusted.`,
+          )
+        } else if (
+          serials.length > 0 &&
+          (line.availableInventory == null || line.availableInventory > serials.length)
+        ) {
+          setCart((prev) =>
+            prev.map((l) =>
+              l.clientId === clientId ? { ...l, availableInventory: serials.length } : l,
+            ),
+          )
+        }
       } else {
         setTrackingOptions(pickAvailableLots(entries))
       }
@@ -1279,11 +1396,17 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
       }
 
+      const canEdit =
+        Boolean(canEditSalesPrice) && salesSetup.allow_price_editing !== false
+
+      const pricedCart = await withCatalogPrices(cart, canEdit)
+      if (pricedCart !== cart) setCart(pricedCart)
+
       await salesService.createSale(
 
         buildSalePayload(
 
-          cart,
+          pricedCart,
 
           selectedCustomer,
 
@@ -1304,6 +1427,8 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
           invoiceDiscountAmount,
 
           invoiceDiscountPercentage,
+
+          canEdit,
 
         ),
 
@@ -1326,6 +1451,8 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
     amountReceived,
 
     saleDate,
+
+    canEditSalesPrice,
 
     cart,
 
@@ -1369,9 +1496,25 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
     }
 
+    const canEdit =
+      Boolean(canEditSalesPrice) && salesSetup.allow_price_editing !== false
+
+    const pricedCart = await withCatalogPrices(cart, canEdit)
+    if (pricedCart !== cart) setCart(pricedCart)
+
+    const lineOk = lineDiscountsEnabled(salesSetup)
+    const saleTotal = pricedCart.reduce((sum, line) => {
+      const unitPrice = canEdit ? line.unitPrice : (line.originalPrice ?? line.unitPrice)
+      const gross = line.quantity * unitPrice
+      const disc = lineOk
+        ? Math.min(line.lineDiscountAmount || 0, Math.max(0, gross))
+        : 0
+      return sum + gross - disc
+    }, 0)
+
     const requiresTender = selectedPaymentMethod.requires_amount_received !== false
 
-    if (requiresTender && amountReceived < total) {
+    if (requiresTender && amountReceived < saleTotal) {
 
       setError('Amount received must cover the total')
 
@@ -1389,7 +1532,7 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
       const payload = buildSalePayload(
 
-        cart,
+        pricedCart,
 
         selectedCustomer,
 
@@ -1401,7 +1544,7 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
         amountReceived,
 
-        total,
+        saleTotal,
 
         saleDate,
 
@@ -1410,6 +1553,8 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
         invoiceDiscountAmount,
 
         invoiceDiscountPercentage,
+
+        canEdit,
 
       )
 
@@ -1425,11 +1570,11 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
         invoice_no: postResult.invoice_no ?? created.invoice_no,
 
-        total_amount: total,
+        total_amount: saleTotal,
 
         amount_received: requiresTender ? amountReceived : 0,
 
-        change_amount: requiresTender ? Math.max(0, amountReceived - total) : 0,
+        change_amount: requiresTender ? Math.max(0, amountReceived - saleTotal) : 0,
 
         customer_name: selectedCustomer.name,
 
@@ -1461,27 +1606,28 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
 
           salesSetup.vat_enabled && Number(postResult.invoice?.total_vat_amount ?? 0) > 0
 
-            ? total - Number(postResult.invoice?.total_vat_amount ?? 0)
+            ? saleTotal - Number(postResult.invoice?.total_vat_amount ?? 0)
 
             : undefined,
 
-        lines: cart.map((line) => ({
+        lines: pricedCart.map((line) => {
+          const unitPrice = canEdit ? line.unitPrice : (line.originalPrice ?? line.unitPrice)
+          const gross = line.quantity * unitPrice
+          const disc = Math.min(line.lineDiscountAmount || 0, Math.max(0, gross))
+          return {
 
           item_name: line.name,
 
           quantity: line.quantity,
 
-          unit_price: line.unitPrice,
+          unit_price: unitPrice,
 
-          total_amount: (() => {
-            const gross = line.quantity * line.unitPrice
-            const disc = Math.min(line.lineDiscountAmount || 0, Math.max(0, gross))
-            return gross - disc
-          })(),
+          total_amount: gross - disc,
 
           unit_of_measure: line.unitOfMeasure,
 
-        })),
+        }
+        }),
 
       })
 
@@ -1514,6 +1660,8 @@ export function useSalesPOS(itemListPageId?: number, itemListControlId?: number)
     amountReceived,
 
     saleDate,
+
+    canEditSalesPrice,
 
     cart,
 

@@ -2,7 +2,11 @@
 {% load i18n %}
 
 {% block content %}
-<h1>{% trans "Copy company" %}: "{{ company.name }}"</h1>
+<h1>{% trans "Clone tenant" %}: "{{ company.name }}"</h1>
+
+<p class="help">
+  {% trans "Creates a new tenant with the name you enter and copies all schema data (users, items, sales, settings, etc.) from the selected company." %}
+</p>
 
 {% if form.non_field_errors %}
 <div class="errornote">
@@ -45,9 +49,8 @@
   <input type="hidden" name="apply" value="1">
 
   <div class="submit-row">
-    <input type="submit" value="{% trans 'Copy company' %}" class="default">
+    <input type="submit" value="{% trans 'Clone tenant' %}" class="default">
     <a href=".." class="button cancel-link">{% trans "Cancel" %}</a>
   </div>
 </form>
 {% endblock %}
-

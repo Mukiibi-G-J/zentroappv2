@@ -1446,6 +1446,15 @@ def _serialize_branch_aware_computed_value(obj, field_name: str, request):
 
         return PurchaseInvoiceSerializer(context={'request': request}).get_total_amount(obj)
 
+    if model_name == 'PostedPurchaseInvoice' and field_name == 'total_amount':
+        if hasattr(obj, 'computed_total_amount'):
+            return float(obj.computed_total_amount or 0)
+        from django.db.models import Sum
+        total = (
+            obj.posted_purchase_invoice_lines.aggregate(s=Sum('amount')).get('s') or 0
+        )
+        return float(total)
+
     if model_name == 'GeneralJournalLine' and field_name in ('account_name', 'bal_account_name'):
         return getattr(obj, field_name, '') or ''
 
@@ -1465,6 +1474,7 @@ def _uses_branch_aware_computed(obj, field_name: str) -> bool:
         or (model_name == 'PostedSalesInvoice' and field_name in ('total_amount', 'user_name'))
         or (model_name == 'SalesCreditMemo' and field_name == 'total_amount')
         or (model_name == 'PurchaseInvoice' and field_name == 'total_amount')
+        or (model_name == 'PostedPurchaseInvoice' and field_name == 'total_amount')
     )
 
 
@@ -1550,6 +1560,7 @@ def _serialize_record(obj, fields: list[PageControlField], request=None) -> dict
         'PostedPurchaseInvoice',
         'TrackingSpecification',
         'ItemLedgerEntries',
+        'ItemJournal',
     ):
         row['id'] = obj.pk
     if obj.__class__.__name__ == 'PermissionSetLine':
@@ -4079,6 +4090,7 @@ class PageDataView(APIView):
                 from purchases.views import PurchaseViewSet
 
                 qs = qs.select_related('vendor').order_by('-posting_date', '-id')
+                qs = PurchaseViewSet._with_posted_purchase_invoice_totals(qs)
                 qs = PurchaseViewSet._annotate_posted_purchase_invoice_closed(qs)
             elif source_table == 'ItemLedgerEntries':
                 qs = qs.select_related('item', 'location').order_by('id')
